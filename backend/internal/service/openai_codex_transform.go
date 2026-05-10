@@ -963,6 +963,22 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 	return strings.Join(texts, "\n\n")
 }
 
+// applyOpenAIResponsesInstructionsCompat normalizes Responses-shaped bodies for
+// OpenAI-compatible upstreams that require top-level instructions but are
+// accessed through API-key style accounts. It keeps the transformation narrow:
+// extract system messages into instructions, then ensure a non-empty
+// instructions string exists.
+func applyOpenAIResponsesInstructionsCompat(reqBody map[string]any) bool {
+	modified := false
+	if extractSystemMessagesFromInput(reqBody) {
+		modified = true
+	}
+	if applyInstructions(reqBody, false) {
+		modified = true
+	}
+	return modified
+}
+
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
 func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	if !isInstructionsEmpty(reqBody) {

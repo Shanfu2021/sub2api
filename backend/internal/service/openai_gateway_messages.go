@@ -149,78 +149,68 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, fmt.Errorf("marshal responses request: %w", err)
 	}
 
-	if account.Type == AccountTypeOAuth {
+	if account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey {
 		var reqBody map[string]any
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
-			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
+			return nil, fmt.Errorf("unmarshal for responses compat transform: %w", err)
 		}
-		codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
-			SkipDefaultInstructions: true,
-			PreserveToolCallIDs:     true,
-		})
-		forcedTemplateText := ""
-		if s.cfg != nil {
-			forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
+
+		if account.Type == AccountTypeOAuth {
+			codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
+				SkipDefaultInstructions: true,
+				PreserveToolCallIDs:     true,
+			})
+			forcedTemplateText := ""
+			if s.cfg != nil {
+				forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
+			}
+			templateUpstreamModel := upstreamModel
+			if codexResult.NormalizedModel != "" {
+				templateUpstreamModel = codexResult.NormalizedModel
+			}
+			existingInstructions, _ := reqBody["instructions"].(string)
+			if strings.TrimSpace(existingInstructions) == "" {
+				existingInstructions = extractPromptLikeInstructionsFromInput(reqBody)
+			}
+			if _, err := applyForcedCodexInstructionsTemplate(reqBody, forcedTemplateText, forcedCodexInstructionsTemplateData{
+				ExistingInstructions: strings.TrimSpace(existingInstructions),
+				OriginalModel:        originalModel,
+				NormalizedModel:      normalizedModel,
+				BillingModel:         billingModel,
+				UpstreamModel:        templateUpstreamModel,
+			}); err != nil {
+				return nil, err
+			}
+			ensureCodexOAuthInstructionsField(reqBody)
+			if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+				appendOpenAICompatClaudeCodeTodoGuardToRequestBody(reqBody)
+			}
+			if codexResult.NormalizedModel != "" {
+				upstreamModel = codexResult.NormalizedModel
+			}
+			if codexResult.PromptCacheKey != "" {
+				promptCacheKey = codexResult.PromptCacheKey
+			}
+			delete(reqBody, "prompt_cache_key")
+			if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+				compatTurnState = s.getOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey)
+			}
+			// OAuth codex transform forces stream=true upstream, so always use
+			// the streaming response handler regardless of what the client asked.
+			isStream = true
+		} else {
+			// API-key configured OpenAI-compatible relays may still expect the
+			// same top-level instructions shape as OAuth/Codex-backed upstreams.
+			_ = applyOpenAIResponsesInstructionsCompat(reqBody)
+			if trimmedKey := strings.TrimSpace(promptCacheKey); trimmedKey != "" {
+				if existing, ok := reqBody["prompt_cache_key"].(string); !ok || strings.TrimSpace(existing) == "" {
+					reqBody["prompt_cache_key"] = trimmedKey
+				}
+			}
 		}
-		templateUpstreamModel := upstreamModel
-		if codexResult.NormalizedModel != "" {
-			templateUpstreamModel = codexResult.NormalizedModel
-		}
-		existingInstructions, _ := reqBody["instructions"].(string)
-		if strings.TrimSpace(existingInstructions) == "" {
-			existingInstructions = extractPromptLikeInstructionsFromInput(reqBody)
-		}
-		if _, err := applyForcedCodexInstructionsTemplate(reqBody, forcedTemplateText, forcedCodexInstructionsTemplateData{
-			ExistingInstructions: strings.TrimSpace(existingInstructions),
-			OriginalModel:        originalModel,
-			NormalizedModel:      normalizedModel,
-			BillingModel:         billingModel,
-			UpstreamModel:        templateUpstreamModel,
-		}); err != nil {
-			return nil, err
-		}
-		ensureCodexOAuthInstructionsField(reqBody)
-		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
-			appendOpenAICompatClaudeCodeTodoGuardToRequestBody(reqBody)
-		}
-		if codexResult.NormalizedModel != "" {
-			upstreamModel = codexResult.NormalizedModel
-		}
-		if codexResult.PromptCacheKey != "" {
-			promptCacheKey = codexResult.PromptCacheKey
-		}
-		delete(reqBody, "prompt_cache_key")
-		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
-			compatTurnState = s.getOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey)
-		}
-		// OAuth codex transform forces stream=true upstream, so always use
-		// the streaming response handler regardless of what the client asked.
-		isStream = true
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
-			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
-		}
-	}
-
-	// For API key accounts (including OpenAI-compatible upstream gateways),
-	// ensure promptCacheKey is also propagated via the request body so that
-	// upstreams using the Responses API can derive a stable session identifier
-	// from prompt_cache_key. This makes our Anthropic /v1/messages compatibility
-	// path behave more like a native Responses client.
-	if account.Type == AccountTypeAPIKey {
-		if trimmedKey := strings.TrimSpace(promptCacheKey); trimmedKey != "" {
-			var reqBody map[string]any
-			if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
-				return nil, fmt.Errorf("unmarshal for prompt cache key injection: %w", err)
-			}
-			if existing, ok := reqBody["prompt_cache_key"].(string); !ok || strings.TrimSpace(existing) == "" {
-				reqBody["prompt_cache_key"] = trimmedKey
-				updated, err := json.Marshal(reqBody)
-				if err != nil {
-					return nil, fmt.Errorf("remarshal after prompt cache key injection: %w", err)
-				}
-				responsesBody = updated
-			}
+			return nil, fmt.Errorf("remarshal after responses compat transform: %w", err)
 		}
 	}
 

@@ -1177,6 +1177,44 @@ func TestApplyCodexOAuthTransform_ExtractsSystemMessages(t *testing.T) {
 	require.Equal(t, "You are a coding assistant.", instructions)
 }
 
+func TestApplyOpenAIResponsesInstructionsCompat(t *testing.T) {
+	t.Run("injects default instructions when empty", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model": "gpt-5.4",
+			"input": []any{
+				map[string]any{"role": "user", "content": "hello"},
+			},
+		}
+
+		modified := applyOpenAIResponsesInstructionsCompat(reqBody)
+
+		require.True(t, modified)
+		require.Equal(t, "You are a helpful coding assistant.", reqBody["instructions"])
+	})
+
+	t.Run("extracts system messages into instructions", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model": "gpt-5.4",
+			"input": []any{
+				map[string]any{"role": "system", "content": "Follow the spec."},
+				map[string]any{"role": "user", "content": "hello"},
+			},
+		}
+
+		modified := applyOpenAIResponsesInstructionsCompat(reqBody)
+
+		require.True(t, modified)
+		require.Equal(t, "Follow the spec.", reqBody["instructions"])
+
+		input, ok := reqBody["input"].([]any)
+		require.True(t, ok)
+		require.Len(t, input, 1)
+		msg, ok := input[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "user", msg["role"])
+	})
+}
+
 func TestIsInstructionsEmpty(t *testing.T) {
 	tests := []struct {
 		name     string
