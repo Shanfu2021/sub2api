@@ -263,6 +263,46 @@
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || '-' }}</span>
           </template>
 
+          <template #cell-pricing_discount_source="{ row }">
+            <div class="max-w-xs">
+              <span
+                v-if="row.pricing_discount_source"
+                class="block truncate text-sm font-medium text-gray-900 dark:text-white"
+                :title="row.pricing_discount_source"
+              >
+                {{ row.pricing_discount_source }}
+              </span>
+              <span v-else class="text-sm text-gray-400">-</span>
+              <span
+                v-if="row.pricing_discount_label"
+                class="mt-0.5 block truncate text-xs text-gray-500 dark:text-dark-400"
+                :title="row.pricing_discount_label"
+              >
+                {{ row.pricing_discount_label }}
+              </span>
+            </div>
+          </template>
+
+          <template #cell-pricing_discount_factor="{ row }">
+            <div class="text-sm">
+              <div
+                v-if="hasPricingDiscount(row)"
+                class="flex items-center gap-2"
+              >
+                <span class="text-gray-400 line-through dark:text-dark-500">1.00x</span>
+                <span class="font-semibold text-emerald-600 dark:text-emerald-400">
+                  {{ formatPricingDiscountFactor(row.pricing_discount_factor) }}
+                </span>
+              </div>
+              <span
+                v-else
+                class="font-medium text-gray-700 dark:text-gray-300"
+              >
+                {{ formatPricingDiscountFactor(row.pricing_discount_factor) }}
+              </span>
+            </div>
+          </template>
+
           <template #cell-notes="{ value }">
             <div class="max-w-xs">
               <span
@@ -697,11 +737,29 @@ const getAttributeValue = (userId: number, attrId: number): string => {
   return value
 }
 
+const normalizePricingDiscountFactor = (factor?: number | null): number => {
+  if (typeof factor !== 'number' || !Number.isFinite(factor) || factor <= 0) {
+    return 1
+  }
+
+  return factor
+}
+
+const formatPricingDiscountFactor = (factor?: number | null): string => {
+  return `${normalizePricingDiscountFactor(factor).toFixed(2)}x`
+}
+
+const hasPricingDiscount = (user: AdminUser): boolean => {
+  return normalizePricingDiscountFactor(user.pricing_discount_factor) < 1
+}
+
 // All possible columns (for column settings)
 const allColumns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true },
   { key: 'id', label: t('admin.users.columns.id'), sortable: true },
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
+  { key: 'pricing_discount_source', label: t('admin.users.columns.promoCode'), sortable: false },
+  { key: 'pricing_discount_factor', label: t('admin.users.columns.discountFactor'), sortable: false },
   { key: 'notes', label: t('admin.users.columns.notes'), sortable: false },
   // Dynamic attribute columns
   ...attributeColumns.value,
