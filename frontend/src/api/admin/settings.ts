@@ -369,6 +369,7 @@ export interface SystemSettings {
   site_subtitle: string;
   api_base_url: string;
   contact_info: string;
+  contact_qr_code_url: string;
   doc_url: string;
   home_content: string;
   hide_ccs_import_button: boolean;
@@ -587,6 +588,7 @@ export interface UpdateSettingsRequest {
   site_subtitle?: string;
   api_base_url?: string;
   contact_info?: string;
+  contact_qr_code_url?: string;
   doc_url?: string;
   home_content?: string;
   hide_ccs_import_button?: boolean;

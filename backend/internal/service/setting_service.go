@@ -596,6 +596,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySiteSubtitle,
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
+		SettingKeyContactQRCodeURL,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
 		SettingKeyHideCcsImportButton,
@@ -713,6 +714,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "一群程序员共建的高质量 AI API 中转站"),
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
+		ContactQRCodeURL:                 settings[SettingKeyContactQRCodeURL],
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
@@ -916,6 +918,7 @@ type PublicSettingsInjectionPayload struct {
 	SiteSubtitle                     string                   `json:"site_subtitle"`
 	APIBaseURL                       string                   `json:"api_base_url"`
 	ContactInfo                      string                   `json:"contact_info"`
+	ContactQRCodeURL                 string                   `json:"contact_qr_code_url"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
@@ -1550,6 +1553,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
+	updates[SettingKeyContactQRCodeURL] = strings.TrimSpace(settings.ContactQRCodeURL)
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
@@ -2513,6 +2517,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
+		ContactQRCodeURL:                 settings[SettingKeyContactQRCodeURL],
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",

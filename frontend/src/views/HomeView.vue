@@ -142,6 +142,12 @@
                   QQ 群：825526434
                 </p>
               </div>
+              <img
+                v-if="contactQrCodeUrl"
+                :src="contactQrCodeUrl"
+                alt="QQ群二维码"
+                class="h-16 w-16 rounded-xl border border-primary-100 object-cover shadow-sm dark:border-primary-900/40"
+              />
             </div>
 
             <!-- CTA Button -->
@@ -439,6 +445,7 @@ const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appS
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 中转站')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
+const contactQrCodeUrl = computed(() => appStore.cachedPublicSettings?.contact_qr_code_url || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
 // Check if homeContent is a URL (for iframe display)

@@ -197,6 +197,7 @@ const (
 	SettingKeySiteSubtitle                = "site_subtitle"                 // 网站副标题
 	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
+	SettingKeyContactQRCodeURL            = "contact_qr_code_url"           // 客服/社群二维码图片地址
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮

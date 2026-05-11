@@ -435,6 +435,7 @@ type UpdateSettingsRequest struct {
 	SiteSubtitle                string                `json:"site_subtitle"`
 	APIBaseURL                  string                `json:"api_base_url"`
 	ContactInfo                 string                `json:"contact_info"`
+	ContactQRCodeURL            string                `json:"contact_qr_code_url"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
@@ -2063,6 +2064,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.ContactInfo != after.ContactInfo {
 		changed = append(changed, "contact_info")
+	}
+	if before.ContactQRCodeURL != after.ContactQRCodeURL {
+		changed = append(changed, "contact_qr_code_url")
 	}
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")

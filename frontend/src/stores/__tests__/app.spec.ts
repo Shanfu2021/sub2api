@@ -259,6 +259,7 @@ describe('useAppStore', () => {
         site_logo: '/logo.png',
         version: '1.0.0',
         contact_info: 'test@test.com',
+        contact_qr_code_url: 'https://cdn.test.com/qq.png',
         api_base_url: 'https://api.test.com',
         doc_url: 'https://docs.test.com',
       }

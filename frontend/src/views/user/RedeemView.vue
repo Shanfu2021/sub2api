@@ -57,6 +57,12 @@
               {{ contactInfo || 'QQ群：825526434' }}
             </p>
             <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">兑换异常或购买问题可先联系群内处理</p>
+            <img
+              v-if="contactQrCodeUrl"
+              :src="contactQrCodeUrl"
+              alt="QQ群二维码"
+              class="mt-4 h-24 w-24 rounded-2xl border border-amber-100 object-cover shadow-sm dark:border-amber-900/40"
+            />
           </div>
         </div>
 
@@ -590,6 +596,7 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
+const contactQrCodeUrl = ref('')
 const purchaseUrl = ref('')
 const purchaseEnabled = ref(false)
 const purchaseStoreUrl = 'https://pay.ldxp.cn/shop/CN8U85FN'
@@ -898,6 +905,7 @@ onMounted(async () => {
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
+    contactQrCodeUrl.value = settings.contact_qr_code_url || ''
     purchaseUrl.value = settings.purchase_subscription_url || purchaseStoreUrl
     purchaseEnabled.value = Boolean(
       settings.purchase_subscription_enabled || settings.payment_enabled || purchaseUrl.value
