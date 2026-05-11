@@ -211,6 +211,27 @@
               </p>
             </div>
           </div>
+          <div
+            class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-sky-100/80 px-4 py-3 dark:bg-sky-950/40"
+          >
+            <div>
+              <p class="text-sm font-semibold text-sky-900 dark:text-sky-100">
+                {{ t('redeem.productStoreNoticeTitle') }}
+              </p>
+              <p class="mt-1 text-xs text-sky-700 dark:text-sky-300">
+                {{ t('redeem.productStoreNoticeDesc') }}
+              </p>
+            </div>
+            <a
+              :href="purchaseStoreUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-secondary"
+            >
+              <Icon name="externalLink" size="sm" class="mr-2" />
+              {{ t('redeem.viewAllProducts') }}
+            </a>
+          </div>
         </div>
 
         <div class="grid gap-4 p-6 md:grid-cols-2">
@@ -571,6 +592,7 @@ const loadingHistory = ref(false)
 const contactInfo = ref('')
 const purchaseUrl = ref('')
 const purchaseEnabled = ref(false)
+const purchaseStoreUrl = 'https://pay.ldxp.cn/shop/CN8U85FN'
 
 type PurchaseProduct = {
   key: string
@@ -591,29 +613,86 @@ const purchaseHint = computed(() => {
 const purchaseProducts = computed<PurchaseProduct[]>(() => {
   if (!purchaseEnabled.value) return []
 
-  const storeUrl = purchaseUrl.value || 'https://pay.ldxp.cn/shop/CN8U85FN'
-  if (!storeUrl) return []
-
   return [
     {
-      key: 'balance-card',
-      category: t('redeem.productCategoryBalance'),
-      title: t('redeem.productBalanceTitle'),
-      description: t('redeem.productBalanceDesc'),
-      price: t('redeem.productBalancePrice'),
-      note: t('redeem.productBalanceNote'),
-      badge: t('redeem.productBalanceBadge'),
-      url: storeUrl
+      key: 'codex-balance-20',
+      category: 'Codex API 余额',
+      title: 'Codex API 20 刀余额卡',
+      description: '适合首次体验和轻量调用，兑换后到账 20 USD Codex API 余额。',
+      price: '售价 ¥4',
+      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      badge: '余额',
+      url: 'https://pay.ldxp.cn/item/a7zg2a'
     },
     {
-      key: 'subscription-card',
-      category: t('redeem.productCategorySubscription'),
-      title: t('redeem.productSubscriptionTitle'),
-      description: t('redeem.productSubscriptionDesc'),
-      price: t('redeem.productSubscriptionPrice'),
-      note: t('redeem.productSubscriptionNote'),
-      badge: t('redeem.productSubscriptionBadge'),
-      url: storeUrl
+      key: 'codex-balance-100',
+      category: 'Codex API 余额',
+      title: 'Codex API 100 刀余额卡',
+      description: '适合日常开发与稳定调用，兑换后到账 100 USD Codex API 余额。',
+      price: '售价 ¥20',
+      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      badge: '余额',
+      url: 'https://pay.ldxp.cn/item/lr5xqf'
+    },
+    {
+      key: 'codex-balance-1000',
+      category: 'Codex API 余额',
+      title: 'Codex API 1000 刀余额卡',
+      description: '适合高频开发、长期使用或项目备量，兑换后到账 1000 USD Codex API 余额。',
+      price: '售价 ¥200',
+      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      badge: '余额',
+      url: 'https://pay.ldxp.cn/item/myb6wq'
+    },
+    {
+      key: 'codex-balance-5000',
+      category: 'Codex API 余额',
+      title: 'Codex API 5000 刀余额卡',
+      description: '适合团队囤货和长期高频调用，兑换后到账 5000 USD Codex API 余额。',
+      price: '售价 ¥1000',
+      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      badge: '余额',
+      url: 'https://pay.ldxp.cn/item/785rq4'
+    },
+    {
+      key: 'subscription-daily',
+      category: '订阅套餐',
+      title: '日常使用版订阅',
+      description: '适合日常问答、轻量编码和课程作业等低频使用场景。',
+      price: '售价 ¥39.9 / 月',
+      note: '购买后使用兑换码开通日常使用版订阅。',
+      badge: '订阅',
+      url: 'https://pay.ldxp.cn/item/fcymlb'
+    },
+    {
+      key: 'subscription-light',
+      category: '订阅套餐',
+      title: '轻度开发版订阅',
+      description: '适合稳定开发与中等频率调用，兼顾成本和日常生产力。',
+      price: '售价 ¥99.9 / 月',
+      note: '购买后使用兑换码开通轻度开发版订阅。',
+      badge: '订阅',
+      url: 'https://pay.ldxp.cn/item/sadvgi'
+    },
+    {
+      key: 'subscription-heavy',
+      category: '订阅套餐',
+      title: '强度开发版订阅',
+      description: '适合高频编码、长时间开发和多模型协作的重度用户。',
+      price: '售价 ¥199 / 月',
+      note: '购买后使用兑换码开通强度开发版订阅。',
+      badge: '订阅',
+      url: 'https://pay.ldxp.cn/item/hzios1'
+    },
+    {
+      key: 'subscription-team',
+      category: '订阅套餐',
+      title: '团队协作版订阅',
+      description: '适合多人共享、项目制使用和高强度协作场景。',
+      price: '售价 ¥399 / 月',
+      note: '购买后使用兑换码开通团队协作版订阅。',
+      badge: '订阅',
+      url: 'https://pay.ldxp.cn/item/ug4w7w'
     }
   ]
 })
@@ -742,8 +821,9 @@ const handleApplyPromo = async () => {
 }
 
 const handleBuyClick = () => {
-  if (purchaseUrl.value) {
-    window.open(purchaseUrl.value, '_blank', 'noopener,noreferrer')
+  const targetUrl = purchaseUrl.value || purchaseStoreUrl
+  if (targetUrl) {
+    window.open(targetUrl, '_blank', 'noopener,noreferrer')
     return
   }
   router.push('/purchase')
@@ -762,14 +842,14 @@ onMounted(async () => {
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
-    purchaseUrl.value = settings.purchase_subscription_url || 'https://pay.ldxp.cn/shop/CN8U85FN'
+    purchaseUrl.value = settings.purchase_subscription_url || purchaseStoreUrl
     purchaseEnabled.value = Boolean(
       settings.purchase_subscription_enabled || settings.payment_enabled || purchaseUrl.value
     )
   } catch (error) {
     console.error('Failed to load contact info:', error)
     purchaseEnabled.value = true
-    purchaseUrl.value = 'https://pay.ldxp.cn/shop/CN8U85FN'
+    purchaseUrl.value = purchaseStoreUrl
   }
 })
 </script>
