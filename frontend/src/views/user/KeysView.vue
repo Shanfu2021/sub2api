@@ -34,7 +34,7 @@
       <template #actions>
         <div class="flex justify-end gap-3">
         <button
-          @click="loadApiKeys"
+          @click="refreshPageData"
           :disabled="loading"
           class="btn btn-secondary"
           :title="t('common.refresh')"
@@ -60,11 +60,12 @@
         >
           <template #cell-key="{ value, row }">
             <div class="flex items-center gap-2">
-              <code class="code text-xs">
-                {{ maskApiKey(value) }}
+              <code class="rounded-md bg-gray-100 px-2 py-1 font-mono text-xs text-gray-900 dark:bg-dark-700 dark:text-gray-100">
+                {{ formatApiKeyForDisplay(value) }}
               </code>
               <button
-                @click="copyToClipboard(value, row.id)"
+                v-if="getCopyableApiKey(value)"
+                @click="copyToClipboard(getCopyableApiKey(value), row.id)"
                 class="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :class="
                   copiedKeyId === row.id
@@ -1052,6 +1053,7 @@
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
+import { useAuthStore } from '@/stores/auth'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
@@ -1099,6 +1101,7 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
@@ -1278,6 +1281,25 @@ const copyToClipboard = async (text: string, keyId: number) => {
   }
 }
 
+const normalizeApiKeyValue = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  return value.trim()
+}
+
+const isDeletedApiKeyValue = (value: string): boolean => value.startsWith('__deleted__')
+
+const formatApiKeyForDisplay = (value: unknown): string => {
+  const key = normalizeApiKeyValue(value)
+  if (!key || isDeletedApiKeyValue(key)) return '-'
+  return maskApiKey(key)
+}
+
+const getCopyableApiKey = (value: unknown): string => {
+  const key = normalizeApiKeyValue(value)
+  if (!key || isDeletedApiKeyValue(key)) return ''
+  return key
+}
+
 const isAbortError = (error: unknown) => {
   if (!error || typeof error !== 'object') return false
   const { name, code } = error as { name?: string; code?: string }
@@ -1343,6 +1365,7 @@ const loadGroups = async () => {
     groups.value = await userGroupsAPI.getAvailable()
   } catch (error) {
     console.error('Failed to load groups:', error)
+    appStore.showError(t('admin.users.failedToLoadGroups'))
   }
 }
 
@@ -1352,6 +1375,14 @@ const loadUserGroupRates = async () => {
   } catch (error) {
     console.error('Failed to load user group rates:', error)
   }
+}
+
+const refreshPageData = async () => {
+  await Promise.allSettled([
+    loadApiKeys(),
+    loadGroups(),
+    loadUserGroupRates()
+  ])
 }
 
 const loadPublicSettings = async () => {
@@ -1778,9 +1809,7 @@ function formatResetTime(resetAt: string | null): string {
 }
 
 onMounted(() => {
-  loadApiKeys()
-  loadGroups()
-  loadUserGroupRates()
+  void refreshPageData()
   loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)

@@ -14,7 +14,9 @@
           <div class="flex items-start justify-between">
             <div class="min-w-0 flex-1">
               <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
-              <p class="truncate font-mono text-sm text-gray-500">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
+              <p class="truncate rounded-md bg-gray-100 px-2 py-1 font-mono text-sm text-gray-900 dark:bg-dark-700 dark:text-gray-100">
+                {{ formatApiKeyForDisplay(key.key) }}
+              </p>
             </div>
           </div>
           <div class="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
@@ -103,6 +105,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
+import { maskApiKey } from '@/utils/maskApiKey'
 import type { AdminUser, AdminGroup, ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -127,6 +130,13 @@ const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
+
+const formatApiKeyForDisplay = (value: unknown): string => {
+  if (typeof value !== 'string') return '-'
+  const key = value.trim()
+  if (!key || key.startsWith('__deleted__')) return '-'
+  return maskApiKey(key)
+}
 
 const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
@@ -154,6 +164,7 @@ const load = async () => {
     apiKeys.value = res.items || []
   } catch (error) {
     console.error('Failed to load API keys:', error)
+    appStore.showError(t('admin.users.failedToLoadApiKeys'))
   } finally {
     loading.value = false
   }
@@ -165,6 +176,7 @@ const loadGroups = async () => {
     allGroups.value = groups
   } catch (error) {
     console.error('Failed to load groups:', error)
+    appStore.showError(t('admin.users.failedToLoadGroups'))
   }
 }
 
