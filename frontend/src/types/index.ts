@@ -93,6 +93,9 @@ export interface User {
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
+  pricing_discount_factor?: number
+  pricing_discount_label?: string | null
+  pricing_discount_source?: string | null
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -208,6 +211,8 @@ export interface PublicSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
+  purchase_subscription_enabled?: boolean
+  purchase_subscription_url?: string
   payment_enabled: boolean
   risk_control_enabled: boolean
   table_default_page_size: number
@@ -1688,6 +1693,8 @@ export interface PromoCode {
   id: number
   code: string
   bonus_amount: number
+  discount_factor?: number
+  discount_label?: string | null
   max_uses: number
   used_count: number
   status: 'active' | 'disabled'
@@ -1709,6 +1716,8 @@ export interface PromoCodeUsage {
 export interface CreatePromoCodeRequest {
   code?: string
   bonus_amount: number
+  discount_factor?: number | null
+  discount_label?: string
   max_uses?: number
   expires_at?: number | null
   notes?: string
@@ -1717,6 +1726,8 @@ export interface CreatePromoCodeRequest {
 export interface UpdatePromoCodeRequest {
   code?: string
   bonus_amount?: number
+  discount_factor?: number | null
+  discount_label?: string
   max_uses?: number
   status?: 'active' | 'disabled'
   expires_at?: number | null

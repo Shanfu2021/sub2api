@@ -332,5 +332,96 @@ describe('useAppStore', () => {
       expect(localStorage.getItem('table-page-size')).toBeNull()
       expect(localStorage.getItem('table-page-size-source')).toBeNull()
     })
+
+    it('注入配置已加载时仍会向接口校正公开设置', async () => {
+      const windowAny = window as any
+      windowAny.__APP_CONFIG__ = {
+        registration_enabled: false,
+        email_verify_enabled: false,
+        registration_email_suffix_whitelist: [],
+        promo_code_enabled: true,
+        password_reset_enabled: false,
+        invitation_code_enabled: false,
+        turnstile_enabled: false,
+        turnstile_site_key: '',
+        site_name: 'Injected Site',
+        site_logo: '',
+        site_subtitle: '',
+        api_base_url: '',
+        contact_info: '',
+        doc_url: '',
+        home_content: '',
+        hide_ccs_import_button: false,
+        purchase_subscription_enabled: false,
+        purchase_subscription_url: '',
+        table_default_page_size: 20,
+        table_page_size_options: [10, 20, 50],
+        custom_menu_items: [],
+        custom_endpoints: [],
+        linuxdo_oauth_enabled: false,
+        backend_mode_enabled: false,
+        version: '',
+        balance_low_notify_enabled: false,
+        account_quota_notify_enabled: false,
+        balance_low_notify_threshold: 0,
+        channel_monitor_enabled: true,
+        channel_monitor_default_interval_seconds: 60,
+        available_channels_enabled: false,
+        risk_control_enabled: false,
+        affiliate_enabled: false,
+      }
+
+      vi.mocked(getPublicSettings).mockClear()
+      vi.mocked(getPublicSettings).mockResolvedValue({
+        registration_enabled: true,
+        email_verify_enabled: true,
+        registration_email_suffix_whitelist: [],
+        promo_code_enabled: true,
+        password_reset_enabled: true,
+        invitation_code_enabled: false,
+        turnstile_enabled: false,
+        turnstile_site_key: '',
+        site_name: 'API Site',
+        site_logo: '',
+        site_subtitle: '',
+        api_base_url: '',
+        contact_info: '',
+        doc_url: '',
+        home_content: '',
+        hide_ccs_import_button: false,
+        purchase_subscription_enabled: true,
+        purchase_subscription_url: '',
+        table_default_page_size: 20,
+        table_page_size_options: [10, 20, 50],
+        custom_menu_items: [],
+        custom_endpoints: [],
+        linuxdo_oauth_enabled: false,
+        backend_mode_enabled: false,
+        version: '',
+        balance_low_notify_enabled: false,
+        account_quota_notify_enabled: false,
+        balance_low_notify_threshold: 0,
+        channel_monitor_enabled: true,
+        channel_monitor_default_interval_seconds: 60,
+        available_channels_enabled: false,
+        risk_control_enabled: false,
+        affiliate_enabled: true,
+      })
+
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+
+      expect(store.cachedPublicSettings?.affiliate_enabled).toBe(false)
+
+      await store.fetchPublicSettings()
+
+      expect(getPublicSettings).toHaveBeenCalledTimes(1)
+      expect(store.siteName).toBe('API Site')
+      expect(store.cachedPublicSettings?.registration_enabled).toBe(true)
+      expect(store.cachedPublicSettings?.password_reset_enabled).toBe(true)
+      expect(store.cachedPublicSettings?.purchase_subscription_enabled).toBe(true)
+      expect(store.cachedPublicSettings?.affiliate_enabled).toBe(true)
+      expect((window as any).__APP_CONFIG__.affiliate_enabled).toBe(true)
+    })
   })
 })

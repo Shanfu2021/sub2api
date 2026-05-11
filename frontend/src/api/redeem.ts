@@ -59,9 +59,27 @@ export async function getHistory(): Promise<RedeemHistoryItem[]> {
   return data
 }
 
+export async function applyPromoCode(code: string): Promise<{
+  message: string
+  bonus_amount?: number
+  discount_factor?: number
+  discount_label?: string
+  new_balance?: number
+}> {
+  const { data } = await apiClient.post<{
+    message: string
+    bonus_amount?: number
+    discount_factor?: number
+    discount_label?: string
+    new_balance?: number
+  }>('/redeem/promo', { code })
+  return data
+}
+
 export const redeemAPI = {
   redeem,
-  getHistory
+  getHistory,
+  applyPromoCode
 }
 
 export default redeemAPI

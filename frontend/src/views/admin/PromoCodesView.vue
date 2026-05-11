@@ -74,10 +74,30 @@
             </div>
           </template>
 
-          <template #cell-bonus_amount="{ value }">
-            <span class="text-sm font-medium text-gray-900 dark:text-white">
-              ${{ value.toFixed(2) }}
-            </span>
+          <template #cell-bonus_amount="{ value, row }">
+            <div class="space-y-0.5">
+              <span
+                v-if="rowDiscountFactorMap[row.id] && rowDiscountFactorMap[row.id] < 1"
+                class="block text-sm font-medium text-blue-600 dark:text-blue-400"
+              >
+                {{ rowDiscountFactorMap[row.id] }}x
+              </span>
+              <span v-else class="block text-sm font-medium text-gray-900 dark:text-white">
+                ${{ value.toFixed(2) }}
+              </span>
+              <span
+                v-if="rowDiscountLabelMap[row.id]"
+                class="block text-xs text-blue-600 dark:text-blue-400"
+              >
+                {{ rowDiscountLabelMap[row.id] }}
+              </span>
+              <span
+                v-if="value > 0 && rowDiscountFactorMap[row.id] && rowDiscountFactorMap[row.id] < 1"
+                class="block text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t('admin.promo.bonusAmount') }}: ${{ value.toFixed(2) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-usage="{ row }">
@@ -188,6 +208,24 @@
           />
         </div>
         <div>
+          <label class="input-label">{{ t('admin.promo.discountFactor') }}</label>
+          <input
+            v-model.number="createForm.discount_factor"
+            type="number"
+            step="0.01"
+            min="0"
+            class="input"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.promo.discountLabel') }}</label>
+          <input
+            v-model="createForm.discount_label"
+            type="text"
+            class="input"
+          />
+        </div>
+        <div>
           <label class="input-label">
             {{ t('admin.promo.maxUses') }}
             <span class="ml-1 text-xs font-normal text-gray-400">({{ t('admin.promo.zeroUnlimited') }})</span>
@@ -259,6 +297,24 @@
             step="0.01"
             min="0"
             required
+            class="input"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.promo.discountFactor') }}</label>
+          <input
+            v-model.number="editForm.discount_factor"
+            type="number"
+            step="0.01"
+            min="0"
+            class="input"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.promo.discountLabel') }}</label>
+          <input
+            v-model="editForm.discount_label"
+            type="text"
             class="input"
           />
         </div>
@@ -450,7 +506,9 @@ const usagesTotal = ref(0)
 // Forms
 const createForm = reactive({
   code: '',
-  bonus_amount: 1,
+  bonus_amount: 0,
+  discount_factor: 0.75,
+  discount_label: '',
   max_uses: 0,
   expires_at_str: '',
   notes: ''
@@ -459,11 +517,21 @@ const createForm = reactive({
 const editForm = reactive({
   code: '',
   bonus_amount: 0,
+  discount_factor: 1,
+  discount_label: '',
   max_uses: 0,
   status: 'active' as 'active' | 'disabled',
   expires_at_str: '',
   notes: ''
 })
+
+const rowDiscountFactorMap = computed<Record<number, number>>(() =>
+  Object.fromEntries(codes.value.map((row) => [row.id, row.discount_factor ?? 1]))
+)
+
+const rowDiscountLabelMap = computed<Record<number, string>>(() =>
+  Object.fromEntries(codes.value.map((row) => [row.id, row.discount_label || '']))
+)
 
 // Options
 const filterStatusOptions = computed(() => [
@@ -598,6 +666,8 @@ const handleCreate = async () => {
     await adminAPI.promo.create({
       code: createForm.code || undefined,
       bonus_amount: createForm.bonus_amount,
+      discount_factor: createForm.discount_factor,
+      discount_label: createForm.discount_label || undefined,
       max_uses: createForm.max_uses,
       expires_at: createForm.expires_at_str ? Math.floor(new Date(createForm.expires_at_str).getTime() / 1000) : undefined,
       notes: createForm.notes || undefined
@@ -615,7 +685,9 @@ const handleCreate = async () => {
 
 const resetCreateForm = () => {
   createForm.code = ''
-  createForm.bonus_amount = 1
+  createForm.bonus_amount = 0
+  createForm.discount_factor = 0.75
+  createForm.discount_label = ''
   createForm.max_uses = 0
   createForm.expires_at_str = ''
   createForm.notes = ''
@@ -626,6 +698,8 @@ const handleEdit = (code: PromoCode) => {
   editingCode.value = code
   editForm.code = code.code
   editForm.bonus_amount = code.bonus_amount
+  editForm.discount_factor = code.discount_factor ?? 1
+  editForm.discount_label = code.discount_label || ''
   editForm.max_uses = code.max_uses
   editForm.status = code.status
   editForm.expires_at_str = code.expires_at ? new Date(code.expires_at).toISOString().slice(0, 16) : ''
@@ -646,6 +720,8 @@ const handleUpdate = async () => {
     await adminAPI.promo.update(editingCode.value.id, {
       code: editForm.code,
       bonus_amount: editForm.bonus_amount,
+      discount_factor: editForm.discount_factor,
+      discount_label: editForm.discount_label || undefined,
       max_uses: editForm.max_uses,
       status: editForm.status,
       expires_at: editForm.expires_at_str ? Math.floor(new Date(editForm.expires_at_str).getTime() / 1000) : 0,

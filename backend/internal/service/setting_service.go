@@ -2011,6 +2011,14 @@ func (s *SettingService) GetAffiliateRebatePerInviteeCap(ctx context.Context) fl
 	return cap
 }
 
+// GetRawSetting returns the persisted raw setting value for a key.
+func (s *SettingService) GetRawSetting(ctx context.Context, key string) (string, error) {
+	if s == nil || s.settingRepo == nil {
+		return "", ErrSettingNotFound
+	}
+	return s.settingRepo.GetValue(ctx, key)
+}
+
 // IsPasswordResetEnabled 检查是否启用密码重置功能
 // 要求：必须同时开启邮件验证
 func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {

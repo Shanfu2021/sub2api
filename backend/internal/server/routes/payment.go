@@ -14,6 +14,7 @@ import (
 func RegisterPaymentRoutes(
 	v1 *gin.RouterGroup,
 	paymentHandler *handler.PaymentHandler,
+	redeemHandler *handler.RedeemHandler,
 	webhookHandler *handler.PaymentWebhookHandler,
 	adminPaymentHandler *admin.PaymentHandler,
 	jwtAuth middleware.JWTAuthMiddleware,
@@ -63,6 +64,12 @@ func RegisterPaymentRoutes(
 		webhook.POST("/wxpay", webhookHandler.WxpayNotify)
 		webhook.POST("/stripe", webhookHandler.StripeWebhook)
 		webhook.POST("/airwallex", webhookHandler.AirwallexWebhook)
+	}
+
+	// --- External merchant callbacks (no auth, token via query/header) ---
+	merchant := v1.Group("/merchant/callbacks")
+	{
+		merchant.POST("/balance-card", redeemHandler.CreateMerchantBalanceCard)
 	}
 
 	// --- Admin payment endpoints (admin auth) ---

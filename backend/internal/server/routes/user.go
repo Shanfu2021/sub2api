@@ -100,6 +100,7 @@ func RegisterUserRoutes(
 		redeem := authenticated.Group("/redeem")
 		{
 			redeem.POST("", h.Redeem.Redeem)
+			redeem.POST("/promo", h.Redeem.ApplyPromoCode)
 			redeem.GET("/history", h.Redeem.GetHistory)
 		}
 

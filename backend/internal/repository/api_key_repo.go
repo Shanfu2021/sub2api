@@ -193,7 +193,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := hydrateAPIKeyUserPricingDiscount(ctx, clientFromContext(ctx, r.client), out.User); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
@@ -684,6 +688,46 @@ func userEntityToService(u *dbent.User) *service.User {
 		out.BalanceNotifyExtraEmails = service.ParseNotifyEmails(u.BalanceNotifyExtraEmails)
 	}
 	return out
+}
+
+func hydrateAPIKeyUserPricingDiscount(ctx context.Context, client *dbent.Client, user *service.User) error {
+	if client == nil || user == nil || user.ID <= 0 {
+		return nil
+	}
+
+	user.PricingDiscountFactor = service.DefaultPricingDiscountFactor
+	user.PricingDiscountLabel = ""
+	user.PricingDiscountSource = ""
+
+	rows, err := client.QueryContext(ctx, `
+SELECT COALESCE(upd.discount_factor::double precision, 1.0),
+       COALESCE(upd.discount_label, ''),
+       COALESCE(pc.code, '')
+FROM user_promo_discounts upd
+LEFT JOIN promo_codes pc ON pc.id = upd.promo_code_id
+WHERE upd.user_id = $1
+LIMIT 1
+`, user.ID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if rows.Next() {
+		var (
+			discountFactor float64
+			discountLabel  string
+			promoCode      string
+		)
+		if err := rows.Scan(&discountFactor, &discountLabel, &promoCode); err != nil {
+			return err
+		}
+		user.PricingDiscountFactor = service.NormalizePricingDiscountFactorForRepo(discountFactor)
+		user.PricingDiscountLabel = strings.TrimSpace(discountLabel)
+		user.PricingDiscountSource = strings.TrimSpace(promoCode)
+	}
+
+	return rows.Err()
 }
 
 func groupEntityToService(g *dbent.Group) *service.Group {

@@ -10,6 +10,7 @@
         :name="name"
         :platform="platform"
         :subscription-type="subscriptionType"
+        :pricing-discount-factor="pricingDiscountFactor"
         :show-rate="false"
         class="groupOptionItemBadge"
       />
@@ -29,6 +30,10 @@
         <template v-if="hasCustomRate">
           <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
           <span class="font-bold">{{ userRateMultiplier }}x</span>
+        </template>
+        <template v-else-if="hasDiscountRate">
+          <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
+          <span class="font-bold">{{ discountedRateMultiplier }}x</span>
         </template>
         <template v-else>
           {{ rateMultiplier }}x 倍率
@@ -60,6 +65,7 @@ interface Props {
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null
+  pricingDiscountFactor?: number | null
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -69,7 +75,8 @@ const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   selected: false,
   showCheckmark: true,
-  userRateMultiplier: null
+  userRateMultiplier: null,
+  pricingDiscountFactor: null
 })
 
 // Whether user has a custom rate different from default
@@ -79,6 +86,23 @@ const hasCustomRate = computed(() => {
     props.userRateMultiplier !== undefined &&
     props.rateMultiplier !== undefined &&
     props.userRateMultiplier !== props.rateMultiplier
+  )
+})
+
+const discountedRateMultiplier = computed(() => {
+  const base = props.rateMultiplier ?? 1
+  const factor = props.pricingDiscountFactor ?? 1
+  return Number((base * factor).toFixed(3))
+})
+
+const hasDiscountRate = computed(() => {
+  return (
+    !hasCustomRate.value &&
+    props.pricingDiscountFactor !== null &&
+    props.pricingDiscountFactor !== undefined &&
+    props.pricingDiscountFactor > 0 &&
+    props.pricingDiscountFactor < 1 &&
+    props.rateMultiplier !== undefined
   )
 })
 

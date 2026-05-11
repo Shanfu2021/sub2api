@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 9 // v9: added API Key name for audit logs
+const apiKeyAuthSnapshotVersion = 11 // v11: auth snapshot now requires hydrated user promo discount state
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -221,13 +221,16 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		RateLimit1d: apiKey.RateLimit1d,
 		RateLimit7d: apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
-			ID:                         apiKey.User.ID,
-			Status:                     apiKey.User.Status,
-			Role:                       apiKey.User.Role,
-			Balance:                    apiKey.User.Balance,
-			Concurrency:                apiKey.User.Concurrency,
-			Email:                      apiKey.User.Email,
-			Username:                   apiKey.User.Username,
+			ID:                    apiKey.User.ID,
+			Status:                apiKey.User.Status,
+			Role:                  apiKey.User.Role,
+			Balance:               apiKey.User.Balance,
+			Concurrency:           apiKey.User.Concurrency,
+			PricingDiscountFactor: NormalizePricingDiscountFactorForRepo(apiKey.User.PricingDiscountFactor),
+			PricingDiscountLabel:  apiKey.User.PricingDiscountLabel,
+			PricingDiscountSource: apiKey.User.PricingDiscountSource,
+			Email:                 apiKey.User.Email,
+			Username:              apiKey.User.Username,
 			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
 			BalanceNotifyThresholdType: apiKey.User.BalanceNotifyThresholdType,
 			BalanceNotifyThreshold:     apiKey.User.BalanceNotifyThreshold,
@@ -298,13 +301,16 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		RateLimit1d: snapshot.RateLimit1d,
 		RateLimit7d: snapshot.RateLimit7d,
 		User: &User{
-			ID:                         snapshot.User.ID,
-			Status:                     snapshot.User.Status,
-			Role:                       snapshot.User.Role,
-			Balance:                    snapshot.User.Balance,
-			Concurrency:                snapshot.User.Concurrency,
-			Email:                      snapshot.User.Email,
-			Username:                   snapshot.User.Username,
+			ID:                    snapshot.User.ID,
+			Status:                snapshot.User.Status,
+			Role:                  snapshot.User.Role,
+			Balance:               snapshot.User.Balance,
+			Concurrency:           snapshot.User.Concurrency,
+			PricingDiscountFactor: NormalizePricingDiscountFactorForRepo(snapshot.User.PricingDiscountFactor),
+			PricingDiscountLabel:  snapshot.User.PricingDiscountLabel,
+			PricingDiscountSource: snapshot.User.PricingDiscountSource,
+			Email:                 snapshot.User.Email,
+			Username:              snapshot.User.Username,
 			BalanceNotifyEnabled:       snapshot.User.BalanceNotifyEnabled,
 			BalanceNotifyThresholdType: snapshot.User.BalanceNotifyThresholdType,
 			BalanceNotifyThreshold:     snapshot.User.BalanceNotifyThreshold,

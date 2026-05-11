@@ -24,6 +24,9 @@ func UserFromServiceShallow(u *service.User) *User {
 		LastActiveAt:               u.LastActiveAt,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
+		PricingDiscountFactor:      service.NormalizePricingDiscountFactorForRepo(u.PricingDiscountFactor),
+		PricingDiscountLabel:       u.PricingDiscountLabel,
+		PricingDiscountSource:      u.PricingDiscountSource,
 		BalanceNotifyEnabled:       u.BalanceNotifyEnabled,
 		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType,
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
@@ -764,16 +767,18 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 		return nil
 	}
 	return &PromoCode{
-		ID:          pc.ID,
-		Code:        pc.Code,
-		BonusAmount: pc.BonusAmount,
-		MaxUses:     pc.MaxUses,
-		UsedCount:   pc.UsedCount,
-		Status:      pc.Status,
-		ExpiresAt:   pc.ExpiresAt,
-		Notes:       pc.Notes,
-		CreatedAt:   pc.CreatedAt,
-		UpdatedAt:   pc.UpdatedAt,
+		ID:             pc.ID,
+		Code:           pc.Code,
+		BonusAmount:    pc.BonusAmount,
+		DiscountFactor: service.NormalizePricingDiscountFactorForRepo(pc.DiscountFactor),
+		DiscountLabel:  pc.DiscountLabel,
+		MaxUses:        pc.MaxUses,
+		UsedCount:      pc.UsedCount,
+		Status:         pc.Status,
+		ExpiresAt:      pc.ExpiresAt,
+		Notes:          pc.Notes,
+		CreatedAt:      pc.CreatedAt,
+		UpdatedAt:      pc.UpdatedAt,
 	}
 }
 

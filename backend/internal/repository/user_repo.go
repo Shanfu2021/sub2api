@@ -130,6 +130,9 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	if err := r.hydrateUserPricingDiscounts(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -156,6 +159,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	}
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
+	}
+	if err := r.hydrateUserPricingDiscounts(ctx, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -504,6 +510,10 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
 		}
+	}
+
+	if err := r.hydrateUserPricingDiscounts(ctx, userMapToSlice(userMap)...); err != nil {
+		return nil, nil, err
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
@@ -873,6 +883,9 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
+	if err := r.hydrateUserPricingDiscounts(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -961,6 +974,69 @@ func userSignupSourceOrDefault(signupSource string) string {
 	default:
 		return "email"
 	}
+}
+
+func userMapToSlice(userMap map[int64]*service.User) []*service.User {
+	out := make([]*service.User, 0, len(userMap))
+	for _, user := range userMap {
+		out = append(out, user)
+	}
+	return out
+}
+
+func (r *userRepository) hydrateUserPricingDiscounts(ctx context.Context, users ...*service.User) error {
+	if len(users) == 0 || r.sql == nil {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(users))
+	userMap := make(map[int64]*service.User, len(users))
+	for _, user := range users {
+		if user == nil || user.ID <= 0 {
+			continue
+		}
+		user.PricingDiscountFactor = service.DefaultPricingDiscountFactor
+		userMap[user.ID] = user
+		ids = append(ids, user.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT upd.user_id,
+       COALESCE(upd.discount_factor::double precision, 1.0),
+       COALESCE(upd.discount_label, ''),
+       COALESCE(pc.code, '')
+FROM user_promo_discounts upd
+LEFT JOIN promo_codes pc ON pc.id = upd.promo_code_id
+WHERE upd.user_id = ANY($1)
+`, pq.Array(ids))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			userID         int64
+			discountFactor float64
+			discountLabel  string
+			promoCode      string
+		)
+		if err := rows.Scan(&userID, &discountFactor, &discountLabel, &promoCode); err != nil {
+			return err
+		}
+		user := userMap[userID]
+		if user == nil {
+			continue
+		}
+		user.PricingDiscountFactor = service.NormalizePricingDiscountFactorForRepo(discountFactor)
+		user.PricingDiscountLabel = strings.TrimSpace(discountLabel)
+		user.PricingDiscountSource = strings.TrimSpace(promoCode)
+	}
+
+	return rows.Err()
 }
 
 // marshalExtraEmails serializes notify email entries to JSON for storage.

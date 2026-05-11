@@ -16,6 +16,10 @@
         <span class="line-through opacity-50 mr-0.5">{{ rateMultiplier }}x</span>
         <span class="font-bold">{{ userRateMultiplier }}x</span>
       </template>
+      <template v-else-if="hasDiscountRate">
+        <span class="line-through opacity-50 mr-0.5">{{ rateMultiplier }}x</span>
+        <span class="font-bold">{{ discountedRateMultiplier }}x</span>
+      </template>
       <template v-else>
         {{ labelText }}
       </template>
@@ -35,6 +39,7 @@ interface Props {
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null // 用户专属倍率
+  pricingDiscountFactor?: number | null
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
@@ -50,6 +55,7 @@ const props = withDefaults(defineProps<Props>(), {
   showRate: true,
   daysRemaining: null,
   userRateMultiplier: null,
+  pricingDiscountFactor: null,
   alwaysShowRate: false
 })
 
@@ -67,13 +73,30 @@ const hasCustomRate = computed(() => {
   )
 })
 
+const discountedRateMultiplier = computed(() => {
+  const base = props.rateMultiplier ?? 1
+  const factor = props.pricingDiscountFactor ?? 1
+  return Number((base * factor).toFixed(3))
+})
+
+const hasDiscountRate = computed(() => {
+  return (
+    !hasCustomRate.value &&
+    props.pricingDiscountFactor !== null &&
+    props.pricingDiscountFactor !== undefined &&
+    props.pricingDiscountFactor > 0 &&
+    props.pricingDiscountFactor < 1 &&
+    props.rateMultiplier !== undefined
+  )
+})
+
 // 是否显示右侧标签
 const showLabel = computed(() => {
   if (!props.showRate) return false
   // 订阅类型：显示天数或"订阅"
   if (isSubscription.value) return true
   // 标准类型：显示倍率（包括专属倍率）
-  return props.rateMultiplier !== undefined || hasCustomRate.value
+  return props.rateMultiplier !== undefined || hasCustomRate.value || hasDiscountRate.value
 })
 
 // Label text

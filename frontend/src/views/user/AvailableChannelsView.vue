@@ -38,6 +38,7 @@
           :rows="filteredChannels"
           :loading="loading"
           :user-group-rates="userGroupRates"
+          :pricing-discount-factor="authStore.user?.pricing_discount_factor ?? 1"
           pricing-key-prefix="availableChannels.pricing"
           :no-pricing-label="t('availableChannels.noPricing')"
           :no-models-label="t('availableChannels.noModels')"
@@ -58,10 +59,12 @@ import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const channels = ref<UserAvailableChannel[]>([])
 const userGroupRates = ref<Record<number, number>>({})

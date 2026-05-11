@@ -78,6 +78,119 @@
         </div>
       </div>
 
+      <div class="card">
+        <div class="p-6">
+          <form @submit.prevent="handleApplyPromo" class="space-y-5">
+            <div>
+              <label for="promo-code" class="input-label">
+                {{ t('redeem.promoCodeLabel') }}
+              </label>
+              <div class="relative mt-1">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                  <Icon name="ticket" size="md" class="text-gray-400 dark:text-dark-500" />
+                </div>
+                <input
+                  id="promo-code"
+                  v-model="promoCode"
+                  type="text"
+                  :placeholder="t('redeem.promoCodePlaceholder')"
+                  :disabled="promoSubmitting"
+                  class="input py-3 pl-12 text-lg"
+                />
+              </div>
+              <p class="input-hint">
+                {{ t('redeem.promoCodeHint') }}
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              :disabled="!promoCode || promoSubmitting"
+              class="btn btn-secondary w-full py-3"
+            >
+              <svg
+                v-if="promoSubmitting"
+                class="-ml-1 mr-2 h-5 w-5 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <Icon v-else name="gift" size="md" class="mr-2" />
+              {{ promoSubmitting ? t('redeem.applyingPromo') : t('redeem.applyPromoButton') }}
+            </button>
+          </form>
+
+          <div
+            v-if="promoResult"
+            class="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-300"
+          >
+            <p class="font-semibold">{{ promoResult.message }}</p>
+            <p v-if="promoResult.bonus_amount" class="mt-2">
+              {{ t('redeem.promoBonusApplied') }}: ${{ promoResult.bonus_amount.toFixed(2) }}
+            </p>
+            <p v-if="promoResult.discount_factor && promoResult.discount_factor < 1" class="mt-2">
+              {{ t('redeem.promoDiscountApplied', { factor: promoResult.discount_factor }) }}
+            </p>
+            <p v-if="promoResult.discount_label" class="mt-1">
+              {{ promoResult.discount_label }}
+            </p>
+            <p v-if="promoResult.new_balance !== undefined" class="mt-2">
+              {{ t('redeem.newBalance') }}:
+              <span class="font-semibold">${{ promoResult.new_balance.toFixed(2) }}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Buy Card Entry -->
+      <div
+        v-if="purchaseEnabled"
+        class="card border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/20"
+      >
+        <div class="p-6">
+          <div class="flex items-start gap-4">
+            <div
+              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30"
+            >
+              <Icon name="gift" size="md" class="text-amber-600 dark:text-amber-400" />
+            </div>
+            <div class="flex-1">
+              <h3 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {{ t('redeem.needToBuyTitle') }}
+              </h3>
+              <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">
+                {{ t('redeem.needToBuyDesc') }}
+              </p>
+              <div class="mt-4 flex flex-wrap gap-3">
+                <button type="button" class="btn btn-primary" @click="handleBuyClick">
+                  <Icon name="externalLink" size="sm" class="mr-2" />
+                  {{ t('redeem.buyNow') }}
+                </button>
+                <p
+                  v-if="purchaseHint"
+                  class="flex items-center text-xs text-amber-700/80 dark:text-amber-300/80"
+                >
+                  {{ purchaseHint }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Success Message -->
       <transition name="fade">
         <div
@@ -343,6 +456,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -353,6 +467,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
+const router = useRouter()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
@@ -361,6 +476,8 @@ const user = computed(() => authStore.user)
 
 const redeemCode = ref('')
 const submitting = ref(false)
+const promoCode = ref('')
+const promoSubmitting = ref(false)
 const redeemResult = ref<{
   message: string
   type: string
@@ -370,12 +487,26 @@ const redeemResult = ref<{
   group_name?: string
   validity_days?: number
 } | null>(null)
+const promoResult = ref<{
+  message: string
+  bonus_amount?: number
+  discount_factor?: number
+  discount_label?: string
+  new_balance?: number
+} | null>(null)
 const errorMessage = ref('')
 
 // History data
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
+const purchaseUrl = ref('')
+const purchaseEnabled = ref(false)
+
+const purchaseHint = computed(() => {
+  if (!purchaseEnabled.value) return ''
+  return purchaseUrl.value ? t('redeem.buyExternalHint') : t('redeem.buyInternalHint')
+})
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
@@ -476,11 +607,45 @@ const handleRedeem = async () => {
   }
 }
 
+const handleApplyPromo = async () => {
+  if (!promoCode.value.trim()) {
+    appStore.showError(t('redeem.pleaseEnterPromoCode'))
+    return
+  }
+
+  promoSubmitting.value = true
+  errorMessage.value = ''
+  promoResult.value = null
+
+  try {
+    const result = await redeemAPI.applyPromoCode(promoCode.value.trim())
+    promoResult.value = result
+    promoCode.value = ''
+    await authStore.refreshUser()
+    appStore.showSuccess(t('redeem.promoApplySuccess'))
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.detail || t('redeem.failedToApplyPromo')
+    appStore.showError(errorMessage.value)
+  } finally {
+    promoSubmitting.value = false
+  }
+}
+
+const handleBuyClick = () => {
+  if (purchaseUrl.value) {
+    window.open(purchaseUrl.value, '_blank', 'noopener,noreferrer')
+    return
+  }
+  router.push('/purchase')
+}
+
 onMounted(async () => {
   fetchHistory()
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
+    purchaseEnabled.value = Boolean(settings.purchase_subscription_enabled || settings.payment_enabled)
+    purchaseUrl.value = settings.purchase_subscription_url || ''
   } catch (error) {
     console.error('Failed to load contact info:', error)
   }

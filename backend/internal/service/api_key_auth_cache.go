@@ -35,6 +35,9 @@ type APIKeyAuthUserSnapshot struct {
 	Role        string  `json:"role"`
 	Balance     float64 `json:"balance"`
 	Concurrency int     `json:"concurrency"`
+	PricingDiscountFactor float64 `json:"pricing_discount_factor"`
+	PricingDiscountLabel  string  `json:"pricing_discount_label,omitempty"`
+	PricingDiscountSource string  `json:"pricing_discount_source,omitempty"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
 	Email                      string             `json:"email"`

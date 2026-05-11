@@ -474,6 +474,8 @@ export async function sendPendingOAuthVerifyCode(
 export interface ValidatePromoCodeResponse {
   valid: boolean
   bonus_amount?: number
+  discount_factor?: number
+  discount_label?: string
   error_code?: string
   message?: string
 }

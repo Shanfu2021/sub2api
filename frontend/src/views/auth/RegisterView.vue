@@ -176,7 +176,7 @@
             <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
               <Icon name="gift" size="sm" class="text-green-600 dark:text-green-400" />
               <span class="text-sm text-green-700 dark:text-green-400">
-                {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}
+                {{ promoValidation.message }}
               </span>
             </div>
           </transition>
@@ -378,6 +378,7 @@ const promoValidation = reactive({
   valid: false,
   invalid: false,
   bonusAmount: null as number | null,
+  discountFactor: null as number | null,
   message: ''
 })
 let promoValidateTimeout: ReturnType<typeof setTimeout> | null = null
@@ -578,6 +579,7 @@ function handlePromoCodeInput(): void {
   promoValidation.valid = false
   promoValidation.invalid = false
   promoValidation.bonusAmount = null
+  promoValidation.discountFactor = null
   promoValidation.message = ''
 
   if (!code) {
@@ -607,11 +609,13 @@ async function validatePromoCodeDebounced(code: string): Promise<void> {
       promoValidation.valid = true
       promoValidation.invalid = false
       promoValidation.bonusAmount = result.bonus_amount || 0
-      promoValidation.message = ''
+      promoValidation.discountFactor = result.discount_factor || null
+      promoValidation.message = buildPromoSuccessMessage(result)
     } else {
       promoValidation.valid = false
       promoValidation.invalid = true
       promoValidation.bonusAmount = null
+      promoValidation.discountFactor = null
       // 根据错误码显示对应的翻译
       promoValidation.message = getPromoErrorMessage(result.error_code)
     }
@@ -619,10 +623,28 @@ async function validatePromoCodeDebounced(code: string): Promise<void> {
     console.error('Failed to validate promo code:', error)
     promoValidation.valid = false
     promoValidation.invalid = true
+    promoValidation.discountFactor = null
     promoValidation.message = t('auth.promoCodeInvalid')
   } finally {
     promoValidating.value = false
   }
+}
+
+function buildPromoSuccessMessage(result: { bonus_amount?: number; discount_factor?: number; discount_label?: string }): string {
+  const bonus = result.bonus_amount || 0
+  const discount = result.discount_factor || 1
+  const label = result.discount_label?.trim() || ''
+
+  if (bonus > 0 && discount > 0 && discount < 1) {
+    return t('auth.promoCodeValidWithBonusAndDiscount', {
+      amount: bonus.toFixed(2),
+      factor: discount
+    })
+  }
+  if (discount > 0 && discount < 1) {
+    return label || t('auth.promoCodeValidWithDiscount', { factor: discount })
+  }
+  return t('auth.promoCodeValid', { amount: bonus.toFixed(2) })
 }
 
 function getPromoErrorMessage(errorCode?: string): string {

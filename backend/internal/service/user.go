@@ -37,6 +37,11 @@ type User struct {
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64
 
+	// PricingDiscountFactor 用户长期费率折扣因子，1.0 表示无折扣。
+	PricingDiscountFactor float64
+	PricingDiscountLabel  string
+	PricingDiscountSource string
+
 	// TOTP 双因素认证字段
 	TotpSecretEncrypted *string    // AES-256-GCM 加密的 TOTP 密钥
 	TotpEnabled         bool       // 是否启用 TOTP

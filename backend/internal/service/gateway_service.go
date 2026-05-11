@@ -7845,6 +7845,13 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
+func effectiveUserPricingDiscountFactor(user *User) float64 {
+	if user == nil {
+		return DefaultPricingDiscountFactor
+	}
+	return NormalizePricingDiscountFactorForRepo(user.PricingDiscountFactor)
+}
+
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
 	Result             *ForwardResult
@@ -8373,7 +8380,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
-	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
+	discountFactor := effectiveUserPricingDiscountFactor(user)
+	multiplier = applyPricingDiscountFactor(multiplier, discountFactor)
+	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier, discountFactor)
 
 	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)

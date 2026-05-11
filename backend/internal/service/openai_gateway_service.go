@@ -5245,7 +5245,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
-	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
+	discountFactor := effectiveUserPricingDiscountFactor(user)
+	multiplier = applyPricingDiscountFactor(multiplier, discountFactor)
+	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier, discountFactor)
 
 	var cost *CostBreakdown
 	var err error
