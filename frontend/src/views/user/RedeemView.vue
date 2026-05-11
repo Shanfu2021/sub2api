@@ -191,6 +191,75 @@
         </div>
       </div>
 
+      <div
+        v-if="purchaseEnabled && purchaseProducts.length > 0"
+        class="card border-sky-200 bg-sky-50 dark:border-sky-800/50 dark:bg-sky-900/20"
+      >
+        <div class="border-b border-sky-200/70 px-6 py-4 dark:border-sky-800/40">
+          <div class="flex items-center gap-3">
+            <div
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30"
+            >
+              <Icon name="shoppingBag" size="md" class="text-sky-600 dark:text-sky-400" />
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold text-sky-900 dark:text-sky-100">
+                {{ t('redeem.productSectionTitle') }}
+              </h2>
+              <p class="mt-1 text-sm text-sky-700 dark:text-sky-300">
+                {{ t('redeem.productSectionDesc') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-4 p-6 md:grid-cols-2">
+          <div
+            v-for="product in purchaseProducts"
+            :key="product.key"
+            class="rounded-2xl border border-sky-200/70 bg-white/90 p-5 shadow-sm dark:border-sky-800/40 dark:bg-dark-900/70"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-400">
+                  {{ product.category }}
+                </p>
+                <h3 class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ product.title }}
+                </h3>
+              </div>
+              <span
+                class="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+              >
+                {{ product.badge }}
+              </span>
+            </div>
+
+            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-dark-300">
+              {{ product.description }}
+            </p>
+
+            <div class="mt-4 rounded-xl bg-sky-50 px-4 py-3 dark:bg-sky-950/30">
+              <p class="text-sm font-medium text-sky-900 dark:text-sky-100">
+                {{ product.price }}
+              </p>
+              <p v-if="product.note" class="mt-1 text-xs text-sky-700 dark:text-sky-300">
+                {{ product.note }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-primary mt-4 w-full"
+              @click="openPurchaseProduct(product.url)"
+            >
+              <Icon name="externalLink" size="sm" class="mr-2" />
+              {{ t('redeem.buyThisProduct') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Success Message -->
       <transition name="fade">
         <div
@@ -503,9 +572,50 @@ const contactInfo = ref('')
 const purchaseUrl = ref('')
 const purchaseEnabled = ref(false)
 
+type PurchaseProduct = {
+  key: string
+  category: string
+  title: string
+  description: string
+  price: string
+  note?: string
+  badge: string
+  url: string
+}
+
 const purchaseHint = computed(() => {
   if (!purchaseEnabled.value) return ''
   return purchaseUrl.value ? t('redeem.buyExternalHint') : t('redeem.buyInternalHint')
+})
+
+const purchaseProducts = computed<PurchaseProduct[]>(() => {
+  if (!purchaseEnabled.value) return []
+
+  const storeUrl = purchaseUrl.value || 'https://pay.ldxp.cn/shop/CN8U85FN'
+  if (!storeUrl) return []
+
+  return [
+    {
+      key: 'balance-card',
+      category: t('redeem.productCategoryBalance'),
+      title: t('redeem.productBalanceTitle'),
+      description: t('redeem.productBalanceDesc'),
+      price: t('redeem.productBalancePrice'),
+      note: t('redeem.productBalanceNote'),
+      badge: t('redeem.productBalanceBadge'),
+      url: storeUrl
+    },
+    {
+      key: 'subscription-card',
+      category: t('redeem.productCategorySubscription'),
+      title: t('redeem.productSubscriptionTitle'),
+      description: t('redeem.productSubscriptionDesc'),
+      price: t('redeem.productSubscriptionPrice'),
+      note: t('redeem.productSubscriptionNote'),
+      badge: t('redeem.productSubscriptionBadge'),
+      url: storeUrl
+    }
+  ]
 })
 
 // Helper functions for history display
@@ -639,15 +749,27 @@ const handleBuyClick = () => {
   router.push('/purchase')
 }
 
+const openPurchaseProduct = (url: string) => {
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  handleBuyClick()
+}
+
 onMounted(async () => {
   fetchHistory()
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
-    purchaseEnabled.value = Boolean(settings.purchase_subscription_enabled || settings.payment_enabled)
-    purchaseUrl.value = settings.purchase_subscription_url || ''
+    purchaseUrl.value = settings.purchase_subscription_url || 'https://pay.ldxp.cn/shop/CN8U85FN'
+    purchaseEnabled.value = Boolean(
+      settings.purchase_subscription_enabled || settings.payment_enabled || purchaseUrl.value
+    )
   } catch (error) {
     console.error('Failed to load contact info:', error)
+    purchaseEnabled.value = true
+    purchaseUrl.value = 'https://pay.ldxp.cn/shop/CN8U85FN'
   }
 })
 </script>
