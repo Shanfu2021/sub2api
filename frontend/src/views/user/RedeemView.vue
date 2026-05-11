@@ -1,8 +1,8 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-2xl space-y-6">
+    <div class="mx-auto max-w-6xl space-y-6">
       <!-- Current Balance Card -->
-      <div class="card overflow-hidden">
+      <div class="card mx-auto max-w-2xl overflow-hidden">
         <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-8 text-center">
           <div
             class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm"
@@ -20,7 +20,7 @@
       </div>
 
       <!-- Redeem Form -->
-      <div class="card">
+      <div class="card mx-auto max-w-2xl">
         <div class="p-6">
           <form @submit.prevent="handleRedeem" class="space-y-5">
             <div>
@@ -78,7 +78,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card mx-auto max-w-2xl">
         <div class="p-6">
           <form @submit.prevent="handleApplyPromo" class="space-y-5">
             <div>
@@ -158,7 +158,7 @@
       <!-- Buy Card Entry -->
       <div
         v-if="purchaseEnabled"
-        class="card border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/20"
+        class="card mx-auto max-w-2xl border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/20"
       >
         <div class="p-6">
           <div class="flex items-start gap-4">
@@ -193,85 +193,102 @@
 
       <div
         v-if="purchaseEnabled && purchaseProducts.length > 0"
-        class="card border-sky-200 bg-sky-50 dark:border-sky-800/50 dark:bg-sky-900/20"
+        class="card overflow-hidden border-sky-200 bg-sky-50/80 dark:border-sky-800/50 dark:bg-sky-900/20"
       >
-        <div class="border-b border-sky-200/70 px-6 py-4 dark:border-sky-800/40">
-          <div class="flex items-center gap-3">
+        <div class="border-b border-sky-200/70 px-5 py-4 dark:border-sky-800/40 sm:px-6">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div class="flex items-start gap-3">
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30"
+              >
+                <Icon name="shoppingBag" size="md" class="text-sky-600 dark:text-sky-400" />
+              </div>
+              <div>
+                <h2 class="text-lg font-semibold text-sky-900 dark:text-sky-100">
+                  {{ t('redeem.productSectionTitle') }}
+                </h2>
+                <p class="mt-1 text-sm text-sky-700 dark:text-sky-300">
+                  {{ t('redeem.productSectionDesc') }}
+                </p>
+              </div>
+            </div>
+
             <div
-              class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30"
+              class="rounded-2xl border border-sky-200/80 bg-white/80 px-4 py-3 dark:border-sky-800/40 dark:bg-sky-950/30"
             >
-              <Icon name="shoppingBag" size="md" class="text-sky-600 dark:text-sky-400" />
-            </div>
-            <div>
-              <h2 class="text-lg font-semibold text-sky-900 dark:text-sky-100">
-                {{ t('redeem.productSectionTitle') }}
-              </h2>
-              <p class="mt-1 text-sm text-sky-700 dark:text-sky-300">
-                {{ t('redeem.productSectionDesc') }}
-              </p>
-            </div>
-          </div>
-          <div
-            class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-sky-100/80 px-4 py-3 dark:bg-sky-950/40"
-          >
-            <div>
               <p class="text-sm font-semibold text-sky-900 dark:text-sky-100">
                 {{ t('redeem.productStoreNoticeTitle') }}
               </p>
-              <p class="mt-1 text-xs text-sky-700 dark:text-sky-300">
-                {{ t('redeem.productStoreNoticeDesc') }}
-              </p>
+              <div class="mt-2 flex flex-wrap items-center gap-3">
+                <p class="text-xs text-sky-700 dark:text-sky-300">
+                  {{ t('redeem.productStoreNoticeDesc') }}
+                </p>
+                <a
+                  :href="purchaseStoreUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-secondary py-2"
+                >
+                  <Icon name="externalLink" size="sm" class="mr-2" />
+                  {{ t('redeem.viewAllProducts') }}
+                </a>
+              </div>
             </div>
-            <a
-              :href="purchaseStoreUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="btn btn-secondary"
-            >
-              <Icon name="externalLink" size="sm" class="mr-2" />
-              {{ t('redeem.viewAllProducts') }}
-            </a>
           </div>
         </div>
 
-        <div class="grid gap-4 p-6 md:grid-cols-2">
+        <div class="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
           <div
             v-for="product in purchaseProducts"
             :key="product.key"
-            class="rounded-2xl border border-sky-200/70 bg-white/90 p-5 shadow-sm dark:border-sky-800/40 dark:bg-dark-900/70"
+            class="flex h-full flex-col rounded-2xl border border-sky-200/70 bg-white/95 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-sky-800/40 dark:bg-dark-900/80"
           >
             <div class="flex items-start justify-between gap-4">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-400">
+              <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-400">
                   {{ product.category }}
                 </p>
-                <h3 class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                <h3 class="mt-1 text-base font-semibold leading-6 text-gray-900 dark:text-white">
                   {{ product.title }}
                 </h3>
               </div>
               <span
-                class="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+                class="inline-flex shrink-0 rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
               >
                 {{ product.badge }}
               </span>
             </div>
 
-            <p class="mt-3 text-sm leading-6 text-gray-600 dark:text-dark-300">
+            <p class="mt-2 text-sm font-semibold text-sky-900 dark:text-sky-100">
+              {{ product.price }}
+            </p>
+
+            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
               {{ product.description }}
             </p>
 
-            <div class="mt-4 rounded-xl bg-sky-50 px-4 py-3 dark:bg-sky-950/30">
-              <p class="text-sm font-medium text-sky-900 dark:text-sky-100">
-                {{ product.price }}
-              </p>
-              <p v-if="product.note" class="mt-1 text-xs text-sky-700 dark:text-sky-300">
-                {{ product.note }}
-              </p>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <div
+                v-for="spec in product.specs"
+                :key="`${product.key}-${spec.label}`"
+                class="rounded-xl bg-sky-50 px-3 py-2 dark:bg-sky-950/30"
+              >
+                <p class="text-[11px] font-medium uppercase tracking-wide text-sky-600 dark:text-sky-400">
+                  {{ spec.label }}
+                </p>
+                <p class="mt-1 text-sm font-semibold text-sky-900 dark:text-sky-100">
+                  {{ spec.value }}
+                </p>
+              </div>
             </div>
+
+            <p v-if="product.note" class="mt-3 text-xs leading-5 text-sky-700 dark:text-sky-300">
+              {{ product.note }}
+            </p>
 
             <button
               type="button"
-              class="btn btn-primary mt-4 w-full"
+              class="btn btn-primary mt-4 w-full py-2.5"
               @click="openPurchaseProduct(product.url)"
             >
               <Icon name="externalLink" size="sm" class="mr-2" />
@@ -285,7 +302,7 @@
       <transition name="fade">
         <div
           v-if="redeemResult"
-          class="card border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20"
+          class="card mx-auto max-w-2xl border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20"
         >
           <div class="p-6">
             <div class="flex items-start gap-4">
@@ -339,7 +356,7 @@
       <transition name="fade">
         <div
           v-if="errorMessage"
-          class="card border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20"
+          class="card mx-auto max-w-2xl border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20"
         >
           <div class="p-6">
             <div class="flex items-start gap-4">
@@ -367,7 +384,7 @@
 
       <!-- Information Card -->
       <div
-        class="card border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20"
+        class="card mx-auto max-w-2xl border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20"
       >
         <div class="p-6">
           <div class="flex items-start gap-4">
@@ -402,7 +419,7 @@
       </div>
 
       <!-- Recent Activity -->
-      <div class="card">
+      <div class="card mx-auto max-w-2xl">
         <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('redeem.recentActivity') }}
@@ -600,6 +617,10 @@ type PurchaseProduct = {
   title: string
   description: string
   price: string
+  specs: Array<{
+    label: string
+    value: string
+  }>
   note?: string
   badge: string
   url: string
@@ -618,9 +639,13 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       key: 'codex-balance-20',
       category: 'Codex API 余额',
       title: 'Codex API 20 刀余额卡',
-      description: '适合首次体验和轻量调用，兑换后到账 20 USD Codex API 余额。',
-      price: '售价 ¥4',
-      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      description: '适合首次体验和轻量调用，买完后直接来本页兑换即可。',
+      price: '¥4',
+      specs: [
+        { label: '到账', value: '20 USD' },
+        { label: '类型', value: '通用余额卡' }
+      ],
+      note: '复制兑换码回到本页输入，到账后可直接使用。',
       badge: '余额',
       url: 'https://pay.ldxp.cn/item/a7zg2a'
     },
@@ -628,9 +653,13 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       key: 'codex-balance-100',
       category: 'Codex API 余额',
       title: 'Codex API 100 刀余额卡',
-      description: '适合日常开发与稳定调用，兑换后到账 100 USD Codex API 余额。',
-      price: '售价 ¥20',
-      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      description: '适合日常开发与稳定调用，买完后直接来本页兑换即可。',
+      price: '¥20',
+      specs: [
+        { label: '到账', value: '100 USD' },
+        { label: '类型', value: '通用余额卡' }
+      ],
+      note: '复制兑换码回到本页输入，到账后可直接使用。',
       badge: '余额',
       url: 'https://pay.ldxp.cn/item/lr5xqf'
     },
@@ -638,9 +667,13 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       key: 'codex-balance-1000',
       category: 'Codex API 余额',
       title: 'Codex API 1000 刀余额卡',
-      description: '适合高频开发、长期使用或项目备量，兑换后到账 1000 USD Codex API 余额。',
-      price: '售价 ¥200',
-      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      description: '适合高频开发、长期使用或项目备量，买完后直接来本页兑换即可。',
+      price: '¥200',
+      specs: [
+        { label: '到账', value: '1000 USD' },
+        { label: '类型', value: '通用余额卡' }
+      ],
+      note: '复制兑换码回到本页输入，到账后可直接使用。',
       badge: '余额',
       url: 'https://pay.ldxp.cn/item/myb6wq'
     },
@@ -648,9 +681,13 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       key: 'codex-balance-5000',
       category: 'Codex API 余额',
       title: 'Codex API 5000 刀余额卡',
-      description: '适合团队囤货和长期高频调用，兑换后到账 5000 USD Codex API 余额。',
-      price: '售价 ¥1000',
-      note: '按 0.2 倍率计价，购买后复制兑换码回本页兑换。',
+      description: '适合团队囤货和长期高频调用，买完后直接来本页兑换即可。',
+      price: '¥1000',
+      specs: [
+        { label: '到账', value: '5000 USD' },
+        { label: '类型', value: '通用余额卡' }
+      ],
+      note: '复制兑换码回到本页输入，到账后可直接使用。',
       badge: '余额',
       url: 'https://pay.ldxp.cn/item/785rq4'
     },
@@ -659,8 +696,12 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       category: '订阅套餐',
       title: '日常使用版订阅',
       description: '适合日常问答、轻量编码和课程作业等低频使用场景。',
-      price: '售价 ¥39.9 / 月',
-      note: '购买后使用兑换码开通日常使用版订阅。',
+      price: '¥39.9 / 月',
+      specs: [
+        { label: '每日额度', value: '10 刀' },
+        { label: '类型', value: '月付订阅' }
+      ],
+      note: '购买后输入兑换码，即可开通日常使用版订阅。',
       badge: '订阅',
       url: 'https://pay.ldxp.cn/item/fcymlb'
     },
@@ -669,8 +710,12 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       category: '订阅套餐',
       title: '轻度开发版订阅',
       description: '适合稳定开发与中等频率调用，兼顾成本和日常生产力。',
-      price: '售价 ¥99.9 / 月',
-      note: '购买后使用兑换码开通轻度开发版订阅。',
+      price: '¥99.9 / 月',
+      specs: [
+        { label: '每日额度', value: '30 刀' },
+        { label: '类型', value: '月付订阅' }
+      ],
+      note: '购买后输入兑换码，即可开通轻度开发版订阅。',
       badge: '订阅',
       url: 'https://pay.ldxp.cn/item/sadvgi'
     },
@@ -679,8 +724,12 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       category: '订阅套餐',
       title: '强度开发版订阅',
       description: '适合高频编码、长时间开发和多模型协作的重度用户。',
-      price: '售价 ¥199 / 月',
-      note: '购买后使用兑换码开通强度开发版订阅。',
+      price: '¥199 / 月',
+      specs: [
+        { label: '每日额度', value: '60 刀' },
+        { label: '类型', value: '月付订阅' }
+      ],
+      note: '购买后输入兑换码，即可开通强度开发版订阅。',
       badge: '订阅',
       url: 'https://pay.ldxp.cn/item/hzios1'
     },
@@ -689,8 +738,12 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       category: '订阅套餐',
       title: '团队协作版订阅',
       description: '适合多人共享、项目制使用和高强度协作场景。',
-      price: '售价 ¥399 / 月',
-      note: '购买后使用兑换码开通团队协作版订阅。',
+      price: '¥399 / 月',
+      specs: [
+        { label: '每日额度', value: '100 刀' },
+        { label: '类型', value: '月付订阅' }
+      ],
+      note: '购买后输入兑换码，即可开通团队协作版订阅。',
       badge: '订阅',
       url: 'https://pay.ldxp.cn/item/ug4w7w'
     }
