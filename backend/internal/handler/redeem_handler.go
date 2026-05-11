@@ -491,16 +491,6 @@ func writeMerchantCallbackAnyResponse(c *gin.Context, data any) {
 	}
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func firstNonEmptyMap(data map[string]string, keys ...string) string {
 	for _, key := range keys {
 		if value := strings.TrimSpace(data[strings.ToLower(strings.TrimSpace(key))]); value != "" {
