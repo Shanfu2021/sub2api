@@ -1,192 +1,155 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-6xl space-y-6">
-      <!-- Current Balance Card -->
-      <div class="card mx-auto max-w-2xl overflow-hidden">
-        <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-8 text-center">
+    <div class="mx-auto max-w-7xl space-y-5">
+      <div class="grid gap-3 lg:grid-cols-[1.25fr_1fr]">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm"
+            class="rounded-3xl bg-gradient-to-br from-primary-500 via-primary-500 to-primary-600 p-5 text-white shadow-lg shadow-primary-500/20"
           >
-            <Icon name="creditCard" size="xl" class="text-white" />
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
+              <span class="rounded-xl bg-white/15 p-2">
+                <Icon name="creditCard" size="md" class="text-white" />
+              </span>
+            </div>
+            <p class="mt-4 text-3xl font-bold">$ {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+            <p class="mt-2 text-xs text-primary-100">余额实时更新，可直接用于接口调用</p>
           </div>
-          <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
-          <p class="mt-2 text-4xl font-bold text-white">
-            ${{ user?.balance?.toFixed(2) || '0.00' }}
-          </p>
-          <p class="mt-2 text-sm text-primary-100">
-            {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
-          </p>
-        </div>
-      </div>
-
-      <!-- Redeem Form -->
-      <div class="card mx-auto max-w-2xl">
-        <div class="p-6">
-          <form @submit.prevent="handleRedeem" class="space-y-5">
-            <div>
-              <label for="code" class="input-label">
-                {{ t('redeem.redeemCodeLabel') }}
-              </label>
-              <div class="relative mt-1">
-                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                  <Icon name="gift" size="md" class="text-gray-400 dark:text-dark-500" />
-                </div>
-                <input
-                  id="code"
-                  v-model="redeemCode"
-                  type="text"
-                  required
-                  :placeholder="t('redeem.redeemCodePlaceholder')"
-                  :disabled="submitting"
-                  class="input py-3 pl-12 text-lg"
-                />
-              </div>
-              <p class="input-hint">
-                {{ t('redeem.redeemCodeHint') }}
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              :disabled="!redeemCode || submitting"
-              class="btn btn-primary w-full py-3"
-            >
-              <svg
-                v-if="submitting"
-                class="-ml-1 mr-2 h-5 w-5 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <Icon v-else name="checkCircle" size="md" class="mr-2" />
-              {{ submitting ? t('redeem.redeeming') : t('redeem.redeemButton') }}
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div class="card mx-auto max-w-2xl">
-        <div class="p-6">
-          <form @submit.prevent="handleApplyPromo" class="space-y-5">
-            <div>
-              <label for="promo-code" class="input-label">
-                {{ t('redeem.promoCodeLabel') }}
-              </label>
-              <div class="relative mt-1">
-                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                  <Icon name="ticket" size="md" class="text-gray-400 dark:text-dark-500" />
-                </div>
-                <input
-                  id="promo-code"
-                  v-model="promoCode"
-                  type="text"
-                  :placeholder="t('redeem.promoCodePlaceholder')"
-                  :disabled="promoSubmitting"
-                  class="input py-3 pl-12 text-lg"
-                />
-              </div>
-              <p class="input-hint">
-                {{ t('redeem.promoCodeHint') }}
-              </p>
-            </div>
-
-            <button
-              type="submit"
-              :disabled="!promoCode || promoSubmitting"
-              class="btn btn-secondary w-full py-3"
-            >
-              <svg
-                v-if="promoSubmitting"
-                class="-ml-1 mr-2 h-5 w-5 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <Icon v-else name="gift" size="md" class="mr-2" />
-              {{ promoSubmitting ? t('redeem.applyingPromo') : t('redeem.applyPromoButton') }}
-            </button>
-          </form>
 
           <div
-            v-if="promoResult"
-            class="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-300"
+            class="rounded-3xl border border-sky-200 bg-white p-5 shadow-sm dark:border-sky-900/40 dark:bg-dark-900"
           >
-            <p class="font-semibold">{{ promoResult.message }}</p>
-            <p v-if="promoResult.bonus_amount" class="mt-2">
-              {{ t('redeem.promoBonusApplied') }}: ${{ promoResult.bonus_amount.toFixed(2) }}
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-gray-500 dark:text-dark-400">{{ t('redeem.concurrency') }}</p>
+              <span class="rounded-xl bg-sky-100 p-2 dark:bg-sky-900/30">
+                <Icon name="bolt" size="md" class="text-sky-600 dark:text-sky-300" />
+              </span>
+            </div>
+            <p class="mt-4 text-3xl font-bold text-gray-900 dark:text-white">
+              {{ user?.concurrency || 0 }}
             </p>
-            <p v-if="promoResult.discount_factor && promoResult.discount_factor < 1" class="mt-2">
-              {{ t('redeem.promoDiscountApplied', { factor: promoResult.discount_factor }) }}
+            <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">当前账号可同时处理的请求数量</p>
+          </div>
+
+          <div
+            class="rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm dark:border-emerald-900/40 dark:bg-dark-900"
+          >
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-gray-500 dark:text-dark-400">{{ t('redeem.needToBuyTitle') }}</p>
+              <span class="rounded-xl bg-emerald-100 p-2 dark:bg-emerald-900/30">
+                <Icon name="shoppingBag" size="md" class="text-emerald-600 dark:text-emerald-300" />
+              </span>
+            </div>
+            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-white">余额卡 / 订阅卡</p>
+            <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">支持链动小铺购买后回到本页兑换</p>
+          </div>
+
+          <div
+            class="rounded-3xl border border-amber-200 bg-white p-5 shadow-sm dark:border-amber-900/40 dark:bg-dark-900"
+          >
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-gray-500 dark:text-dark-400">联系与帮助</p>
+              <span class="rounded-xl bg-amber-100 p-2 dark:bg-amber-900/30">
+                <Icon name="users" size="md" class="text-amber-600 dark:text-amber-300" />
+              </span>
+            </div>
+            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-white">
+              {{ contactInfo || 'QQ群：825526434' }}
             </p>
-            <p v-if="promoResult.discount_label" class="mt-1">
-              {{ promoResult.discount_label }}
-            </p>
-            <p v-if="promoResult.new_balance !== undefined" class="mt-2">
-              {{ t('redeem.newBalance') }}:
-              <span class="font-semibold">${{ promoResult.new_balance.toFixed(2) }}</span>
-            </p>
+            <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">兑换异常或购买问题可先联系群内处理</p>
           </div>
         </div>
-      </div>
 
-      <!-- Buy Card Entry -->
-      <div
-        v-if="purchaseEnabled"
-        class="card mx-auto max-w-2xl border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/20"
-      >
-        <div class="p-6">
-          <div class="flex items-start gap-4">
-            <div
-              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30"
-            >
-              <Icon name="gift" size="md" class="text-amber-600 dark:text-amber-400" />
+        <div class="card overflow-hidden border-primary-200/70 shadow-sm dark:border-primary-800/40">
+          <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+            <div class="flex items-center gap-3">
+              <span class="rounded-2xl bg-primary-100 p-2 dark:bg-primary-900/30">
+                <Icon name="gift" size="md" class="text-primary-600 dark:text-primary-300" />
+              </span>
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">兑换 / 优惠码</h2>
+                <p class="text-sm text-gray-500 dark:text-dark-400">
+                  一个输入框即可，先按兑换码识别，识别不到再自动尝试优惠码
+                </p>
+              </div>
             </div>
-            <div class="flex-1">
-              <h3 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
-                {{ t('redeem.needToBuyTitle') }}
-              </h3>
-              <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">
-                {{ t('redeem.needToBuyDesc') }}
-              </p>
-              <div class="mt-4 flex flex-wrap gap-3">
-                <button type="button" class="btn btn-primary" @click="handleBuyClick">
+          </div>
+
+          <div class="p-5">
+            <form @submit.prevent="handleSmartSubmit" class="space-y-4">
+              <div>
+                <label for="smart-code" class="input-label">
+                  兑换码或优惠码
+                </label>
+                <div class="mt-1 flex flex-col gap-3 sm:flex-row">
+                  <div class="relative flex-1">
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                      <Icon name="gift" size="md" class="text-gray-400 dark:text-dark-500" />
+                    </div>
+                    <input
+                      id="smart-code"
+                      v-model="smartCode"
+                      type="text"
+                      required
+                      :placeholder="smartCodePlaceholder"
+                      :disabled="isSubmittingAny"
+                      class="input h-12 pl-12 text-base"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    :disabled="!smartCode.trim() || isSubmittingAny"
+                    class="btn btn-primary h-12 shrink-0 px-6"
+                  >
+                    <svg
+                      v-if="isSubmittingAny"
+                      class="-ml-1 mr-2 h-5 w-5 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    <Icon v-else name="checkCircle" size="md" class="mr-2" />
+                    {{ submitButtonLabel }}
+                  </button>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
+                  <span>{{ t('redeem.redeemCodeHint') }}</span>
+                  <span>{{ t('redeem.promoCodeHint') }}</span>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-3">
+                <button
+                  v-if="purchaseEnabled"
+                  type="button"
+                  class="btn btn-secondary py-2.5"
+                  @click="handleBuyClick"
+                >
                   <Icon name="externalLink" size="sm" class="mr-2" />
                   {{ t('redeem.buyNow') }}
                 </button>
                 <p
-                  v-if="purchaseHint"
-                  class="flex items-center text-xs text-amber-700/80 dark:text-amber-300/80"
+                  v-if="purchaseEnabled && purchaseHint"
+                  class="text-xs text-gray-500 dark:text-dark-400"
                 >
                   {{ purchaseHint }}
                 </p>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       </div>
@@ -237,7 +200,7 @@
           </div>
         </div>
 
-        <div class="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
+        <div class="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
           <div
             v-for="product in purchaseProducts"
             :key="product.key"
@@ -248,7 +211,7 @@
                 <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-400">
                   {{ product.category }}
                 </p>
-                <h3 class="mt-1 text-base font-semibold leading-6 text-gray-900 dark:text-white">
+                <h3 class="mt-1 truncate text-[15px] font-semibold leading-6 text-gray-900 dark:text-white">
                   {{ product.title }}
                 </h3>
               </div>
@@ -263,7 +226,7 @@
               {{ product.price }}
             </p>
 
-            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
+            <p class="mt-2 min-h-[3.5rem] text-sm leading-6 text-gray-600 dark:text-dark-300">
               {{ product.description }}
             </p>
 
@@ -301,8 +264,8 @@
       <!-- Success Message -->
       <transition name="fade">
         <div
-          v-if="redeemResult"
-          class="card mx-auto max-w-2xl border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20"
+          v-if="redeemResult || promoResult"
+          class="card border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20"
         >
           <div class="p-6">
             <div class="flex items-start gap-4">
@@ -313,11 +276,11 @@
               </div>
               <div class="flex-1">
                 <h3 class="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-                  {{ t('redeem.redeemSuccess') }}
+                  {{ redeemResult ? t('redeem.redeemSuccess') : t('redeem.promoApplySuccess') }}
                 </h3>
                 <div class="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
-                  <p>{{ redeemResult.message }}</p>
-                  <div class="mt-3 space-y-1">
+                  <p>{{ redeemResult?.message || promoResult?.message }}</p>
+                  <div v-if="redeemResult" class="mt-3 space-y-1">
                     <p v-if="redeemResult.type === 'balance'" class="font-medium">
                       {{ t('redeem.added') }}: ${{ redeemResult.value.toFixed(2) }}
                     </p>
@@ -345,6 +308,24 @@
                       >
                     </p>
                   </div>
+                  <div v-else-if="promoResult" class="mt-3 space-y-1">
+                    <p v-if="promoResult.bonus_amount" class="font-medium">
+                      {{ t('redeem.promoBonusApplied') }}: ${{ promoResult.bonus_amount.toFixed(2) }}
+                    </p>
+                    <p
+                      v-if="promoResult.discount_factor && promoResult.discount_factor < 1"
+                      class="font-medium"
+                    >
+                      {{ t('redeem.promoDiscountApplied', { factor: promoResult.discount_factor }) }}
+                    </p>
+                    <p v-if="promoResult.discount_label">
+                      {{ promoResult.discount_label }}
+                    </p>
+                    <p v-if="promoResult.new_balance !== undefined">
+                      {{ t('redeem.newBalance') }}:
+                      <span class="font-semibold">${{ promoResult.new_balance.toFixed(2) }}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -356,7 +337,7 @@
       <transition name="fade">
         <div
           v-if="errorMessage"
-          class="card mx-auto max-w-2xl border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20"
+          class="card border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20"
         >
           <div class="p-6">
             <div class="flex items-start gap-4">
@@ -383,177 +364,180 @@
       </transition>
 
       <!-- Information Card -->
-      <div
-        class="card mx-auto max-w-2xl border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20"
-      >
-        <div class="p-6">
-          <div class="flex items-start gap-4">
-            <div
-              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30"
-            >
-              <Icon name="infoCircle" size="md" class="text-primary-600 dark:text-primary-400" />
-            </div>
-            <div class="flex-1">
-              <h3 class="text-sm font-semibold text-primary-800 dark:text-primary-300">
-                {{ t('redeem.aboutCodes') }}
-              </h3>
-              <ul
-                class="mt-2 list-inside list-disc space-y-1 text-sm text-primary-700 dark:text-primary-400"
+      <div class="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div
+          class="card border-primary-200 bg-primary-50 dark:border-primary-800/50 dark:bg-primary-900/20"
+        >
+          <div class="p-5">
+            <div class="flex items-start gap-4">
+              <div
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30"
               >
-                <li>{{ t('redeem.codeRule1') }}</li>
-                <li>{{ t('redeem.codeRule2') }}</li>
-                <li>
-                  {{ t('redeem.codeRule3') }}
-                  <span
-                    v-if="contactInfo"
-                    class="ml-1.5 inline-flex items-center rounded-md bg-primary-200/50 px-2 py-0.5 text-xs font-medium text-primary-800 dark:bg-primary-800/40 dark:text-primary-200"
-                  >
-                    {{ contactInfo }}
-                  </span>
-                </li>
-                <li>{{ t('redeem.codeRule4') }}</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recent Activity -->
-      <div class="card mx-auto max-w-2xl">
-        <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('redeem.recentActivity') }}
-          </h2>
-        </div>
-        <div class="p-6">
-          <!-- Loading State -->
-          <div v-if="loadingHistory" class="flex items-center justify-center py-8">
-            <svg class="h-6 w-6 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-          </div>
-
-          <!-- History List -->
-          <div v-else-if="history.length > 0" class="space-y-3">
-            <div
-              v-for="item in history"
-              :key="item.id"
-              class="flex items-center justify-between rounded-xl bg-gray-50 p-4 dark:bg-dark-800"
-            >
-              <div class="flex items-center gap-4">
-                <div
-                  :class="[
-                    'flex h-10 w-10 items-center justify-center rounded-xl',
-                    isBalanceType(item.type)
-                      ? item.value >= 0
-                        ? 'bg-emerald-100 dark:bg-emerald-900/30'
-                        : 'bg-red-100 dark:bg-red-900/30'
-                      : isSubscriptionType(item.type)
-                        ? 'bg-purple-100 dark:bg-purple-900/30'
-                        : item.value >= 0
-                          ? 'bg-blue-100 dark:bg-blue-900/30'
-                          : 'bg-orange-100 dark:bg-orange-900/30'
-                  ]"
-                >
-                  <!-- 余额类型图标 -->
-                  <Icon
-                    v-if="isBalanceType(item.type)"
-                    name="dollar"
-                    size="md"
-                    :class="
-                      item.value >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400'
-                    "
-                  />
-                  <!-- 订阅类型图标 -->
-                  <Icon
-                    v-else-if="isSubscriptionType(item.type)"
-                    name="badge"
-                    size="md"
-                    class="text-purple-600 dark:text-purple-400"
-                  />
-                  <!-- 并发类型图标 -->
-                  <Icon
-                    v-else
-                    name="bolt"
-                    size="md"
-                    :class="
-                      item.value >= 0
-                        ? 'text-blue-600 dark:text-blue-400'
-                        : 'text-orange-600 dark:text-orange-400'
-                    "
-                  />
-                </div>
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
-                    {{ getHistoryItemTitle(item) }}
-                  </p>
-                  <p class="text-xs text-gray-500 dark:text-dark-400">
-                    {{ formatDateTime(item.used_at) }}
-                  </p>
+                <Icon name="infoCircle" size="md" class="text-primary-600 dark:text-primary-400" />
+              </div>
+              <div class="flex-1">
+                <h3 class="text-sm font-semibold text-primary-800 dark:text-primary-300">
+                  {{ t('redeem.aboutCodes') }}
+                </h3>
+                <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div class="rounded-2xl bg-white/70 p-3 text-sm text-primary-800 dark:bg-dark-900/40 dark:text-primary-100">
+                    {{ t('redeem.codeRule1') }}
+                  </div>
+                  <div class="rounded-2xl bg-white/70 p-3 text-sm text-primary-800 dark:bg-dark-900/40 dark:text-primary-100">
+                    {{ t('redeem.codeRule2') }}
+                  </div>
+                  <div class="rounded-2xl bg-white/70 p-3 text-sm text-primary-800 dark:bg-dark-900/40 dark:text-primary-100">
+                    {{ t('redeem.codeRule4') }}
+                  </div>
+                  <div class="rounded-2xl bg-white/70 p-3 text-sm text-primary-800 dark:bg-dark-900/40 dark:text-primary-100">
+                    {{ t('redeem.codeRule3') }}
+                    <span
+                      v-if="contactInfo"
+                      class="mt-2 inline-flex items-center rounded-md bg-primary-200/60 px-2 py-0.5 text-xs font-medium text-primary-900 dark:bg-primary-800/40 dark:text-primary-100"
+                    >
+                      {{ contactInfo }}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div class="text-right">
-                <p
-                  :class="[
-                    'text-sm font-semibold',
-                    isBalanceType(item.type)
-                      ? item.value >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-red-600 dark:text-red-400'
-                      : isSubscriptionType(item.type)
-                        ? 'text-purple-600 dark:text-purple-400'
-                        : item.value >= 0
-                          ? 'text-blue-600 dark:text-blue-400'
-                          : 'text-orange-600 dark:text-orange-400'
-                  ]"
-                >
-                  {{ formatHistoryValue(item) }}
-                </p>
-                <p
-                  v-if="!isAdminAdjustment(item.type)"
-                  class="font-mono text-xs text-gray-400 dark:text-dark-500"
-                >
-                  {{ item.code.slice(0, 8) }}...
-                </p>
-                <p v-else class="text-xs text-gray-400 dark:text-dark-500">
-                  {{ t('redeem.adminAdjustment') }}
-                </p>
-                <!-- Display notes for admin adjustments -->
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('redeem.recentActivity') }}
+            </h2>
+          </div>
+          <div class="p-5">
+            <!-- Loading State -->
+            <div v-if="loadingHistory" class="flex items-center justify-center py-8">
+              <svg class="h-6 w-6 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </div>
+
+            <!-- History List -->
+            <div v-else-if="history.length > 0" class="grid gap-3 sm:grid-cols-2">
+              <div
+                v-for="item in history"
+                :key="item.id"
+                class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-800"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex items-center gap-4">
+                    <div
+                      :class="[
+                        'flex h-10 w-10 items-center justify-center rounded-xl',
+                        isBalanceType(item.type)
+                          ? item.value >= 0
+                            ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                            : 'bg-red-100 dark:bg-red-900/30'
+                          : isSubscriptionType(item.type)
+                            ? 'bg-purple-100 dark:bg-purple-900/30'
+                            : item.value >= 0
+                              ? 'bg-blue-100 dark:bg-blue-900/30'
+                              : 'bg-orange-100 dark:bg-orange-900/30'
+                      ]"
+                    >
+                      <Icon
+                        v-if="isBalanceType(item.type)"
+                        name="dollar"
+                        size="md"
+                        :class="
+                          item.value >= 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
+                        "
+                      />
+                      <Icon
+                        v-else-if="isSubscriptionType(item.type)"
+                        name="badge"
+                        size="md"
+                        class="text-purple-600 dark:text-purple-400"
+                      />
+                      <Icon
+                        v-else
+                        name="bolt"
+                        size="md"
+                        :class="
+                          item.value >= 0
+                            ? 'text-blue-600 dark:text-blue-400'
+                            : 'text-orange-600 dark:text-orange-400'
+                        "
+                      />
+                    </div>
+                    <div>
+                      <p class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ getHistoryItemTitle(item) }}
+                      </p>
+                      <p class="text-xs text-gray-500 dark:text-dark-400">
+                        {{ formatDateTime(item.used_at) }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <p
+                      :class="[
+                        'text-sm font-semibold',
+                        isBalanceType(item.type)
+                          ? item.value >= 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
+                          : isSubscriptionType(item.type)
+                            ? 'text-purple-600 dark:text-purple-400'
+                            : item.value >= 0
+                              ? 'text-blue-600 dark:text-blue-400'
+                              : 'text-orange-600 dark:text-orange-400'
+                      ]"
+                    >
+                      {{ formatHistoryValue(item) }}
+                    </p>
+                    <p
+                      v-if="!isAdminAdjustment(item.type)"
+                      class="font-mono text-xs text-gray-400 dark:text-dark-500"
+                    >
+                      {{ item.code.slice(0, 8) }}...
+                    </p>
+                    <p v-else class="text-xs text-gray-400 dark:text-dark-500">
+                      {{ t('redeem.adminAdjustment') }}
+                    </p>
+                  </div>
+                </div>
                 <p
                   v-if="item.notes"
-                  class="mt-1 text-xs text-gray-500 dark:text-dark-400 italic max-w-[200px] truncate"
+                  class="mt-3 text-xs text-gray-500 dark:text-dark-400"
                   :title="item.notes"
                 >
                   {{ item.notes }}
                 </p>
               </div>
             </div>
-          </div>
 
-          <!-- Empty State -->
-          <div v-else class="empty-state py-8">
-            <div
-              class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-800"
-            >
-              <Icon name="clock" size="xl" class="text-gray-400 dark:text-dark-500" />
+            <!-- Empty State -->
+            <div v-else class="empty-state py-8">
+              <div
+                class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-800"
+              >
+                <Icon name="clock" size="xl" class="text-gray-400 dark:text-dark-500" />
+              </div>
+              <p class="text-sm text-gray-500 dark:text-dark-400">
+                {{ t('redeem.historyWillAppear') }}
+              </p>
             </div>
-            <p class="text-sm text-gray-500 dark:text-dark-400">
-              {{ t('redeem.historyWillAppear') }}
-            </p>
           </div>
         </div>
       </div>
@@ -581,9 +565,8 @@ const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
 
-const redeemCode = ref('')
+const smartCode = ref('')
 const submitting = ref(false)
-const promoCode = ref('')
 const promoSubmitting = ref(false)
 const redeemResult = ref<{
   message: string
@@ -625,6 +608,14 @@ type PurchaseProduct = {
   badge: string
   url: string
 }
+
+const isSubmittingAny = computed(() => submitting.value || promoSubmitting.value)
+const smartCodePlaceholder = computed(() => '输入兑换码或优惠码')
+const submitButtonLabel = computed(() => {
+  if (submitting.value) return t('redeem.redeeming')
+  if (promoSubmitting.value) return t('redeem.applyingPromo')
+  return '立即识别并使用'
+})
 
 const purchaseHint = computed(() => {
   if (!purchaseEnabled.value) return ''
@@ -804,8 +795,51 @@ const fetchHistory = async () => {
   }
 }
 
-const handleRedeem = async () => {
-  if (!redeemCode.value.trim()) {
+const refreshAfterRedeem = async (result: {
+  type: string
+}) => {
+  await authStore.refreshUser()
+
+  if (result.type === 'subscription') {
+    try {
+      await subscriptionStore.fetchActiveSubscriptions(true)
+    } catch (error) {
+      console.error('Failed to refresh subscriptions after redeem:', error)
+      appStore.showWarning(t('redeem.subscriptionRefreshFailed'))
+    }
+  }
+
+  await fetchHistory()
+}
+
+const handleRedeemOnly = async (code: string) => {
+  const result = await redeemAPI.redeem(code)
+  redeemResult.value = result
+  promoResult.value = null
+  await refreshAfterRedeem(result)
+  appStore.showSuccess(t('redeem.codeRedeemSuccess'))
+}
+
+const handlePromoOnly = async (code: string) => {
+  const result = await redeemAPI.applyPromoCode(code)
+  promoResult.value = result
+  redeemResult.value = null
+  await authStore.refreshUser()
+  appStore.showSuccess(t('redeem.promoApplySuccess'))
+}
+
+const shouldFallbackToPromo = (error: any) => {
+  const code = error?.code || error?.response?.data?.code
+  return code === 'REDEEM_CODE_NOT_FOUND'
+}
+
+const readErrorMessage = (error: any, fallback: string) => {
+  return error?.message || error?.response?.data?.detail || fallback
+}
+
+const handleSmartSubmit = async () => {
+  const code = smartCode.value.trim()
+  if (!code) {
     appStore.showError(t('redeem.pleaseEnterCode'))
     return
   }
@@ -813,63 +847,32 @@ const handleRedeem = async () => {
   submitting.value = true
   errorMessage.value = ''
   redeemResult.value = null
-
-  try {
-    const result = await redeemAPI.redeem(redeemCode.value.trim())
-
-    redeemResult.value = result
-
-    // Refresh user data to get updated balance/concurrency
-    await authStore.refreshUser()
-
-    // If subscription type, immediately refresh subscription status
-    if (result.type === 'subscription') {
-      try {
-        await subscriptionStore.fetchActiveSubscriptions(true) // force refresh
-      } catch (error) {
-        console.error('Failed to refresh subscriptions after redeem:', error)
-        appStore.showWarning(t('redeem.subscriptionRefreshFailed'))
-      }
-    }
-
-    // Clear the input
-    redeemCode.value = ''
-
-    // Refresh history
-    await fetchHistory()
-
-    // Show success toast
-    appStore.showSuccess(t('redeem.codeRedeemSuccess'))
-  } catch (error: any) {
-    errorMessage.value = error.response?.data?.detail || t('redeem.failedToRedeem')
-
-    appStore.showError(t('redeem.redeemFailed'))
-  } finally {
-    submitting.value = false
-  }
-}
-
-const handleApplyPromo = async () => {
-  if (!promoCode.value.trim()) {
-    appStore.showError(t('redeem.pleaseEnterPromoCode'))
-    return
-  }
-
-  promoSubmitting.value = true
-  errorMessage.value = ''
   promoResult.value = null
 
   try {
-    const result = await redeemAPI.applyPromoCode(promoCode.value.trim())
-    promoResult.value = result
-    promoCode.value = ''
-    await authStore.refreshUser()
-    appStore.showSuccess(t('redeem.promoApplySuccess'))
+    await handleRedeemOnly(code)
+    smartCode.value = ''
   } catch (error: any) {
-    errorMessage.value = error.response?.data?.detail || t('redeem.failedToApplyPromo')
+    if (shouldFallbackToPromo(error)) {
+      submitting.value = false
+      promoSubmitting.value = true
+      try {
+        await handlePromoOnly(code)
+        smartCode.value = ''
+        errorMessage.value = ''
+      } catch (promoError: any) {
+        errorMessage.value = readErrorMessage(promoError, t('redeem.failedToApplyPromo'))
+        appStore.showError(errorMessage.value)
+      } finally {
+        promoSubmitting.value = false
+      }
+      return
+    }
+
+    errorMessage.value = readErrorMessage(error, t('redeem.failedToRedeem'))
     appStore.showError(errorMessage.value)
   } finally {
-    promoSubmitting.value = false
+    submitting.value = false
   }
 }
 
