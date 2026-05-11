@@ -1,0 +1,89 @@
+name: Build Self-Hosted Binary
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build (branch, tag, or commit SHA)
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-amd64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend assets
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=1024
+        run: pnpm run build:lite
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.26.3'
+
+      - name: Build embedded server binary
+        working-directory: backend
+        env:
+          CGO_ENABLED: 0
+        run: |
+          VERSION=$(tr -d '\r\n' < ./cmd/server/VERSION)
+          mkdir -p ../dist
+          go build -trimpath -tags embed \
+            -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildType=release" \
+            -o ../dist/sub2api ./cmd/server
+
+      - name: Package artifact
+        run: |
+          VERSION=$(tr -d '\r\n' < backend/cmd/server/VERSION)
+          mkdir -p package
+          cp dist/sub2api package/
+          cp deploy/config.example.yaml package/
+          printf '%s\n' "$VERSION" > package/VERSION
+          sha256sum package/sub2api > package/sub2api.sha256
+          tar -C package -czf "sub2api-linux-amd64-${VERSION}.tar.gz" .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sub2api-linux-amd64
+          path: |
+            dist/sub2api
+            package/sub2api.sha256
+            package/VERSION
+            sub2api-linux-amd64-*.tar.gz
+          retention-days: 14
