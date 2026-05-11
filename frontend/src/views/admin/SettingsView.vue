@@ -5253,7 +5253,7 @@
                       v-model="form.payment_product_name_prefix"
                       type="text"
                       class="input"
-                      placeholder="开发者补给站"
+                      placeholder="天才程序员补给站"
                     />
                   </div>
                   <div>
@@ -5275,7 +5275,7 @@
                       class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
                     >
                       {{
-                        (form.payment_product_name_prefix || "开发者补给站") +
+                        (form.payment_product_name_prefix || "天才程序员补给站") +
                         " 100 " +
                         (form.payment_product_name_suffix || "CNY")
                       }}
@@ -6453,9 +6453,9 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
-  site_name: "开发者补给站",
+  site_name: "天才程序员补给站",
   site_logo: "",
-  site_subtitle: "一群程序员共建的便捷 AI API 中转站",
+  site_subtitle: "一群程序员共建的高质量 AI API 中转站",
   api_base_url: "",
   contact_info: "",
   doc_url: "",

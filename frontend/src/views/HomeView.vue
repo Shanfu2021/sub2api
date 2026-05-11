@@ -126,6 +126,24 @@
               {{ siteSubtitle }}
             </p>
 
+            <div
+              class="mb-8 inline-flex flex-wrap items-center gap-3 rounded-2xl border border-primary-200/70 bg-white/85 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-primary-800/40 dark:bg-dark-900/60"
+            >
+              <span
+                class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300"
+              >
+                <Icon name="users" size="sm" />
+              </span>
+              <div class="text-left">
+                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-300">
+                  官方交流群
+                </p>
+                <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                  QQ 群：825526434
+                </p>
+              </div>
+            </div>
+
             <!-- CTA Button -->
             <div>
               <router-link
@@ -417,9 +435,9 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 // Site settings - directly from appStore (already initialized from injected config)
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '开发者补给站')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '天才程序员补给站')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的便捷 AI API 中转站')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 中转站')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
