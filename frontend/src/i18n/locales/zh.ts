@@ -1788,6 +1788,8 @@ export default {
         id: 'ID',
         email: '邮箱',
         username: '用户名',
+        promoCode: '优惠码',
+        discountFactor: '折扣系数',
         notes: '备注',
         role: '角色',
         groups: '分组',

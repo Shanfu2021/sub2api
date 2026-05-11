@@ -1767,6 +1767,8 @@ export default {
         id: 'ID',
         email: 'Email',
         username: 'Username',
+        promoCode: 'Promo Code',
+        discountFactor: 'Discount Factor',
         notes: 'Notes',
         role: 'Role',
         groups: 'Groups',
