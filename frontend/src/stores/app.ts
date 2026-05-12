@@ -289,16 +289,18 @@ export const useAppStore = defineStore('app', () => {
    * Apply settings to store state (internal helper to avoid code duplication)
    */
   function applySettings(config: PublicSettings): void {
+    const resolvedDocUrl = config.doc_url || '/docs/'
+    const normalizedConfig: PublicSettings = { ...config, doc_url: resolvedDocUrl }
     if (typeof window !== 'undefined') {
-      window.__APP_CONFIG__ = { ...config }
+      window.__APP_CONFIG__ = normalizedConfig
     }
-    cachedPublicSettings.value = config
-    siteName.value = config.site_name || '天才程序员补给站'
-    siteLogo.value = config.site_logo || ''
-    siteVersion.value = config.version || ''
-    contactInfo.value = config.contact_info || ''
-    apiBaseUrl.value = config.api_base_url || ''
-    docUrl.value = config.doc_url || ''
+    cachedPublicSettings.value = normalizedConfig
+    siteName.value = normalizedConfig.site_name || '天才程序员补给站'
+    siteLogo.value = normalizedConfig.site_logo || ''
+    siteVersion.value = normalizedConfig.version || ''
+    contactInfo.value = normalizedConfig.contact_info || ''
+    apiBaseUrl.value = normalizedConfig.api_base_url || ''
+    docUrl.value = resolvedDocUrl
     publicSettingsLoaded.value = true
   }
 

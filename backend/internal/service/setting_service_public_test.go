@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -150,4 +151,26 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 	require.True(t, settings.WeChatOAuthOpenEnabled)
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.False(t, settings.WeChatOAuthMobileEnabled)
+}
+
+func TestSettingService_GetPublicSettingsForInjection_ExposesQRCodeAndDocURL(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeySiteName:         "天才程序员补给站",
+			SettingKeyContactQRCodeURL: "https://api.ise.it.com/qq-group.jpg",
+			SettingKeyDocURL:           "https://api.ise.it.com/docs/",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	payload, err := svc.GetPublicSettingsForInjection(context.Background())
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	require.Equal(t, "https://api.ise.it.com/qq-group.jpg", got["contact_qr_code_url"])
+	require.Equal(t, "https://api.ise.it.com/docs/", got["doc_url"])
 }

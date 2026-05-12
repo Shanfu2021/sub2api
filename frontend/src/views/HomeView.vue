@@ -444,7 +444,7 @@ const appStore = useAppStore()
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '天才程序员补给站')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 中转站')
-const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
+const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '/docs/')
 const contactQrCodeUrl = computed(() => appStore.cachedPublicSettings?.contact_qr_code_url || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 

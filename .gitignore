@@ -78,6 +78,7 @@ Desktop.ini
 # 临时文件
 # ===================
 tmp/
+.tmp/
 temp/
 *.tmp
 *.temp
@@ -116,7 +117,6 @@ backend/.installed
 # 其他
 # ===================
 tests
-CLAUDE.md
 .claude
 scripts
 .code-review-state
