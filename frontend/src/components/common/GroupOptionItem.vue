@@ -11,6 +11,7 @@
         :platform="platform"
         :subscription-type="subscriptionType"
         :pricing-discount-factor="pricingDiscountFactor"
+        :pricing-discount-scope="pricingDiscountScope"
         :show-rate="false"
         class="groupOptionItemBadge"
       />
@@ -66,6 +67,7 @@ interface Props {
   rateMultiplier?: number
   userRateMultiplier?: number | null
   pricingDiscountFactor?: number | null
+  pricingDiscountScope?: 'all' | 'balance' | 'subscription' | null
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -76,7 +78,18 @@ const props = withDefaults(defineProps<Props>(), {
   selected: false,
   showCheckmark: true,
   userRateMultiplier: null,
-  pricingDiscountFactor: null
+  pricingDiscountFactor: null,
+  pricingDiscountScope: 'all'
+})
+
+const isSubscription = computed(() => props.subscriptionType === 'subscription')
+
+const scopedDiscountFactor = computed(() => {
+  const factor = props.pricingDiscountFactor ?? 1
+  const scope = props.pricingDiscountScope ?? 'all'
+  if (scope === 'balance' && isSubscription.value) return 1
+  if (scope === 'subscription' && !isSubscription.value) return 1
+  return factor
 })
 
 // Whether user has a custom rate different from default
@@ -91,17 +104,15 @@ const hasCustomRate = computed(() => {
 
 const discountedRateMultiplier = computed(() => {
   const base = props.rateMultiplier ?? 1
-  const factor = props.pricingDiscountFactor ?? 1
+  const factor = scopedDiscountFactor.value
   return Number((base * factor).toFixed(3))
 })
 
 const hasDiscountRate = computed(() => {
   return (
     !hasCustomRate.value &&
-    props.pricingDiscountFactor !== null &&
-    props.pricingDiscountFactor !== undefined &&
-    props.pricingDiscountFactor > 0 &&
-    props.pricingDiscountFactor < 1 &&
+    scopedDiscountFactor.value > 0 &&
+    scopedDiscountFactor.value < 1 &&
     props.rateMultiplier !== undefined
   )
 })

@@ -64,6 +64,7 @@ export async function applyPromoCode(code: string): Promise<{
   bonus_amount?: number
   discount_factor?: number
   discount_label?: string
+  discount_scope?: 'all' | 'balance' | 'subscription'
   new_balance?: number
 }> {
   const { data } = await apiClient.post<{
@@ -71,6 +72,7 @@ export async function applyPromoCode(code: string): Promise<{
     bonus_amount?: number
     discount_factor?: number
     discount_label?: string
+    discount_scope?: 'all' | 'balance' | 'subscription'
     new_balance?: number
   }>('/redeem/promo', { code })
   return data

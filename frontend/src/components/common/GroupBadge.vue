@@ -40,6 +40,7 @@ interface Props {
   rateMultiplier?: number
   userRateMultiplier?: number | null // 用户专属倍率
   pricingDiscountFactor?: number | null
+  pricingDiscountScope?: 'all' | 'balance' | 'subscription' | null
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
@@ -56,12 +57,21 @@ const props = withDefaults(defineProps<Props>(), {
   daysRemaining: null,
   userRateMultiplier: null,
   pricingDiscountFactor: null,
+  pricingDiscountScope: 'all',
   alwaysShowRate: false
 })
 
 const { t } = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
+
+const scopedDiscountFactor = computed(() => {
+  const factor = props.pricingDiscountFactor ?? 1
+  const scope = props.pricingDiscountScope ?? 'all'
+  if (scope === 'balance' && isSubscription.value) return 1
+  if (scope === 'subscription' && !isSubscription.value) return 1
+  return factor
+})
 
 // 是否有专属倍率（且与默认倍率不同）
 const hasCustomRate = computed(() => {
@@ -75,17 +85,15 @@ const hasCustomRate = computed(() => {
 
 const discountedRateMultiplier = computed(() => {
   const base = props.rateMultiplier ?? 1
-  const factor = props.pricingDiscountFactor ?? 1
+  const factor = scopedDiscountFactor.value
   return Number((base * factor).toFixed(3))
 })
 
 const hasDiscountRate = computed(() => {
   return (
     !hasCustomRate.value &&
-    props.pricingDiscountFactor !== null &&
-    props.pricingDiscountFactor !== undefined &&
-    props.pricingDiscountFactor > 0 &&
-    props.pricingDiscountFactor < 1 &&
+    scopedDiscountFactor.value > 0 &&
+    scopedDiscountFactor.value < 1 &&
     props.rateMultiplier !== undefined
   )
 })

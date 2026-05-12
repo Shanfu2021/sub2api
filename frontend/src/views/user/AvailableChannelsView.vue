@@ -39,6 +39,7 @@
           :loading="loading"
           :user-group-rates="userGroupRates"
           :pricing-discount-factor="authStore.user?.pricing_discount_factor ?? 1"
+          :pricing-discount-scope="authStore.user?.pricing_discount_scope ?? 'all'"
           pricing-key-prefix="availableChannels.pricing"
           :no-pricing-label="t('availableChannels.noPricing')"
           :no-models-label="t('availableChannels.noModels')"

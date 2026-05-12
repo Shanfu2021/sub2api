@@ -73,6 +73,7 @@ type ApplyPromoCodeResponse struct {
 	BonusAmount    float64  `json:"bonus_amount,omitempty"`
 	DiscountFactor float64  `json:"discount_factor,omitempty"`
 	DiscountLabel  string   `json:"discount_label,omitempty"`
+	DiscountScope  string   `json:"discount_scope,omitempty"`
 	NewBalance     *float64 `json:"new_balance,omitempty"`
 }
 
@@ -174,6 +175,7 @@ func (h *RedeemHandler) ApplyPromoCode(c *gin.Context) {
 		BonusAmount:    result.BonusAmount,
 		DiscountFactor: service.NormalizePricingDiscountFactorForRepo(result.DiscountFactor),
 		DiscountLabel:  result.DiscountLabel,
+		DiscountScope:  service.NormalizePromoDiscountScope(result.DiscountScope),
 	}
 
 	response.Success(c, resp)

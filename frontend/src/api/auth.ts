@@ -476,6 +476,7 @@ export interface ValidatePromoCodeResponse {
   bonus_amount?: number
   discount_factor?: number
   discount_label?: string
+  discount_scope?: 'all' | 'balance' | 'subscription'
   error_code?: string
   message?: string
 }

@@ -833,7 +833,8 @@ WHERE user_id = $1
 	rows, err := s.entClient.QueryContext(ctx, `
 SELECT id,
        COALESCE(discount_factor::double precision, 1.0),
-       COALESCE(discount_label, '')
+       COALESCE(discount_label, ''),
+       COALESCE(discount_scope, 'all')
 FROM promo_codes
 WHERE LOWER(code) = LOWER($1)
 LIMIT 1
@@ -847,9 +848,10 @@ LIMIT 1
 		promoCodeID    int64
 		discountFactor float64
 		discountLabel  string
+		discountScope  string
 	)
 	if rows.Next() {
-		if err := rows.Scan(&promoCodeID, &discountFactor, &discountLabel); err != nil {
+		if err := rows.Scan(&promoCodeID, &discountFactor, &discountLabel, &discountScope); err != nil {
 			return fmt.Errorf("scan promo code: %w", err)
 		}
 	} else {
@@ -861,15 +863,16 @@ LIMIT 1
 
 	discountFactor = NormalizePricingDiscountFactorForRepo(discountFactor)
 	_, err = s.entClient.ExecContext(ctx, `
-INSERT INTO user_promo_discounts (user_id, promo_code_id, discount_factor, discount_label, created_at, updated_at)
-VALUES ($1, $2, $3, NULLIF($4, ''), NOW(), NOW())
+INSERT INTO user_promo_discounts (user_id, promo_code_id, discount_factor, discount_label, discount_scope, created_at, updated_at)
+VALUES ($1, $2, $3, NULLIF($4, ''), $5, NOW(), NOW())
 ON CONFLICT (user_id)
 DO UPDATE SET
   promo_code_id = EXCLUDED.promo_code_id,
   discount_factor = EXCLUDED.discount_factor,
   discount_label = EXCLUDED.discount_label,
+  discount_scope = EXCLUDED.discount_scope,
   updated_at = NOW()
-`, userID, promoCodeID, discountFactor, strings.TrimSpace(discountLabel))
+`, userID, promoCodeID, discountFactor, strings.TrimSpace(discountLabel), NormalizePromoDiscountScope(discountScope))
 	if err != nil {
 		return fmt.Errorf("upsert user promo discount binding: %w", err)
 	}

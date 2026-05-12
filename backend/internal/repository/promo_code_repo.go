@@ -41,7 +41,7 @@ func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCod
 		return err
 	}
 
-	if err := r.syncPromoDiscountFields(ctx, created.ID, code.DiscountFactor, code.DiscountLabel); err != nil {
+	if err := r.syncPromoDiscountFields(ctx, created.ID, code.DiscountFactor, code.DiscountLabel, code.DiscountScope); err != nil {
 		return err
 	}
 
@@ -128,7 +128,7 @@ func (r *promoCodeRepository) Update(ctx context.Context, code *service.PromoCod
 		return err
 	}
 
-	if err := r.syncPromoDiscountFields(ctx, code.ID, code.DiscountFactor, code.DiscountLabel); err != nil {
+	if err := r.syncPromoDiscountFields(ctx, code.ID, code.DiscountFactor, code.DiscountLabel, code.DiscountScope); err != nil {
 		return err
 	}
 
@@ -282,6 +282,7 @@ func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
 		Code:           m.Code,
 		BonusAmount:    m.BonusAmount,
 		DiscountFactor: service.DefaultPricingDiscountFactor,
+		DiscountScope:  service.PromoDiscountScopeAll,
 		MaxUses:        m.MaxUses,
 		UsedCount:      m.UsedCount,
 		Status:         m.Status,
@@ -337,7 +338,7 @@ func promoCodeUsageEntitiesToService(models []*dbent.PromoCodeUsage) []service.P
 	return out
 }
 
-func (r *promoCodeRepository) syncPromoDiscountFields(ctx context.Context, promoCodeID int64, discountFactor float64, discountLabel string) error {
+func (r *promoCodeRepository) syncPromoDiscountFields(ctx context.Context, promoCodeID int64, discountFactor float64, discountLabel, discountScope string) error {
 	client := clientFromContext(ctx, r.client)
 	if client == nil || promoCodeID <= 0 {
 		return nil
@@ -345,9 +346,10 @@ func (r *promoCodeRepository) syncPromoDiscountFields(ctx context.Context, promo
 	_, err := client.ExecContext(ctx, `
 UPDATE promo_codes
 SET discount_factor = $2,
-    discount_label = NULLIF($3, '')
+    discount_label = NULLIF($3, ''),
+    discount_scope = $4
 WHERE id = $1
-`, promoCodeID, service.NormalizePricingDiscountFactorForRepo(discountFactor), strings.TrimSpace(discountLabel))
+`, promoCodeID, service.NormalizePricingDiscountFactorForRepo(discountFactor), strings.TrimSpace(discountLabel), service.NormalizePromoDiscountScope(discountScope))
 	return err
 }
 
@@ -371,7 +373,7 @@ func (r *promoCodeRepository) hydratePromoDiscountFields(ctx context.Context, it
 	}
 
 	rows, err := client.QueryContext(ctx, `
-SELECT id, COALESCE(discount_factor::double precision, 1.0), COALESCE(discount_label, '')
+SELECT id, COALESCE(discount_factor::double precision, 1.0), COALESCE(discount_label, ''), COALESCE(discount_scope, 'all')
 FROM promo_codes
 WHERE id = ANY($1)
 `, pq.Array(ids))
@@ -385,13 +387,15 @@ WHERE id = ANY($1)
 			id             int64
 			discountFactor float64
 			discountLabel  string
+			discountScope  string
 		)
-		if err := rows.Scan(&id, &discountFactor, &discountLabel); err != nil {
+		if err := rows.Scan(&id, &discountFactor, &discountLabel, &discountScope); err != nil {
 			return err
 		}
 		if item, ok := itemMap[id]; ok {
 			item.DiscountFactor = service.NormalizePricingDiscountFactorForRepo(discountFactor)
 			item.DiscountLabel = strings.TrimSpace(discountLabel)
+			item.DiscountScope = service.NormalizePromoDiscountScope(discountScope)
 		}
 	}
 

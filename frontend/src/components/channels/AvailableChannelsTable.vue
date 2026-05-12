@@ -94,6 +94,7 @@
                   :rate-multiplier="g.rate_multiplier"
                   :user-rate-multiplier="userGroupRates[g.id] ?? null"
                   :pricing-discount-factor="pricingDiscountFactor"
+                  :pricing-discount-scope="pricingDiscountScope"
                   always-show-rate
                 />
               </div>
@@ -117,6 +118,7 @@
                   :rate-multiplier="g.rate_multiplier"
                   :user-rate-multiplier="userGroupRates[g.id] ?? null"
                   :pricing-discount-factor="pricingDiscountFactor"
+                  :pricing-discount-scope="pricingDiscountScope"
                   always-show-rate
                 />
               </div>
@@ -174,6 +176,7 @@ const props = defineProps<{
   /** 用户专属倍率（group_id → multiplier）；无专属时由 GroupBadge 仅显示默认倍率。 */
   userGroupRates: Record<number, number>
   pricingDiscountFactor?: number | null
+  pricingDiscountScope?: 'all' | 'balance' | 'subscription' | null
 }>()
 
 // Suppress unused warning — props is accessed via template automatically but

@@ -698,11 +698,13 @@ func hydrateAPIKeyUserPricingDiscount(ctx context.Context, client *dbent.Client,
 	user.PricingDiscountFactor = service.DefaultPricingDiscountFactor
 	user.PricingDiscountLabel = ""
 	user.PricingDiscountSource = ""
+	user.PricingDiscountScope = service.PromoDiscountScopeAll
 
 	rows, err := client.QueryContext(ctx, `
 SELECT COALESCE(upd.discount_factor::double precision, 1.0),
        COALESCE(upd.discount_label, ''),
-       COALESCE(pc.code, '')
+       COALESCE(pc.code, ''),
+       COALESCE(upd.discount_scope, 'all')
 FROM user_promo_discounts upd
 LEFT JOIN promo_codes pc ON pc.id = upd.promo_code_id
 WHERE upd.user_id = $1
@@ -718,13 +720,15 @@ LIMIT 1
 			discountFactor float64
 			discountLabel  string
 			promoCode      string
+			discountScope  string
 		)
-		if err := rows.Scan(&discountFactor, &discountLabel, &promoCode); err != nil {
+		if err := rows.Scan(&discountFactor, &discountLabel, &promoCode, &discountScope); err != nil {
 			return err
 		}
 		user.PricingDiscountFactor = service.NormalizePricingDiscountFactorForRepo(discountFactor)
 		user.PricingDiscountLabel = strings.TrimSpace(discountLabel)
 		user.PricingDiscountSource = strings.TrimSpace(promoCode)
+		user.PricingDiscountScope = service.NormalizePromoDiscountScope(discountScope)
 	}
 
 	return rows.Err()

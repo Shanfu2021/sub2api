@@ -98,6 +98,7 @@ type PromoApplyResult struct {
 	BonusAmount     float64
 	DiscountFactor  float64
 	DiscountLabel   string
+	DiscountScope   string
 	AppliedDiscount bool
 }
 
@@ -182,6 +183,7 @@ func (s *PromoService) ApplyPromoCodeDetailed(ctx context.Context, userID int64,
 		BonusAmount:     promoCode.BonusAmount,
 		DiscountFactor:  normalizePricingDiscountFactor(promoCode.DiscountFactor),
 		DiscountLabel:   promoCode.DiscountLabel,
+		DiscountScope:   NormalizePromoDiscountScope(promoCode.DiscountScope),
 		AppliedDiscount: normalizePricingDiscountFactor(promoCode.DiscountFactor) != DefaultPricingDiscountFactor,
 	}, nil
 }
@@ -222,6 +224,7 @@ func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) 
 		BonusAmount:    input.BonusAmount,
 		DiscountFactor: normalizePricingDiscountFactor(input.DiscountFactor),
 		DiscountLabel:  strings.TrimSpace(input.DiscountLabel),
+		DiscountScope:  NormalizePromoDiscountScope(input.DiscountScope),
 		MaxUses:        input.MaxUses,
 		UsedCount:      0,
 		Status:         PromoCodeStatusActive,
@@ -264,6 +267,9 @@ func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoC
 	if input.DiscountLabel != nil {
 		promoCode.DiscountLabel = strings.TrimSpace(*input.DiscountLabel)
 	}
+	if input.DiscountScope != nil {
+		promoCode.DiscountScope = NormalizePromoDiscountScope(*input.DiscountScope)
+	}
 	if input.MaxUses != nil {
 		promoCode.MaxUses = *input.MaxUses
 	}
@@ -277,7 +283,7 @@ func (s *PromoService) Update(ctx context.Context, id int64, input *UpdatePromoC
 		promoCode.Notes = *input.Notes
 	}
 
-	discountBindingChanged := input.DiscountFactor != nil || input.DiscountLabel != nil
+	discountBindingChanged := input.DiscountFactor != nil || input.DiscountLabel != nil || input.DiscountScope != nil
 	if s.entClient == nil {
 		if err := s.promoRepo.Update(ctx, promoCode); err != nil {
 			return nil, fmt.Errorf("update promo code: %w", err)
@@ -329,15 +335,16 @@ func (s *PromoService) upsertUserPricingDiscount(ctx context.Context, exec inter
 		return fmt.Errorf("pricing discount sql executor is not configured")
 	}
 	_, err := exec.ExecContext(ctx, `
-INSERT INTO user_promo_discounts (user_id, promo_code_id, discount_factor, discount_label, created_at, updated_at)
-VALUES ($1, $2, $3, NULLIF($4, ''), NOW(), NOW())
+INSERT INTO user_promo_discounts (user_id, promo_code_id, discount_factor, discount_label, discount_scope, created_at, updated_at)
+VALUES ($1, $2, $3, NULLIF($4, ''), $5, NOW(), NOW())
 ON CONFLICT (user_id)
 DO UPDATE SET
   promo_code_id = EXCLUDED.promo_code_id,
   discount_factor = EXCLUDED.discount_factor,
   discount_label = EXCLUDED.discount_label,
+  discount_scope = EXCLUDED.discount_scope,
   updated_at = NOW()
-`, userID, promoCode.ID, discountFactor, strings.TrimSpace(promoCode.DiscountLabel))
+`, userID, promoCode.ID, discountFactor, strings.TrimSpace(promoCode.DiscountLabel), NormalizePromoDiscountScope(promoCode.DiscountScope))
 	if err != nil {
 		return fmt.Errorf("upsert user promo discount: %w", err)
 	}
@@ -380,9 +387,10 @@ WHERE promo_code_id = $1
 UPDATE user_promo_discounts
 SET discount_factor = $2,
     discount_label = NULLIF($3, ''),
+    discount_scope = $4,
     updated_at = NOW()
 WHERE promo_code_id = $1
-`, promoCode.ID, normalizePricingDiscountFactor(promoCode.DiscountFactor), strings.TrimSpace(promoCode.DiscountLabel))
+`, promoCode.ID, normalizePricingDiscountFactor(promoCode.DiscountFactor), strings.TrimSpace(promoCode.DiscountLabel), NormalizePromoDiscountScope(promoCode.DiscountScope))
 	if err != nil {
 		return nil, fmt.Errorf("sync promo discount bindings: %w", err)
 	}

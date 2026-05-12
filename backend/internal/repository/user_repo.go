@@ -996,6 +996,7 @@ func (r *userRepository) hydrateUserPricingDiscounts(ctx context.Context, users 
 			continue
 		}
 		user.PricingDiscountFactor = service.DefaultPricingDiscountFactor
+		user.PricingDiscountScope = service.PromoDiscountScopeAll
 		userMap[user.ID] = user
 		ids = append(ids, user.ID)
 	}
@@ -1007,7 +1008,8 @@ func (r *userRepository) hydrateUserPricingDiscounts(ctx context.Context, users 
 SELECT upd.user_id,
        COALESCE(upd.discount_factor::double precision, 1.0),
        COALESCE(upd.discount_label, ''),
-       COALESCE(pc.code, '')
+       COALESCE(pc.code, ''),
+       COALESCE(upd.discount_scope, 'all')
 FROM user_promo_discounts upd
 LEFT JOIN promo_codes pc ON pc.id = upd.promo_code_id
 WHERE upd.user_id = ANY($1)
@@ -1023,8 +1025,9 @@ WHERE upd.user_id = ANY($1)
 			discountFactor float64
 			discountLabel  string
 			promoCode      string
+			discountScope  string
 		)
-		if err := rows.Scan(&userID, &discountFactor, &discountLabel, &promoCode); err != nil {
+		if err := rows.Scan(&userID, &discountFactor, &discountLabel, &promoCode, &discountScope); err != nil {
 			return err
 		}
 		user := userMap[userID]
@@ -1034,6 +1037,7 @@ WHERE upd.user_id = ANY($1)
 		user.PricingDiscountFactor = service.NormalizePricingDiscountFactorForRepo(discountFactor)
 		user.PricingDiscountLabel = strings.TrimSpace(discountLabel)
 		user.PricingDiscountSource = strings.TrimSpace(promoCode)
+		user.PricingDiscountScope = service.NormalizePromoDiscountScope(discountScope)
 	}
 
 	return rows.Err()

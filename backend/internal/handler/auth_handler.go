@@ -442,6 +442,7 @@ type ValidatePromoCodeResponse struct {
 	BonusAmount    float64 `json:"bonus_amount,omitempty"`
 	DiscountFactor float64 `json:"discount_factor,omitempty"`
 	DiscountLabel  string  `json:"discount_label,omitempty"`
+	DiscountScope  string  `json:"discount_scope,omitempty"`
 	ErrorCode      string  `json:"error_code,omitempty"`
 	Message        string  `json:"message,omitempty"`
 }
@@ -501,6 +502,7 @@ func (h *AuthHandler) ValidatePromoCode(c *gin.Context) {
 		BonusAmount:    promoCode.BonusAmount,
 		DiscountFactor: service.NormalizePricingDiscountFactorForRepo(promoCode.DiscountFactor),
 		DiscountLabel:  promoCode.DiscountLabel,
+		DiscountScope:  service.NormalizePromoDiscountScope(promoCode.DiscountScope),
 	})
 }
 

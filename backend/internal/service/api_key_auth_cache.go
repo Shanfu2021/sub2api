@@ -38,6 +38,7 @@ type APIKeyAuthUserSnapshot struct {
 	PricingDiscountFactor float64 `json:"pricing_discount_factor"`
 	PricingDiscountLabel  string  `json:"pricing_discount_label,omitempty"`
 	PricingDiscountSource string  `json:"pricing_discount_source,omitempty"`
+	PricingDiscountScope  string  `json:"pricing_discount_scope,omitempty"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
 	Email                      string             `json:"email"`

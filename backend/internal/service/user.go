@@ -41,6 +41,7 @@ type User struct {
 	PricingDiscountFactor float64
 	PricingDiscountLabel  string
 	PricingDiscountSource string
+	PricingDiscountScope  string
 
 	// TOTP 双因素认证字段
 	TotpSecretEncrypted *string    // AES-256-GCM 加密的 TOTP 密钥

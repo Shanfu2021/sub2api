@@ -7868,8 +7868,11 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
-func effectiveUserPricingDiscountFactor(user *User) float64 {
+func effectiveUserPricingDiscountFactor(user *User, group *Group) float64 {
 	if user == nil {
+		return DefaultPricingDiscountFactor
+	}
+	if !PromoDiscountAppliesToGroup(user.PricingDiscountScope, group) {
 		return DefaultPricingDiscountFactor
 	}
 	return NormalizePricingDiscountFactorForRepo(user.PricingDiscountFactor)
@@ -8403,7 +8406,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
-	discountFactor := effectiveUserPricingDiscountFactor(user)
+	discountFactor := effectiveUserPricingDiscountFactor(user, apiKey.Group)
 	multiplier = applyPricingDiscountFactor(multiplier, discountFactor)
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier, discountFactor)
 

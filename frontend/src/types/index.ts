@@ -96,6 +96,7 @@ export interface User {
   pricing_discount_factor?: number
   pricing_discount_label?: string | null
   pricing_discount_source?: string | null
+  pricing_discount_scope?: 'all' | 'balance' | 'subscription' | null
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -1698,6 +1699,7 @@ export interface PromoCode {
   bonus_amount: number
   discount_factor?: number
   discount_label?: string | null
+  discount_scope?: 'all' | 'balance' | 'subscription'
   max_uses: number
   used_count: number
   status: 'active' | 'disabled'
@@ -1721,6 +1723,7 @@ export interface CreatePromoCodeRequest {
   bonus_amount: number
   discount_factor?: number | null
   discount_label?: string
+  discount_scope?: 'all' | 'balance' | 'subscription'
   max_uses?: number
   expires_at?: number | null
   notes?: string
@@ -1731,6 +1734,7 @@ export interface UpdatePromoCodeRequest {
   bonus_amount?: number
   discount_factor?: number | null
   discount_label?: string
+  discount_scope?: 'all' | 'balance' | 'subscription'
   max_uses?: number
   status?: 'active' | 'disabled'
   expires_at?: number | null

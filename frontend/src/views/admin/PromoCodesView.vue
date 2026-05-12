@@ -92,6 +92,12 @@
                 {{ rowDiscountLabelMap[row.id] }}
               </span>
               <span
+                v-if="row.discount_scope && row.discount_scope !== 'all'"
+                class="block text-xs text-amber-600 dark:text-amber-400"
+              >
+                {{ row.discount_scope === 'balance' ? t('admin.promo.discountScopeBalance') : t('admin.promo.discountScopeSubscription') }}
+              </span>
+              <span
                 v-if="value > 0 && rowDiscountFactorMap[row.id] && rowDiscountFactorMap[row.id] < 1"
                 class="block text-xs text-gray-500 dark:text-gray-400"
               >
@@ -226,6 +232,10 @@
           />
         </div>
         <div>
+          <label class="input-label">{{ t('admin.promo.discountScope') }}</label>
+          <Select v-model="createForm.discount_scope" :options="discountScopeOptions" />
+        </div>
+        <div>
           <label class="input-label">
             {{ t('admin.promo.maxUses') }}
             <span class="ml-1 text-xs font-normal text-gray-400">({{ t('admin.promo.zeroUnlimited') }})</span>
@@ -317,6 +327,10 @@
             type="text"
             class="input"
           />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.promo.discountScope') }}</label>
+          <Select v-model="editForm.discount_scope" :options="discountScopeOptions" />
         </div>
         <div>
           <label class="input-label">
@@ -509,6 +523,7 @@ const createForm = reactive({
   bonus_amount: 0,
   discount_factor: 0.75,
   discount_label: '',
+  discount_scope: 'all' as 'all' | 'balance' | 'subscription',
   max_uses: 0,
   expires_at_str: '',
   notes: ''
@@ -519,6 +534,7 @@ const editForm = reactive({
   bonus_amount: 0,
   discount_factor: 1,
   discount_label: '',
+  discount_scope: 'all' as 'all' | 'balance' | 'subscription',
   max_uses: 0,
   status: 'active' as 'active' | 'disabled',
   expires_at_str: '',
@@ -543,6 +559,12 @@ const filterStatusOptions = computed(() => [
 const statusOptions = computed(() => [
   { value: 'active', label: t('admin.promo.statusActive') },
   { value: 'disabled', label: t('admin.promo.statusDisabled') }
+])
+
+const discountScopeOptions = computed(() => [
+  { value: 'all', label: t('admin.promo.discountScopeAll') },
+  { value: 'balance', label: t('admin.promo.discountScopeBalance') },
+  { value: 'subscription', label: t('admin.promo.discountScopeSubscription') }
 ])
 
 const columns = computed<Column[]>(() => [
@@ -668,6 +690,7 @@ const handleCreate = async () => {
       bonus_amount: createForm.bonus_amount,
       discount_factor: createForm.discount_factor,
       discount_label: createForm.discount_label || undefined,
+      discount_scope: createForm.discount_scope,
       max_uses: createForm.max_uses,
       expires_at: createForm.expires_at_str ? Math.floor(new Date(createForm.expires_at_str).getTime() / 1000) : undefined,
       notes: createForm.notes || undefined
@@ -688,6 +711,7 @@ const resetCreateForm = () => {
   createForm.bonus_amount = 0
   createForm.discount_factor = 0.75
   createForm.discount_label = ''
+  createForm.discount_scope = 'all'
   createForm.max_uses = 0
   createForm.expires_at_str = ''
   createForm.notes = ''
@@ -700,6 +724,7 @@ const handleEdit = (code: PromoCode) => {
   editForm.bonus_amount = code.bonus_amount
   editForm.discount_factor = code.discount_factor ?? 1
   editForm.discount_label = code.discount_label || ''
+  editForm.discount_scope = code.discount_scope || 'all'
   editForm.max_uses = code.max_uses
   editForm.status = code.status
   editForm.expires_at_str = code.expires_at ? new Date(code.expires_at).toISOString().slice(0, 16) : ''
@@ -722,6 +747,7 @@ const handleUpdate = async () => {
       bonus_amount: editForm.bonus_amount,
       discount_factor: editForm.discount_factor,
       discount_label: editForm.discount_label || undefined,
+      discount_scope: editForm.discount_scope,
       max_uses: editForm.max_uses,
       status: editForm.status,
       expires_at: editForm.expires_at_str ? Math.floor(new Date(editForm.expires_at_str).getTime() / 1000) : 0,

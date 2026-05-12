@@ -31,6 +31,7 @@ type CreatePromoCodeRequest struct {
 	BonusAmount    float64  `json:"bonus_amount" binding:"required,min=0"`     // 赠送余额
 	DiscountFactor *float64 `json:"discount_factor" binding:"omitempty,min=0"` // 长期折扣因子
 	DiscountLabel  string   `json:"discount_label"`                            // 折扣展示文案
+	DiscountScope  string   `json:"discount_scope"`                            // 折扣生效范围
 	MaxUses        int      `json:"max_uses" binding:"min=0"`                  // 最大使用次数，0=无限
 	ExpiresAt      *int64   `json:"expires_at"`                                // 过期时间戳（秒）
 	Notes          string   `json:"notes"`                                     // 备注
@@ -42,6 +43,7 @@ type UpdatePromoCodeRequest struct {
 	BonusAmount    *float64 `json:"bonus_amount" binding:"omitempty,min=0"`
 	DiscountFactor *float64 `json:"discount_factor" binding:"omitempty,min=0"`
 	DiscountLabel  *string  `json:"discount_label"`
+	DiscountScope  *string  `json:"discount_scope"`
 	MaxUses        *int     `json:"max_uses" binding:"omitempty,min=0"`
 	Status         *string  `json:"status" binding:"omitempty,oneof=active disabled"`
 	ExpiresAt      *int64   `json:"expires_at"`
@@ -109,6 +111,7 @@ func (h *PromoHandler) Create(c *gin.Context) {
 		Code:          req.Code,
 		BonusAmount:   req.BonusAmount,
 		DiscountLabel: req.DiscountLabel,
+		DiscountScope: req.DiscountScope,
 		MaxUses:       req.MaxUses,
 		Notes:         req.Notes,
 	}
@@ -150,6 +153,7 @@ func (h *PromoHandler) Update(c *gin.Context) {
 		BonusAmount:    req.BonusAmount,
 		DiscountFactor: req.DiscountFactor,
 		DiscountLabel:  req.DiscountLabel,
+		DiscountScope:  req.DiscountScope,
 		MaxUses:        req.MaxUses,
 		Status:         req.Status,
 		Notes:          req.Notes,

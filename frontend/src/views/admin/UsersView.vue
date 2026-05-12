@@ -280,6 +280,12 @@
               >
                 {{ row.pricing_discount_label }}
               </span>
+              <span
+                v-if="row.pricing_discount_scope && row.pricing_discount_scope !== 'all'"
+                class="mt-0.5 block truncate text-xs text-amber-600 dark:text-amber-400"
+              >
+                {{ row.pricing_discount_scope === 'balance' ? '仅余额' : '仅订阅' }}
+              </span>
             </div>
           </template>
 

@@ -21,6 +21,7 @@ type User struct {
 	PricingDiscountFactor float64 `json:"pricing_discount_factor,omitempty"`
 	PricingDiscountLabel  string  `json:"pricing_discount_label,omitempty"`
 	PricingDiscountSource string  `json:"pricing_discount_source,omitempty"`
+	PricingDiscountScope  string  `json:"pricing_discount_scope,omitempty"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
@@ -546,6 +547,7 @@ type PromoCode struct {
 	BonusAmount float64    `json:"bonus_amount"`
 	DiscountFactor float64 `json:"discount_factor,omitempty"`
 	DiscountLabel  string  `json:"discount_label,omitempty"`
+	DiscountScope  string  `json:"discount_scope,omitempty"`
 	MaxUses     int        `json:"max_uses"`
 	UsedCount   int        `json:"used_count"`
 	Status      string     `json:"status"`

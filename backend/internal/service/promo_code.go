@@ -11,6 +11,7 @@ type PromoCode struct {
 	BonusAmount float64
 	DiscountFactor float64
 	DiscountLabel  string
+	DiscountScope  string
 	MaxUses     int
 	UsedCount   int
 	Status      string
@@ -61,6 +62,7 @@ type CreatePromoCodeInput struct {
 	BonusAmount float64
 	DiscountFactor float64
 	DiscountLabel  string
+	DiscountScope  string
 	MaxUses     int
 	ExpiresAt   *time.Time
 	Notes       string
@@ -72,6 +74,7 @@ type UpdatePromoCodeInput struct {
 	BonusAmount *float64
 	DiscountFactor *float64
 	DiscountLabel  *string
+	DiscountScope  *string
 	MaxUses     *int
 	Status      *string
 	ExpiresAt   *time.Time
