@@ -26,7 +26,7 @@ type EmailOAuthIdentityInput struct {
 }
 
 func (s *AuthService) LoginOrRegisterVerifiedEmailOAuth(ctx context.Context, input EmailOAuthIdentityInput) (*TokenPair, *User, error) {
-	return s.loginOrRegisterVerifiedEmailOAuth(ctx, input, "", "")
+	return s.loginOrRegisterVerifiedEmailOAuth(ctx, input, "", "", "")
 }
 
 func (s *AuthService) LoginOrRegisterVerifiedEmailOAuthWithInvitation(
@@ -34,8 +34,9 @@ func (s *AuthService) LoginOrRegisterVerifiedEmailOAuthWithInvitation(
 	input EmailOAuthIdentityInput,
 	invitationCode string,
 	affiliateCode string,
+	signupIP string,
 ) (*TokenPair, *User, error) {
-	return s.loginOrRegisterVerifiedEmailOAuth(ctx, input, invitationCode, affiliateCode)
+	return s.loginOrRegisterVerifiedEmailOAuth(ctx, input, invitationCode, affiliateCode, signupIP)
 }
 
 func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
@@ -43,6 +44,7 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	input EmailOAuthIdentityInput,
 	invitationCode string,
 	affiliateCode string,
+	signupIP string,
 ) (*TokenPair, *User, error) {
 	if s == nil || s.userRepo == nil || s.entClient == nil {
 		return nil, nil, ErrServiceUnavailable
@@ -92,7 +94,7 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 		user, err = s.userRepo.GetByEmail(ctx, email)
 		if err != nil {
 			if errors.Is(err, ErrUserNotFound) {
-				user, err = s.createEmailOAuthUser(ctx, email, input.Username, providerType, invitationCode, affiliateCode)
+				user, err = s.createEmailOAuthUser(ctx, email, input.Username, providerType, invitationCode, affiliateCode, signupIP)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -141,9 +143,12 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	return tokenPair, user, nil
 }
 
-func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, affiliateCode string) (*User, error) {
+func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, affiliateCode, signupIP string) (*User, error) {
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return nil, ErrRegDisabled
+	}
+	if err := s.ensureRegistrationIPAllowed(ctx, signupIP); err != nil {
+		return nil, err
 	}
 	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
 	if err != nil {
@@ -168,6 +173,7 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 	}
 	user := &User{
 		Email:        email,
+		SignupIP:     strings.TrimSpace(signupIP),
 		Username:     strings.TrimSpace(username),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
@@ -184,6 +190,9 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 				return nil, ErrServiceUnavailable
 			}
 			return existing, nil
+		}
+		if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+			return nil, ErrRegistrationIPAlreadyUsed
 		}
 		return nil, ErrServiceUnavailable
 	}

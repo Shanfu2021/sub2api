@@ -111,6 +111,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		RegistrationEnabled:                    settings.RegistrationEnabled,
 		EmailVerifyEnabled:                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:       settings.RegistrationEmailSuffixWhitelist,
+		RegistrationIPLimitEnabled:             settings.RegistrationIPLimitEnabled,
 		PromoCodeEnabled:                       settings.PromoCodeEnabled,
 		PasswordResetEnabled:                   settings.PasswordResetEnabled,
 		FrontendURL:                            settings.FrontendURL,
@@ -347,6 +348,7 @@ type UpdateSettingsRequest struct {
 	RegistrationEnabled              bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled               bool                         `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist []string                     `json:"registration_email_suffix_whitelist"`
+	RegistrationIPLimitEnabled       *bool                        `json:"registration_ip_limit_enabled"`
 	PromoCodeEnabled                 bool                         `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
 	FrontendURL                      string                       `json:"frontend_url"`
@@ -1273,10 +1275,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	registrationIPLimitEnabled := previousSettings.RegistrationIPLimitEnabled
+	if req.RegistrationIPLimitEnabled != nil {
+		registrationIPLimitEnabled = *req.RegistrationIPLimitEnabled
+	}
+
 	settings := &service.SystemSettings{
 		RegistrationEnabled:              req.RegistrationEnabled,
 		EmailVerifyEnabled:               req.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
+		RegistrationIPLimitEnabled:       registrationIPLimitEnabled,
 		PromoCodeEnabled:                 req.PromoCodeEnabled,
 		PasswordResetEnabled:             req.PasswordResetEnabled,
 		FrontendURL:                      req.FrontendURL,
@@ -1868,6 +1876,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")
+	}
+	if before.RegistrationIPLimitEnabled != after.RegistrationIPLimitEnabled {
+		changed = append(changed, "registration_ip_limit_enabled")
 	}
 	if before.PromoCodeEnabled != after.PromoCodeEnabled {
 		changed = append(changed, "promo_code_enabled")

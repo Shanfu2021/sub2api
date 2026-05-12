@@ -644,6 +644,7 @@ func TestAPIContracts(t *testing.T) {
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
+					"registration_ip_limit_enabled": false,
 					"promo_code_enabled": true,
 					"password_reset_enabled": false,
 						"frontend_url": "",
@@ -889,6 +890,7 @@ func TestAPIContracts(t *testing.T) {
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
+					"registration_ip_limit_enabled": false,
 					"promo_code_enabled": true,
 					"password_reset_enabled": false,
 					"frontend_url": "",
@@ -1364,6 +1366,10 @@ func (r *stubUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, 
 func (r *stubUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	return false, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) ExistsBySignupIP(context.Context, string) (bool, error) {
 	return false, errors.New("not implemented")
 }
 

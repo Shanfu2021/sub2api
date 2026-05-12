@@ -5230,6 +5230,9 @@ export default {
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
         emailVerificationHint: 'Require email verification for new registrations',
+        ipLimit: 'One Registration Per IP',
+        ipLimitHint: 'When enabled, each IP address can register only one account. Disabled by default.',
+        ipLimitWarning: 'Before enabling, make sure your reverse proxy or Cloudflare real client IP is configured correctly, otherwise registrations may be blocked incorrectly.',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
           "Only email addresses from the specified domains can register (for example, {'@'}qq.com, {'@'}gmail.com)",

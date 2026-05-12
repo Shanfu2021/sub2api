@@ -39,6 +39,7 @@ var (
 	ErrEmailVerifyRequired     = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
 	ErrEmailSuffixNotAllowed   = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
 	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrRegistrationIPAlreadyUsed = infraerrors.Conflict("REGISTRATION_IP_ALREADY_USED", "this IP has already registered an account")
 	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
 	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
@@ -126,11 +127,11 @@ func (s *AuthService) EntClient() *dbent.Client {
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
+	return s.RegisterWithVerification(ctx, email, password, "", "", "", "", "")
 }
 
 // RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和邀请返利码），返回token和用户。
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode string) (string, *User, error) {
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode, signupIP string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -190,6 +191,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if existsEmail {
 		return "", nil, ErrEmailExists
 	}
+	if err := s.ensureRegistrationIPAllowed(ctx, signupIP); err != nil {
+		return "", nil, err
+	}
 
 	// 密码哈希
 	hashedPassword, err := s.HashPassword(password)
@@ -208,6 +212,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 创建用户
 	user := &User{
 		Email:        email,
+		SignupIP:     strings.TrimSpace(signupIP),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -220,6 +225,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
 		if errors.Is(err, ErrEmailExists) {
 			return "", nil, ErrEmailExists
+		}
+		if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+			return "", nil, ErrRegistrationIPAlreadyUsed
 		}
 		logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
 		return "", nil, ErrServiceUnavailable
@@ -265,6 +273,22 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	return token, user, nil
+}
+
+func (s *AuthService) ensureRegistrationIPAllowed(ctx context.Context, signupIP string) error {
+	signupIP = strings.TrimSpace(signupIP)
+	if signupIP == "" || s == nil || s.settingService == nil || !s.settingService.IsRegistrationIPLimitEnabled(ctx) {
+		return nil
+	}
+	exists, err := s.userRepo.ExistsBySignupIP(ctx, signupIP)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking signup ip exists: %v", err)
+		return ErrServiceUnavailable
+	}
+	if exists {
+		return ErrRegistrationIPAlreadyUsed
+	}
+	return nil
 }
 
 // SendVerifyCodeResult 发送验证码返回结果
@@ -468,7 +492,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 //
 // 注意：该函数用于 LinuxDo OAuth 登录场景（不同于上游账号的 OAuth，例如 Claude/OpenAI/Gemini）。
 // 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
-func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
+func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username, signupIP string) (string, *User, error) {
 	email = strings.TrimSpace(email)
 	if email == "" || len(email) > 255 {
 		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
@@ -488,6 +512,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 			// OAuth 首次登录视为注册（fail-close：settingService 未配置时不允许注册）
 			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 				return "", nil, ErrRegDisabled
+			}
+			if err := s.ensureRegistrationIPAllowed(ctx, signupIP); err != nil {
+				return "", nil, err
 			}
 
 			randomPassword, err := randomHexString(32)
@@ -509,6 +536,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 
 			newUser := &User{
 				Email:        email,
+				SignupIP:     strings.TrimSpace(signupIP),
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
@@ -527,6 +555,8 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 						logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
 						return "", nil, ErrServiceUnavailable
 					}
+				} else if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+					return "", nil, ErrRegistrationIPAlreadyUsed
 				} else {
 					logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 					return "", nil, ErrServiceUnavailable
@@ -564,7 +594,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 // 与 LoginOrRegisterOAuth 功能相同，但返回 TokenPair 而非单个 token。
 // invitationCode 仅在邀请码注册模式下新用户注册时使用；已有账号登录时忽略。
 // affiliateCode 用于邀请返利绑定，仅在新用户注册时使用。
-func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode string) (*TokenPair, *User, error) {
+func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username, invitationCode, affiliateCode, signupIP string) (*TokenPair, *User, error) {
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, nil, errors.New("refresh token cache not configured")
@@ -589,6 +619,9 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			// OAuth 首次登录视为注册
 			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 				return nil, nil, ErrRegDisabled
+			}
+			if err := s.ensureRegistrationIPAllowed(ctx, signupIP); err != nil {
+				return nil, nil, err
 			}
 
 			// 检查是否需要邀请码
@@ -626,6 +659,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 
 			newUser := &User{
 				Email:        email,
+				SignupIP:     strings.TrimSpace(signupIP),
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
@@ -652,6 +686,8 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
 							return nil, nil, ErrServiceUnavailable
 						}
+					} else if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+						return nil, nil, ErrRegistrationIPAlreadyUsed
 					} else {
 						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 						return nil, nil, ErrServiceUnavailable
@@ -677,6 +713,8 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
 							return nil, nil, ErrServiceUnavailable
 						}
+					} else if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+						return nil, nil, ErrRegistrationIPAlreadyUsed
 					} else {
 						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 						return nil, nil, ErrServiceUnavailable

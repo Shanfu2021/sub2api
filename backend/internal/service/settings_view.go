@@ -15,6 +15,7 @@ type SystemSettings struct {
 	RegistrationEnabled              bool
 	EmailVerifyEnabled               bool
 	RegistrationEmailSuffixWhitelist []string
+	RegistrationIPLimitEnabled       bool
 	PromoCodeEnabled                 bool
 	PasswordResetEnabled             bool
 	FrontendURL                      string
@@ -208,6 +209,7 @@ type PublicSettings struct {
 	EmailVerifyEnabled               bool
 	ForceEmailOnThirdPartySignup     bool
 	RegistrationEmailSuffixWhitelist []string
+	RegistrationIPLimitEnabled       bool
 	PromoCodeEnabled                 bool
 	PasswordResetEnabled             bool
 	InvitationCodeEnabled            bool

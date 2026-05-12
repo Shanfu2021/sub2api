@@ -5393,6 +5393,9 @@ export default {
         enableRegistrationHint: '允许新用户注册',
         emailVerification: '邮箱验证',
         emailVerificationHint: '新用户注册时需要验证邮箱',
+        ipLimit: '单 IP 限制注册',
+        ipLimitHint: '开启后，同一个 IP 仅允许注册 1 个账号，默认关闭',
+        ipLimitWarning: '启用前请确认已正确配置反向代理或 Cloudflare 的真实客户端 IP，否则可能误伤整站注册。',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
           "仅允许使用指定域名的邮箱注册账号（例如 {'@'}qq.com, {'@'}gmail.com）",

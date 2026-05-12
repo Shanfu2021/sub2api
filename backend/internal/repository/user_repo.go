@@ -66,16 +66,17 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		}
 	}
 
-	releaseEmailLock, err := lockRepositoryScopedKeys(
+	releaseLocks, err := lockRepositoryScopedKeys(
 		txCtx,
 		txClient,
 		txAwareSQLExecutor(txCtx, r.sql, r.client),
 		normalizedEmailUniquenessLockKey(userIn.Email),
+		normalizedSignupIPUniquenessLockKey(userIn.SignupIP),
 	)
 	if err != nil {
 		return err
 	}
-	defer releaseEmailLock()
+	defer releaseLocks()
 
 	if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, 0, userIn.Email); err != nil {
 		return err
@@ -97,6 +98,20 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
+	}
+
+	if normalizedSignupIP := normalizeSignupIPValue(userIn.SignupIP); normalizedSignupIP != "" {
+		if _, err := txAwareSQLExecutor(txCtx, r.sql, r.client).ExecContext(
+			txCtx,
+			"UPDATE users SET signup_ip = $1, updated_at = NOW() WHERE id = $2",
+			normalizedSignupIP,
+			created.ID,
+		); err != nil {
+			if isUniqueConstraintViolation(err) {
+				return service.ErrRegistrationIPAlreadyUsed
+			}
+			return err
+		}
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
@@ -192,16 +207,17 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		}
 	}
 
-	releaseEmailLock, err := lockRepositoryScopedKeys(
+	releaseLocks, err := lockRepositoryScopedKeys(
 		txCtx,
 		txClient,
 		txAwareSQLExecutor(txCtx, r.sql, r.client),
 		normalizedEmailUniquenessLockKey(userIn.Email),
+		normalizedSignupIPUniquenessLockKey(userIn.SignupIP),
 	)
 	if err != nil {
 		return err
 	}
-	defer releaseEmailLock()
+	defer releaseLocks()
 
 	if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, userIn.ID, userIn.Email); err != nil {
 		return err
@@ -782,6 +798,32 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	return r.client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)
 }
 
+func (r *userRepository) ExistsBySignupIP(ctx context.Context, signupIP string) (bool, error) {
+	signupIP = normalizeSignupIPValue(signupIP)
+	if signupIP == "" {
+		return false, nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return false, fmt.Errorf("sql executor is not configured")
+	}
+	var exists bool
+	if err := scanSingleRow(ctx, exec, `
+SELECT EXISTS (
+	SELECT 1
+	FROM users
+	WHERE signup_ip = $1
+	  AND deleted_at IS NULL
+)
+`, []any{signupIP}, &exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return exists, nil
+}
+
 func ensureNormalizedEmailAvailableWithClient(ctx context.Context, client *dbent.Client, userID int64, email string) error {
 	client = clientFromContext(ctx, client)
 	if client == nil {
@@ -821,12 +863,24 @@ func normalizeEmailLookupValue(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+func normalizeSignupIPValue(signupIP string) string {
+	return strings.TrimSpace(signupIP)
+}
+
 func normalizedEmailUniquenessLockKey(email string) string {
 	normalized := normalizeEmailLookupValue(email)
 	if normalized == "" {
 		return ""
 	}
 	return "users:normalized-email:" + normalized
+}
+
+func normalizedSignupIPUniquenessLockKey(signupIP string) string {
+	normalized := normalizeSignupIPValue(signupIP)
+	if normalized == "" {
+		return ""
+	}
+	return "users:signup-ip:" + normalized
 }
 
 func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {

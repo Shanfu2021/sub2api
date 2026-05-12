@@ -19,6 +19,8 @@ type userRepoStub struct {
 	deleteErr     error
 	exists        bool
 	existsErr     error
+	existsBySignupIP    bool
+	existsBySignupIPErr error
 	nextID        int64
 	created       []*User
 	updated       []*User
@@ -139,6 +141,13 @@ func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, e
 		return false, s.existsErr
 	}
 	return s.exists, nil
+}
+
+func (s *userRepoStub) ExistsBySignupIP(context.Context, string) (bool, error) {
+	if s.existsBySignupIPErr != nil {
+		return false, s.existsBySignupIPErr
+	}
+	return s.existsBySignupIP, nil
 }
 
 func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {

@@ -199,6 +199,10 @@ func (r *contentModerationTestUserRepo) ExistsByEmail(ctx context.Context, email
 	panic("unexpected ExistsByEmail call")
 }
 
+func (r *contentModerationTestUserRepo) ExistsBySignupIP(context.Context, string) (bool, error) {
+	panic("unexpected ExistsBySignupIP call")
+}
+
 func (r *contentModerationTestUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }

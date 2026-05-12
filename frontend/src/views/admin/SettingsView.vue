@@ -1396,6 +1396,24 @@
                 <Toggle v-model="form.email_verify_enabled" />
               </div>
 
+              <!-- Registration IP Limit -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.registration.ipLimit")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.registration.ipLimitHint") }}
+                  </p>
+                  <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    {{ t("admin.settings.registration.ipLimitWarning") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.registration_ip_limit_enabled" />
+              </div>
+
               <!-- Email Suffix Whitelist -->
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <label class="font-medium text-gray-900 dark:text-white">{{
@@ -6450,6 +6468,7 @@ type SettingsForm = Omit<
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
+  registration_ip_limit_enabled: false,
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],
   promo_code_enabled: true,
@@ -7558,6 +7577,7 @@ async function saveSettings() {
 
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
+      registration_ip_limit_enabled: form.registration_ip_limit_enabled,
       email_verify_enabled: form.email_verify_enabled,
       registration_email_suffix_whitelist:
         registrationEmailSuffixWhitelistTags.value.map(

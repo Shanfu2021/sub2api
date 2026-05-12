@@ -205,6 +205,10 @@ func (s *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, e
 	panic("unexpected ExistsByEmail call")
 }
 
+func (s *stubUserRepo) ExistsBySignupIP(context.Context, string) (bool, error) {
+	panic("unexpected ExistsBySignupIP call")
+}
+
 func (s *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }

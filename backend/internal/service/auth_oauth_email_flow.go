@@ -158,6 +158,9 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
+		if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+			return nil, nil, ErrRegistrationIPAlreadyUsed
+		}
 		return nil, nil, ErrServiceUnavailable
 	}
 
@@ -177,6 +180,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	password string,
 	invitationCode string,
 	signupSource string,
+	signupIP string,
 ) (*TokenPair, *User, error) {
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
@@ -212,6 +216,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if existsEmail {
 		return nil, nil, ErrEmailExists
 	}
+	if err := s.ensureRegistrationIPAllowed(ctx, signupIP); err != nil {
+		return nil, nil, err
+	}
 
 	hashedPassword, err := s.HashPassword(password)
 	if err != nil {
@@ -226,6 +233,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	}
 	user := &User{
 		Email:        email,
+		SignupIP:     strings.TrimSpace(signupIP),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,

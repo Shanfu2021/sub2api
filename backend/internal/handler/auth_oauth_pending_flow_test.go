@@ -2842,6 +2842,10 @@ func (r *oauthPendingFlowUserRepo) ExistsByEmail(ctx context.Context, email stri
 	return count > 0, err
 }
 
+func (r *oauthPendingFlowUserRepo) ExistsBySignupIP(context.Context, string) (bool, error) {
+	return false, nil
+}
+
 func (r *oauthPendingFlowUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }

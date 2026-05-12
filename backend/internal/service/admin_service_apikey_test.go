@@ -74,6 +74,9 @@ func (s *userRepoStubForGroupUpdate) BatchAddConcurrency(context.Context, []int6
 func (s *userRepoStubForGroupUpdate) ExistsByEmail(context.Context, string) (bool, error) {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) ExistsBySignupIP(context.Context, string) (bool, error) {
+	panic("unexpected")
+}
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected")
 }
