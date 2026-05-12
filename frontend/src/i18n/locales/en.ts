@@ -1003,7 +1003,7 @@ export default {
     transferFailed: 'Failed to transfer affiliate quota',
     stats: {
       rebateRate: 'My Rebate Rate',
-      rebateRateHint: 'What you earn each time an invitee recharges',
+      rebateRateHint: 'Your rebate rate on the invitee’s first 3 balance top-up orders',
       invitedUsers: 'Invited Users',
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
@@ -1031,9 +1031,9 @@ export default {
     tips: {
       title: 'How It Works',
       line1: 'Share your affiliate code or invite link with new users.',
-      line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
-      line3: 'Transfer rebate quota to balance at any time.',
-      line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
+      line2: 'Only the invitee’s first 3 balance credit events generate rebate, and you receive {rate} of the face value as rebate quota.',
+      line3: 'Direct balance top-ups and balance-card / redeem-code exchanges qualify; subscriptions do not. There is no time limit or amount cap.',
+      line4: 'Transfer rebate quota to balance at any time; if a freeze period is enabled, newly earned rebates unlock later.'
     }
   },
 
@@ -1762,6 +1762,9 @@ export default {
       updating: 'Updating...',
       form: {
         rpmLimit: 'Requests Per Minute (RPM)',
+        promoCodeLabel: 'Bound Promo Code',
+        promoCodePlaceholder: 'Leave empty to clear the current promo binding',
+        promoCodeHint: 'Enter an existing promo code to replace this user’s current discount source. Future discount updates to that promo code will sync automatically.',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
       },
@@ -5160,11 +5163,11 @@ export default {
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
-          description: 'Existing users invite new ones; the inviter earns a percentage rebate on the invitee’s recharges. Disabled by default.',
+          description: 'Existing users invite new ones; only the invitee’s first 3 balance credit events generate rebate. Direct balance top-ups and balance-card exchanges qualify, while subscriptions do not. Disabled by default.',
           enabled: 'Enable Affiliate',
           enabledHint: 'When off, the affiliate menu is hidden, the aff parameter is ignored at signup, and new recharges generate no rebate. Existing rebate balances can still be transferred.',
           rebateRate: 'Global Rebate Rate',
-          rebateRateHint: 'Default percentage given back to the inviter on recharges (0-100, e.g. 10 = 10%).',
+          rebateRateHint: 'Default percentage given back to the inviter on the invitee’s first 3 balance credit events (0-100, e.g. 10 = 10%).',
           freezeHours: 'Rebate Freeze Period (hours)',
           freezeHoursDesc: 'New rebates will be frozen for this period before becoming available for withdrawal. 0 = no freeze.',
           durationDays: 'Rebate Duration (days)',
@@ -5456,7 +5459,7 @@ export default {
         contactInfoHint: 'Customer support contact info, displayed on redeem page, profile, etc.',
         contactQrCodeUrl: 'QQ Group QR Code URL',
         contactQrCodeUrlPlaceholder: 'https://your-site.com/images/qq-group.png',
-        contactQrCodeUrlHint: 'When set, the home page and redeem page will display this group QR code image.',
+        contactQrCodeUrlHint: 'When set, the home page will display this group QR code image.',
         docUrl: 'Documentation URL',
         docUrlPlaceholder: 'https://docs.example.com',
         docUrlHint: 'Link to your documentation site. Leave empty to hide the documentation link.',

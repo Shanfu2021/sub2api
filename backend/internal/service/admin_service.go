@@ -136,6 +136,7 @@ type UpdateUserInput struct {
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	PromoCode     *string  // nil 表示不修改；"" 表示清空；非空表示按优惠码重新绑定
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -760,6 +761,19 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, err
 	}
 
+	promoBindingChanged := false
+	if input.PromoCode != nil {
+		if err := s.syncUserPromoCodeBinding(ctx, user.ID, *input.PromoCode); err != nil {
+			return nil, err
+		}
+		promoBindingChanged = true
+		if refreshedUser, reloadErr := s.userRepo.GetByID(ctx, user.ID); reloadErr == nil {
+			user = refreshedUser
+		} else {
+			return nil, reloadErr
+		}
+	}
+
 	// 同步用户专属分组倍率
 	if input.GroupRates != nil && s.userGroupRateRepo != nil {
 		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input.GroupRates); err != nil {
@@ -770,7 +784,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// 不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit {
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || promoBindingChanged {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -797,6 +811,70 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+func (s *adminServiceImpl) syncUserPromoCodeBinding(ctx context.Context, userID int64, rawCode string) error {
+	if s == nil || s.entClient == nil || userID <= 0 {
+		return nil
+	}
+
+	code := strings.TrimSpace(rawCode)
+	if code == "" {
+		_, err := s.entClient.ExecContext(ctx, `
+DELETE FROM user_promo_discounts
+WHERE user_id = $1
+`, userID)
+		if err != nil {
+			return fmt.Errorf("clear user promo discount: %w", err)
+		}
+		return nil
+	}
+
+	rows, err := s.entClient.QueryContext(ctx, `
+SELECT id,
+       COALESCE(discount_factor::double precision, 1.0),
+       COALESCE(discount_label, '')
+FROM promo_codes
+WHERE LOWER(code) = LOWER($1)
+LIMIT 1
+`, code)
+	if err != nil {
+		return fmt.Errorf("load promo code: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var (
+		promoCodeID    int64
+		discountFactor float64
+		discountLabel  string
+	)
+	if rows.Next() {
+		if err := rows.Scan(&promoCodeID, &discountFactor, &discountLabel); err != nil {
+			return fmt.Errorf("scan promo code: %w", err)
+		}
+	} else {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("query promo code: %w", err)
+		}
+		return ErrPromoCodeNotFound
+	}
+
+	discountFactor = NormalizePricingDiscountFactorForRepo(discountFactor)
+	_, err = s.entClient.ExecContext(ctx, `
+INSERT INTO user_promo_discounts (user_id, promo_code_id, discount_factor, discount_label, created_at, updated_at)
+VALUES ($1, $2, $3, NULLIF($4, ''), NOW(), NOW())
+ON CONFLICT (user_id)
+DO UPDATE SET
+  promo_code_id = EXCLUDED.promo_code_id,
+  discount_factor = EXCLUDED.discount_factor,
+  discount_label = EXCLUDED.discount_label,
+  updated_at = NOW()
+`, userID, promoCodeID, discountFactor, strings.TrimSpace(discountLabel))
+	if err != nil {
+		return fmt.Errorf("upsert user promo discount binding: %w", err)
+	}
+
+	return nil
 }
 
 func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {

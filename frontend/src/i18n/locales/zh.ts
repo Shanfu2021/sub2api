@@ -1007,7 +1007,7 @@ export default {
     transferFailed: '转入余额失败',
     stats: {
       rebateRate: '我的返利比例',
-      rebateRateHint: '被邀请用户每次充值后你可获得的返利比例',
+      rebateRateHint: '被邀请用户前 3 次余额加款中，你可获得的返利比例',
       invitedUsers: '邀请人数',
       availableQuota: '可转返利额度',
       frozenQuota: '冻结中',
@@ -1035,9 +1035,9 @@ export default {
     tips: {
       title: '使用说明',
       line1: '将邀请码或邀请链接分享给新用户。',
-      line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
-      line3: '返利额度可随时转入账户余额。',
-      line4: '新产生的返利需要经过冻结期后才能提现。'
+      line2: '仅被邀请用户前 3 次余额加款会返利，你可获得充值面额的 {rate} 返利额度。',
+      line3: '在线余额充值与余额卡/兑换码兑换都参与返利；订阅购买不参与，返利无时间限制、无金额上限。',
+      line4: '返利额度可随时转入账户余额；如开启冻结期，新产生的返利需等待解冻。'
     }
   },
 
@@ -1862,6 +1862,9 @@ export default {
         concurrencyLabel: '并发数',
         statusLabel: '状态',
         selectStatus: '选择状态',
+        promoCodeLabel: '绑定优惠码',
+        promoCodePlaceholder: '留空表示清空当前优惠绑定',
+        promoCodeHint: '填写已创建的优惠码，可手动替换用户当前折扣来源；后续该优惠码折扣调整时，此用户会自动同步',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
@@ -5323,11 +5326,11 @@ export default {
         },
         affiliate: {
           title: '邀请返利',
-          description: '老用户邀请新用户注册，新用户充值后老用户按比例获得返利额度。默认关闭。',
+          description: '老用户邀请新用户注册；仅被邀请用户前 3 次余额加款会按比例返利，在线余额充值与余额卡兑换参与，订阅不参与。默认关闭。',
           enabled: '启用邀请返利',
           enabledHint: '关闭后用户菜单中的邀请页面入口隐藏、注册时忽略邀请码、新充值不再产生返利。已有返利额度仍可转入余额。',
           rebateRate: '全局返利比例',
-          rebateRateHint: '充值后返给邀请人的默认比例（0-100%，例如填写 10 表示返利 10%）。',
+          rebateRateHint: '被邀请用户前 3 次余额加款返给邀请人的默认比例（0-100%，例如填写 10 表示返利 10%）。',
           freezeHours: '返利冻结期（小时）',
           freezeHoursDesc: '新产生的返利将在冻结期内无法提现。0 = 不冻结。',
           durationDays: '返利有效期（天）',
@@ -5614,7 +5617,7 @@ export default {
         contactInfoHint: '填写客服联系方式，将展示在兑换页面、个人资料等位置',
         contactQrCodeUrl: 'QQ群二维码 URL',
         contactQrCodeUrlPlaceholder: 'https://your-site.com/images/qq-group.png',
-        contactQrCodeUrlHint: '填写群二维码图片地址后，首页和兑换页会展示二维码。',
+        contactQrCodeUrlHint: '填写群二维码图片地址后，首页会展示二维码。',
         docUrl: '文档链接',
         docUrlHint: '文档网站的链接。留空则隐藏文档链接。',
         docUrlPlaceholder: 'https://docs.example.com',

@@ -1,10 +1,10 @@
 <template>
   <AppLayout>
     <div class="mx-auto max-w-7xl space-y-5">
-      <div class="grid gap-3 lg:grid-cols-[1.25fr_1fr]">
+      <div class="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div
-            class="rounded-3xl bg-gradient-to-br from-primary-500 via-primary-500 to-primary-600 p-5 text-white shadow-lg shadow-primary-500/20"
+            class="rounded-3xl bg-gradient-to-br from-primary-500 via-primary-500 to-primary-600 p-4 text-white shadow-lg shadow-primary-500/20"
           >
             <div class="flex items-center justify-between">
               <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
@@ -12,12 +12,12 @@
                 <Icon name="creditCard" size="md" class="text-white" />
               </span>
             </div>
-            <p class="mt-4 text-3xl font-bold">$ {{ user?.balance?.toFixed(2) || '0.00' }}</p>
-            <p class="mt-2 text-xs text-primary-100">余额实时更新，可直接用于接口调用</p>
+            <p class="mt-3 text-3xl font-bold">$ {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+            <p class="mt-1 text-xs text-primary-100">余额实时更新，可直接用于接口调用</p>
           </div>
 
           <div
-            class="rounded-3xl border border-sky-200 bg-white p-5 shadow-sm dark:border-sky-900/40 dark:bg-dark-900"
+            class="rounded-3xl border border-sky-200 bg-white p-4 shadow-sm dark:border-sky-900/40 dark:bg-dark-900"
           >
             <div class="flex items-center justify-between">
               <p class="text-sm font-medium text-gray-500 dark:text-dark-400">{{ t('redeem.concurrency') }}</p>
@@ -25,14 +25,14 @@
                 <Icon name="bolt" size="md" class="text-sky-600 dark:text-sky-300" />
               </span>
             </div>
-            <p class="mt-4 text-3xl font-bold text-gray-900 dark:text-white">
+            <p class="mt-3 text-3xl font-bold text-gray-900 dark:text-white">
               {{ user?.concurrency || 0 }}
             </p>
-            <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">当前账号可同时处理的请求数量</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">当前账号可同时处理的请求数量</p>
           </div>
 
           <div
-            class="rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm dark:border-emerald-900/40 dark:bg-dark-900"
+            class="rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-dark-900"
           >
             <div class="flex items-center justify-between">
               <p class="text-sm font-medium text-gray-500 dark:text-dark-400">{{ t('redeem.needToBuyTitle') }}</p>
@@ -40,12 +40,12 @@
                 <Icon name="shoppingBag" size="md" class="text-emerald-600 dark:text-emerald-300" />
               </span>
             </div>
-            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-white">余额卡 / 订阅卡</p>
-            <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">支持链动小铺购买后回到本页兑换</p>
+            <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">余额卡 / 订阅卡</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">支持链动小铺购买后回到本页兑换</p>
           </div>
 
           <div
-            class="rounded-3xl border border-amber-200 bg-white p-5 shadow-sm dark:border-amber-900/40 dark:bg-dark-900"
+            class="rounded-3xl border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-900/40 dark:bg-dark-900"
           >
             <div class="flex items-center justify-between">
               <p class="text-sm font-medium text-gray-500 dark:text-dark-400">联系与帮助</p>
@@ -53,16 +53,10 @@
                 <Icon name="users" size="md" class="text-amber-600 dark:text-amber-300" />
               </span>
             </div>
-            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-white">
+            <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">
               {{ contactInfo || 'QQ群：825526434' }}
             </p>
-            <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">兑换异常或购买问题可先联系群内处理</p>
-            <img
-              v-if="contactQrCodeUrl"
-              :src="contactQrCodeUrl"
-              alt="QQ群二维码"
-              class="mt-4 h-24 w-24 rounded-2xl border border-amber-100 object-cover shadow-sm dark:border-amber-900/40"
-            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">兑换异常或购买问题可先联系群内处理</p>
           </div>
         </div>
 
@@ -73,9 +67,9 @@
                 <Icon name="gift" size="md" class="text-primary-600 dark:text-primary-300" />
               </span>
               <div>
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">兑换 / 优惠码</h2>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">兑换码</h2>
                 <p class="text-sm text-gray-500 dark:text-dark-400">
-                  一个输入框即可，先按兑换码识别，识别不到再自动尝试优惠码
+                  输入兑换码即可，系统会自动识别可兑换内容
                 </p>
               </div>
             </div>
@@ -85,7 +79,7 @@
             <form @submit.prevent="handleSmartSubmit" class="space-y-4">
               <div>
                 <label for="smart-code" class="input-label">
-                  兑换码或优惠码
+                  兑换码
                 </label>
                 <div class="mt-1 flex flex-col gap-3 sm:flex-row">
                   <div class="relative flex-1">
@@ -134,7 +128,6 @@
                 </div>
                 <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-dark-400">
                   <span>{{ t('redeem.redeemCodeHint') }}</span>
-                  <span>{{ t('redeem.promoCodeHint') }}</span>
                 </div>
               </div>
 
@@ -596,7 +589,6 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
-const contactQrCodeUrl = ref('')
 const purchaseUrl = ref('')
 const purchaseEnabled = ref(false)
 const purchaseStoreUrl = 'https://pay.ldxp.cn/shop/CN8U85FN'
@@ -617,7 +609,7 @@ type PurchaseProduct = {
 }
 
 const isSubmittingAny = computed(() => submitting.value || promoSubmitting.value)
-const smartCodePlaceholder = computed(() => '输入兑换码或优惠码')
+const smartCodePlaceholder = computed(() => '请输入兑换码')
 const submitButtonLabel = computed(() => {
   if (submitting.value) return t('redeem.redeeming')
   if (promoSubmitting.value) return t('redeem.applyingPromo')
@@ -836,7 +828,7 @@ const handlePromoOnly = async (code: string) => {
 }
 
 const shouldFallbackToPromo = (error: any) => {
-  const code = error?.code || error?.response?.data?.code
+  const code = String(error?.reason || error?.code || error?.response?.data?.reason || error?.response?.data?.code || '')
   return code === 'REDEEM_CODE_NOT_FOUND'
 }
 
@@ -905,7 +897,6 @@ onMounted(async () => {
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
-    contactQrCodeUrl.value = settings.contact_qr_code_url || ''
     purchaseUrl.value = settings.purchase_subscription_url || purchaseStoreUrl
     purchaseEnabled.value = Boolean(
       settings.purchase_subscription_enabled || settings.payment_enabled || purchaseUrl.value

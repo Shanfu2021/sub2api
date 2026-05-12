@@ -180,6 +180,40 @@ func (r *affiliateRepository) GetAccruedRebateFromInvitee(ctx context.Context, i
 	return total, rows.Close()
 }
 
+func (r *affiliateRepository) CountEligibleBalanceCredits(ctx context.Context, inviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error) {
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+SELECT COUNT(*)::integer
+FROM redeem_codes rc
+WHERE rc.used_by = $1
+  AND rc.type = 'balance'
+  AND rc.value > 0
+  AND rc.status = 'used'
+  AND ($2::text = '' OR rc.code <> $2::text)
+  AND ($3::bigint IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM payment_orders po
+    WHERE po.id = $3::bigint
+      AND po.recharge_code = rc.code
+  ))`,
+		inviteeUserID,
+		strings.TrimSpace(excludeRedeemCode),
+		nullableInt64Arg(excludeOrderID),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("count eligible balance credits: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var total int
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
+			return 0, err
+		}
+	}
+	return total, rows.Close()
+}
+
 func (r *affiliateRepository) ThawFrozenQuota(ctx context.Context, userID int64) (float64, error) {
 	var thawed float64
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {

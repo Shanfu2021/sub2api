@@ -21,6 +21,7 @@ var (
 
 const (
 	affiliateInviteesLimit = 100
+	affiliateEligibleBalanceRechargeLimit = 3
 	// AffiliateCodeMinLength / AffiliateCodeMaxLength bound both system-generated
 	// 12-char codes and admin-customized codes (e.g. "VIP2026").
 	AffiliateCodeMinLength = 4
@@ -100,6 +101,7 @@ type AffiliateRepository interface {
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
 	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
 	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
+	CountEligibleBalanceCredits(ctx context.Context, inviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error)
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
 	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
@@ -312,10 +314,18 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 }
 
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
-	return s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)
+	return s.accrueInviteRebate(ctx, inviteeUserID, baseRechargeAmount, nil, "")
+}
+
+func (s *AffiliateService) AccrueInviteRebateForRedeemCode(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, redeemCode string) (float64, error) {
+	return s.accrueInviteRebate(ctx, inviteeUserID, baseRechargeAmount, nil, redeemCode)
 }
 
 func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, error) {
+	return s.accrueInviteRebate(ctx, inviteeUserID, baseRechargeAmount, sourceOrderID, "")
+}
+
+func (s *AffiliateService) accrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64, excludeRedeemCode string) (float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, nil
 	}
@@ -347,6 +357,13 @@ func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, invit
 				return 0, nil
 			}
 		}
+	}
+	eligibleCount, err := s.repo.CountEligibleBalanceCredits(ctx, inviteeUserID, sourceOrderID, excludeRedeemCode)
+	if err != nil {
+		return 0, err
+	}
+	if eligibleCount >= affiliateEligibleBalanceRechargeLimit {
+		return 0, nil
 	}
 
 	rebateRatePercent := s.resolveRebateRatePercent(ctx, inviterSummary)

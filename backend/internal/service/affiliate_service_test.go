@@ -4,11 +4,143 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type affiliateRepoStub struct {
+	ensureUserAffiliateFn          func(ctx context.Context, userID int64) (*AffiliateSummary, error)
+	countEligibleBalanceCreditsFn  func(ctx context.Context, inviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error)
+	accrueQuotaFn                  func(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
+	getAccruedRebateFromInviteeFn  func(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
+}
+
+func (s *affiliateRepoStub) EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error) {
+	if s.ensureUserAffiliateFn == nil {
+		return nil, errors.New("unexpected EnsureUserAffiliate")
+	}
+	return s.ensureUserAffiliateFn(ctx, userID)
+}
+
+func (s *affiliateRepoStub) GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error) {
+	return nil, errors.New("unexpected GetAffiliateByCode")
+}
+
+func (s *affiliateRepoStub) BindInviter(ctx context.Context, userID, inviterID int64) (bool, error) {
+	return false, errors.New("unexpected BindInviter")
+}
+
+func (s *affiliateRepoStub) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+	if s.accrueQuotaFn == nil {
+		return false, errors.New("unexpected AccrueQuota")
+	}
+	return s.accrueQuotaFn(ctx, inviterID, inviteeUserID, amount, freezeHours, sourceOrderID)
+}
+
+func (s *affiliateRepoStub) GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error) {
+	if s.getAccruedRebateFromInviteeFn == nil {
+		return 0, nil
+	}
+	return s.getAccruedRebateFromInviteeFn(ctx, inviterID, inviteeUserID)
+}
+
+func (s *affiliateRepoStub) CountEligibleBalanceCredits(ctx context.Context, inviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error) {
+	if s.countEligibleBalanceCreditsFn == nil {
+		return 0, nil
+	}
+	return s.countEligibleBalanceCreditsFn(ctx, inviteeUserID, excludeOrderID, excludeRedeemCode)
+}
+
+func (s *affiliateRepoStub) ThawFrozenQuota(ctx context.Context, userID int64) (float64, error) {
+	return 0, errors.New("unexpected ThawFrozenQuota")
+}
+
+func (s *affiliateRepoStub) TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error) {
+	return 0, 0, errors.New("unexpected TransferQuotaToBalance")
+}
+
+func (s *affiliateRepoStub) ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error) {
+	return nil, errors.New("unexpected ListInvitees")
+}
+
+func (s *affiliateRepoStub) UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error {
+	return errors.New("unexpected UpdateUserAffCode")
+}
+
+func (s *affiliateRepoStub) ResetUserAffCode(ctx context.Context, userID int64) (string, error) {
+	return "", errors.New("unexpected ResetUserAffCode")
+}
+
+func (s *affiliateRepoStub) SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error {
+	return errors.New("unexpected SetUserRebateRate")
+}
+
+func (s *affiliateRepoStub) BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error {
+	return errors.New("unexpected BatchSetUserRebateRate")
+}
+
+func (s *affiliateRepoStub) ListUsersWithCustomSettings(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
+	return nil, 0, errors.New("unexpected ListUsersWithCustomSettings")
+}
+
+func (s *affiliateRepoStub) ListAffiliateInviteRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
+	return nil, 0, errors.New("unexpected ListAffiliateInviteRecords")
+}
+
+func (s *affiliateRepoStub) ListAffiliateRebateRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
+	return nil, 0, errors.New("unexpected ListAffiliateRebateRecords")
+}
+
+func (s *affiliateRepoStub) ListAffiliateTransferRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
+	return nil, 0, errors.New("unexpected ListAffiliateTransferRecords")
+}
+
+func (s *affiliateRepoStub) GetAffiliateUserOverview(ctx context.Context, userID int64) (*AffiliateUserOverview, error) {
+	return nil, errors.New("unexpected GetAffiliateUserOverview")
+}
+
+type affiliateSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *affiliateSettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	return nil, ErrSettingNotFound
+}
+
+func (s *affiliateSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	if s == nil || s.values == nil {
+		return "", ErrSettingNotFound
+	}
+	v, ok := s.values[key]
+	if !ok {
+		return "", ErrSettingNotFound
+	}
+	return v, nil
+}
+
+func (s *affiliateSettingRepoStub) Set(ctx context.Context, key, value string) error {
+	return errors.New("unexpected Set")
+}
+
+func (s *affiliateSettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	return nil, errors.New("unexpected GetMultiple")
+}
+
+func (s *affiliateSettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	return errors.New("unexpected SetMultiple")
+}
+
+func (s *affiliateSettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	return nil, errors.New("unexpected GetAll")
+}
+
+func (s *affiliateSettingRepoStub) Delete(ctx context.Context, key string) error {
+	return errors.New("unexpected Delete")
+}
 
 // TestResolveRebateRatePercent_PerUserOverride verifies that per-inviter
 // AffRebateRatePercent overrides the global rate, that NULL falls back to the
@@ -128,4 +260,174 @@ func TestIsValidAffiliateCodeFormat(t *testing.T) {
 			require.Equal(t, tc.want, isValidAffiliateCodeFormat(tc.in))
 		})
 	}
+}
+
+func TestAccrueInviteRebateForOrder_StopsAfterFirstThreeEligibleBalanceOrders(t *testing.T) {
+	t.Parallel()
+
+	var accrueCalled bool
+	orderID := int64(99)
+	inviterID := int64(200)
+	inviteeID := int64(100)
+	now := time.Now()
+	svc := &AffiliateService{
+		repo: &affiliateRepoStub{
+			ensureUserAffiliateFn: func(ctx context.Context, userID int64) (*AffiliateSummary, error) {
+				switch userID {
+				case inviteeID:
+					return &AffiliateSummary{
+						UserID:    inviteeID,
+						InviterID: &inviterID,
+						CreatedAt: now,
+					}, nil
+				case inviterID:
+					return &AffiliateSummary{
+						UserID:    inviterID,
+						CreatedAt: now,
+					}, nil
+				default:
+					return nil, errors.New("unexpected user")
+				}
+			},
+			countEligibleBalanceCreditsFn: func(ctx context.Context, gotInviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error) {
+				require.Equal(t, inviteeID, gotInviteeUserID)
+				require.NotNil(t, excludeOrderID)
+				require.Equal(t, orderID, *excludeOrderID)
+				require.Empty(t, excludeRedeemCode)
+				return 3, nil
+			},
+			accrueQuotaFn: func(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+				accrueCalled = true
+				return true, nil
+			},
+		},
+		settingService: &SettingService{settingRepo: &affiliateSettingRepoStub{
+			values: map[string]string{
+				SettingKeyAffiliateEnabled:    "true",
+				SettingKeyAffiliateRebateRate: "10",
+			},
+		}},
+	}
+
+	rebate, err := svc.AccrueInviteRebateForOrder(context.Background(), inviteeID, 100, &orderID)
+	require.NoError(t, err)
+	require.Zero(t, rebate)
+	require.False(t, accrueCalled)
+}
+
+func TestAccrueInviteRebateForOrder_AppliesWithinFirstThreeEligibleBalanceOrders(t *testing.T) {
+	t.Parallel()
+
+	orderID := int64(77)
+	inviterID := int64(200)
+	inviteeID := int64(100)
+	now := time.Now()
+	var gotAmount float64
+	var gotFreezeHours int
+	var gotSourceOrderID int64
+	svc := &AffiliateService{
+		repo: &affiliateRepoStub{
+			ensureUserAffiliateFn: func(ctx context.Context, userID int64) (*AffiliateSummary, error) {
+				switch userID {
+				case inviteeID:
+					return &AffiliateSummary{
+						UserID:    inviteeID,
+						InviterID: &inviterID,
+						CreatedAt: now,
+					}, nil
+				case inviterID:
+					return &AffiliateSummary{
+						UserID:    inviterID,
+						CreatedAt: now,
+					}, nil
+				default:
+					return nil, errors.New("unexpected user")
+				}
+			},
+			countEligibleBalanceCreditsFn: func(ctx context.Context, gotInviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error) {
+				require.Equal(t, inviteeID, gotInviteeUserID)
+				require.NotNil(t, excludeOrderID)
+				require.Equal(t, orderID, *excludeOrderID)
+				require.Empty(t, excludeRedeemCode)
+				return 2, nil
+			},
+			accrueQuotaFn: func(ctx context.Context, gotInviterID, gotInviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+				require.Equal(t, inviterID, gotInviterID)
+				require.Equal(t, inviteeID, gotInviteeUserID)
+				require.NotNil(t, sourceOrderID)
+				gotSourceOrderID = *sourceOrderID
+				gotAmount = amount
+				gotFreezeHours = freezeHours
+				return true, nil
+			},
+		},
+		settingService: &SettingService{settingRepo: &affiliateSettingRepoStub{
+			values: map[string]string{
+				SettingKeyAffiliateEnabled:          "true",
+				SettingKeyAffiliateRebateRate:       "10",
+				SettingKeyAffiliateRebateFreezeHours: "24",
+			},
+		}},
+	}
+
+	rebate, err := svc.AccrueInviteRebateForOrder(context.Background(), inviteeID, 100, &orderID)
+	require.NoError(t, err)
+	require.InDelta(t, 10, rebate, 1e-9)
+	require.InDelta(t, 10, gotAmount, 1e-9)
+	require.Equal(t, 24, gotFreezeHours)
+	require.Equal(t, orderID, gotSourceOrderID)
+}
+
+func TestAccrueInviteRebateForRedeemCode_AllowsThirdBalanceCredit(t *testing.T) {
+	t.Parallel()
+
+	inviterID := int64(200)
+	inviteeID := int64(100)
+	now := time.Now()
+	var gotAmount float64
+	svc := &AffiliateService{
+		repo: &affiliateRepoStub{
+			ensureUserAffiliateFn: func(ctx context.Context, userID int64) (*AffiliateSummary, error) {
+				switch userID {
+				case inviteeID:
+					return &AffiliateSummary{
+						UserID:    inviteeID,
+						InviterID: &inviterID,
+						CreatedAt: now,
+					}, nil
+				case inviterID:
+					return &AffiliateSummary{
+						UserID:    inviterID,
+						CreatedAt: now,
+					}, nil
+				default:
+					return nil, errors.New("unexpected user")
+				}
+			},
+			countEligibleBalanceCreditsFn: func(ctx context.Context, gotInviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error) {
+				require.Equal(t, inviteeID, gotInviteeUserID)
+				require.Nil(t, excludeOrderID)
+				require.Equal(t, "BALANCE-CARD-003", excludeRedeemCode)
+				return 2, nil
+			},
+			accrueQuotaFn: func(ctx context.Context, gotInviterID, gotInviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+				require.Equal(t, inviterID, gotInviterID)
+				require.Equal(t, inviteeID, gotInviteeUserID)
+				require.Nil(t, sourceOrderID)
+				gotAmount = amount
+				return true, nil
+			},
+		},
+		settingService: &SettingService{settingRepo: &affiliateSettingRepoStub{
+			values: map[string]string{
+				SettingKeyAffiliateEnabled:    "true",
+				SettingKeyAffiliateRebateRate: "10",
+			},
+		}},
+	}
+
+	rebate, err := svc.AccrueInviteRebateForRedeemCode(context.Background(), inviteeID, 100, "BALANCE-CARD-003")
+	require.NoError(t, err)
+	require.InDelta(t, 10, rebate, 1e-9)
+	require.InDelta(t, 10, gotAmount, 1e-9)
 }
