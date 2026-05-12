@@ -233,7 +233,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	}
 	user := &User{
 		Email:        email,
-		SignupIP:     strings.TrimSpace(signupIP),
+		SignupIP:     s.signupIPPersistValue(ctx, signupIP),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -246,6 +246,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
+		}
+		if errors.Is(err, ErrRegistrationIPAlreadyUsed) {
+			return nil, nil, ErrRegistrationIPAlreadyUsed
 		}
 		return nil, nil, ErrServiceUnavailable
 	}

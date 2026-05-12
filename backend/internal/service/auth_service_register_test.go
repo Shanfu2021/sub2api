@@ -415,7 +415,21 @@ func TestAuthService_Register_IPLimitDisabledAllowsSignup(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Len(t, repo.created, 1)
-	require.Equal(t, "203.0.113.10", repo.created[0].SignupIP)
+	require.Empty(t, repo.created[0].SignupIP)
+}
+
+func TestAuthService_Register_IPLimitEnabledPersistsSignupIP(t *testing.T) {
+	repo := &userRepoStub{nextID: 7}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:        "true",
+		SettingKeyRegistrationIPLimitEnabled: "true",
+	}, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "user3@test.com", "password", "", "", "", "", "203.0.113.11")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, "203.0.113.11", repo.created[0].SignupIP)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {

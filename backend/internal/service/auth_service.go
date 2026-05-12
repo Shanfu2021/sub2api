@@ -212,7 +212,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 创建用户
 	user := &User{
 		Email:        email,
-		SignupIP:     strings.TrimSpace(signupIP),
+		SignupIP:     s.signupIPPersistValue(ctx, signupIP),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -289,6 +289,17 @@ func (s *AuthService) ensureRegistrationIPAllowed(ctx context.Context, signupIP 
 		return ErrRegistrationIPAlreadyUsed
 	}
 	return nil
+}
+
+func (s *AuthService) signupIPPersistValue(ctx context.Context, signupIP string) string {
+	signupIP = strings.TrimSpace(signupIP)
+	if signupIP == "" || s == nil || s.settingService == nil {
+		return ""
+	}
+	if !s.settingService.IsRegistrationIPLimitEnabled(ctx) {
+		return ""
+	}
+	return signupIP
 }
 
 // SendVerifyCodeResult 发送验证码返回结果
@@ -536,7 +547,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username,
 
 			newUser := &User{
 				Email:        email,
-				SignupIP:     strings.TrimSpace(signupIP),
+				SignupIP:     s.signupIPPersistValue(ctx, signupIP),
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
@@ -659,7 +670,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 
 			newUser := &User{
 				Email:        email,
-				SignupIP:     strings.TrimSpace(signupIP),
+				SignupIP:     s.signupIPPersistValue(ctx, signupIP),
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,

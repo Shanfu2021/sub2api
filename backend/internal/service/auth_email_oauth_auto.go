@@ -173,7 +173,7 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 	}
 	user := &User{
 		Email:        email,
-		SignupIP:     strings.TrimSpace(signupIP),
+		SignupIP:     s.signupIPPersistValue(ctx, signupIP),
 		Username:     strings.TrimSpace(username),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
