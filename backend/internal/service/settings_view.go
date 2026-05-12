@@ -249,6 +249,7 @@ type PublicSettings struct {
 	OIDCOAuthProviderName    string
 	GitHubOAuthEnabled       bool
 	GoogleOAuthEnabled       bool
+	PortalMode               string
 	Version                  string
 
 	BalanceLowNotifyEnabled     bool

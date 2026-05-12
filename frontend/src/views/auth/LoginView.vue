@@ -69,7 +69,7 @@
           <div class="mt-1 flex items-center justify-between">
             <span></span>
             <router-link
-              v-if="passwordResetEnabled && !backendModeEnabled"
+              v-if="passwordResetEnabled && !backendModeEnabled && !appStore.enterprisePortalEnabled"
               to="/forgot-password"
               class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
             >
@@ -168,7 +168,7 @@
     </div>
 
     <!-- Footer -->
-    <template v-if="!backendModeEnabled" #footer>
+    <template v-if="!backendModeEnabled && !appStore.enterprisePortalEnabled" #footer>
       <p class="text-gray-500 dark:text-dark-400">
         {{ t('auth.dontHaveAccount') }}
         <router-link

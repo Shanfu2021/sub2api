@@ -24,11 +24,11 @@
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
         <!-- Announcement Bell -->
-        <AnnouncementBell v-if="user" />
+        <AnnouncementBell v-if="user && !appStore.enterprisePortalEnabled" />
 
         <!-- Docs Link -->
         <a
-          v-if="docUrl"
+          v-if="docUrl && !appStore.enterprisePortalEnabled"
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"

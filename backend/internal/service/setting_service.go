@@ -737,6 +737,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		OIDCOAuthProviderName:            oidcProviderName,
 		GitHubOAuthEnabled:               gitHubEnabled,
 		GoogleOAuthEnabled:               googleEnabled,
+		PortalMode:                       s.portalMode(),
 		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
 		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
 		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
@@ -940,6 +941,7 @@ type PublicSettingsInjectionPayload struct {
 	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
 	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
 	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+	PortalMode                       string                   `json:"portal_mode"`
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
@@ -1006,6 +1008,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
+		PortalMode:                       settings.PortalMode,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          s.version,
@@ -1020,6 +1023,13 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
+}
+
+func (s *SettingService) portalMode() string {
+	if s == nil || s.cfg == nil {
+		return config.PortalModeStandard
+	}
+	return config.NormalizePortalMode(s.cfg.PortalMode)
 }
 
 func DefaultWeChatConnectScopesForMode(mode string) string {

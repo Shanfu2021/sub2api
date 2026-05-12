@@ -230,6 +230,7 @@ export interface PublicSettings {
   oidc_oauth_provider_name: string
   github_oauth_enabled: boolean
   google_oauth_enabled: boolean
+  portal_mode?: 'standard' | 'enterprise' | string
   backend_mode_enabled: boolean
   version: string
   balance_low_notify_enabled: boolean

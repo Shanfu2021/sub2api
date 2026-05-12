@@ -50,6 +50,8 @@ export const useAppStore = defineStore('app', () => {
 
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
+  const portalMode = computed(() => cachedPublicSettings.value?.portal_mode || 'standard')
+  const enterprisePortalEnabled = computed(() => portalMode.value === 'enterprise')
 
   const loadingCount = ref<number>(0)
 
@@ -358,6 +360,7 @@ export const useAppStore = defineStore('app', () => {
           oidc_oauth_provider_name: 'OIDC',
           github_oauth_enabled: false,
           google_oauth_enabled: false,
+          portal_mode: 'standard',
           backend_mode_enabled: false,
           version: siteVersion.value,
           balance_low_notify_enabled: false,
@@ -446,6 +449,8 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    portalMode,
+    enterprisePortalEnabled,
 
     // Actions
     toggleSidebar,

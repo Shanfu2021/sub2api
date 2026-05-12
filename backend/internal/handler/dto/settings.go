@@ -273,6 +273,7 @@ type PublicSettings struct {
 	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
 	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
 	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+	PortalMode                       string                   `json:"portal_mode"`
 	SoraClientEnabled                bool                     `json:"sora_client_enabled"`
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`

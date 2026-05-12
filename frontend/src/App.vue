@@ -44,7 +44,11 @@ watch(
 
 // Watch for authentication state and manage subscription data + announcements
 function onVisibilityChange() {
-  if (document.visibilityState === 'visible' && authStore.isAuthenticated) {
+  if (
+    document.visibilityState === 'visible' &&
+    authStore.isAuthenticated &&
+    !appStore.enterprisePortalEnabled
+  ) {
     announcementStore.fetchAnnouncements()
   }
 }
@@ -58,6 +62,11 @@ watch(
         console.error('Failed to preload subscriptions:', error)
       })
       subscriptionStore.startPolling()
+
+      if (appStore.enterprisePortalEnabled) {
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+        return
+      }
 
       // Announcements: new login vs page refresh restore
       if (oldValue === false) {
@@ -82,7 +91,7 @@ watch(
 
 // Route change trigger (throttled by store)
 router.afterEach(() => {
-  if (authStore.isAuthenticated) {
+  if (authStore.isAuthenticated && !appStore.enterprisePortalEnabled) {
     announcementStore.fetchAnnouncements()
   }
 })
@@ -115,5 +124,5 @@ onMounted(async () => {
   <NavigationProgress />
   <RouterView />
   <Toast />
-  <AnnouncementPopup />
+  <AnnouncementPopup v-if="!appStore.enterprisePortalEnabled" />
 </template>

@@ -807,6 +807,23 @@ router.beforeEach((to, _from, next) => {
     }
   }
 
+  if (appStore.enterprisePortalEnabled && !authStore.isAdmin) {
+    const enterpriseAllowedPrefixes = [
+      '/dashboard',
+      '/keys',
+      '/subscriptions',
+      '/profile',
+      '/monitor',
+    ]
+    const isAllowedEnterpriseRoute = enterpriseAllowedPrefixes.some(
+      (path) => to.path === path || to.path.startsWith(`${path}/`)
+    )
+    if (!isAllowedEnterpriseRoute) {
+      next('/subscriptions')
+      return
+    }
+  }
+
   // Backend mode: admin gets full access, non-admin blocked
   if (appStore.backendModeEnabled) {
     if (authStore.isAuthenticated && authStore.isAdmin) {
