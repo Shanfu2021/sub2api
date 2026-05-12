@@ -120,3 +120,36 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 }
+
+func TestSettingHandler_GetPublicSettings_ExposesPortalModeAndRegistrationIPLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyRegistrationIPLimitEnabled: "true",
+		},
+	}
+	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{
+		PortalMode: config.PortalModeEnterprise,
+	}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			PortalMode                 string `json:"portal_mode"`
+			RegistrationIPLimitEnabled bool   `json:"registration_ip_limit_enabled"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, config.PortalModeEnterprise, resp.Data.PortalMode)
+	require.True(t, resp.Data.RegistrationIPLimitEnabled)
+}
