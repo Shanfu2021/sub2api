@@ -107,7 +107,17 @@ cmd_download() {
 
   rm -rf "${out_dir}/run-${run_id}"
   mkdir -p "${out_dir}/run-${run_id}"
-  unzip -oq "${zip_path}" -d "${out_dir}/run-${run_id}"
+  python3 - "${zip_path}" "${out_dir}/run-${run_id}" <<'PY'
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1])
+out_dir = Path(sys.argv[2])
+out_dir.mkdir(parents=True, exist_ok=True)
+with zipfile.ZipFile(zip_path) as zf:
+    zf.extractall(out_dir)
+PY
   printf '%s\n' "${out_dir}/run-${run_id}"
 }
 

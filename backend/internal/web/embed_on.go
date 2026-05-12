@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -97,14 +98,25 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
-		// For index.html or SPA routes, serve with injected settings
-		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+		// For index.html, serve with injected settings.
+		if cleanPath == "index.html" {
 			s.serveIndexHTML(c)
+			return
+		}
+
+		// Serve directory index files such as /docs/ -> /docs/index.html.
+		if s.tryServeDirectoryIndex(c, cleanPath) {
 			return
 		}
 
 		// Try local override first
 		if s.tryServeOverride(c, cleanPath) {
+			return
+		}
+
+		// For non-existent SPA routes, serve injected index.html.
+		if !s.fileExists(cleanPath) {
+			s.serveIndexHTML(c)
 			return
 		}
 
@@ -123,20 +135,80 @@ func (s *FrontendServer) fileExists(path string) bool {
 	return true
 }
 
-// tryServeOverride checks if a local override file exists and serves it.
-// Files in overrideDir take precedence over embedded files.
-func (s *FrontendServer) tryServeOverride(c *gin.Context, cleanPath string) bool {
+func (s *FrontendServer) tryServeDirectoryIndex(c *gin.Context, cleanPath string) bool {
+	trimmed := strings.TrimSuffix(cleanPath, "/")
+	if trimmed == "" {
+		return false
+	}
+
+	indexPath := trimmed + "/index.html"
+	if !s.overrideExists(indexPath) && !s.fileExists(indexPath) {
+		return false
+	}
+
+	if !strings.HasSuffix(c.Request.URL.Path, "/") {
+		c.Redirect(http.StatusMovedPermanently, c.Request.URL.Path+"/")
+		c.Abort()
+		return true
+	}
+
+	if s.tryServeOverride(c, indexPath) {
+		return true
+	}
+
+	s.serveEmbeddedStaticFile(c, indexPath)
+	return true
+}
+
+func (s *FrontendServer) overrideExists(cleanPath string) bool {
 	if s.overrideDir == "" {
 		return false
 	}
-	filePath := filepath.Join(s.overrideDir, filepath.Clean("/"+cleanPath))
+	filePath := s.overridePath(cleanPath)
 	info, err := os.Stat(filePath)
-	if err != nil || info.IsDir() {
+	return err == nil && !info.IsDir()
+}
+
+func (s *FrontendServer) overridePath(cleanPath string) string {
+	trimmed := strings.TrimPrefix(filepath.Clean("/"+cleanPath), "/")
+	return filepath.Join(s.overrideDir, trimmed)
+}
+
+// tryServeOverride checks if a local override file exists and serves it.
+// Files in overrideDir take precedence over embedded files.
+func (s *FrontendServer) tryServeOverride(c *gin.Context, cleanPath string) bool {
+	if !s.overrideExists(cleanPath) {
 		return false
 	}
+	filePath := s.overridePath(cleanPath)
 	c.File(filePath)
 	c.Abort()
 	return true
+}
+
+func (s *FrontendServer) serveEmbeddedStaticFile(c *gin.Context, cleanPath string) {
+	file, err := s.distFS.Open(cleanPath)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		c.Abort()
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		c.Abort()
+		return
+	}
+
+	contentType := mime.TypeByExtension(filepath.Ext(cleanPath))
+	if contentType == "" {
+		contentType = http.DetectContentType(content)
+	}
+
+	c.Data(http.StatusOK, contentType, content)
+	c.Abort()
 }
 
 func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
