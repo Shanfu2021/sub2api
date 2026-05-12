@@ -10,7 +10,8 @@ usage() {
 Usage:
   tools/release_helper.sh push <branch>
   tools/release_helper.sh dispatch <branch>
-  tools/release_helper.sh latest-run <branch>
+  tools/release_helper.sh latest-run <branch> [head-sha]
+  tools/release_helper.sh wait-run <run-id> [timeout-seconds]
   tools/release_helper.sh download <run-id> [output-dir]
   tools/release_helper.sh deploy <binary-path>
 
@@ -45,6 +46,66 @@ gh_api() {
     "$@"
 }
 
+workflow_name() {
+  printf '%s\n' "Build Self-Hosted Binary"
+}
+
+get_branch_sha() {
+  local branch="${1:-}"
+  gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/branches/${branch}" \
+    | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["commit"]["sha"])'
+}
+
+find_success_run_id() {
+  local branch="${1:-}"
+  local head_sha="${2:-}"
+  local wf_name
+  wf_name="$(workflow_name)"
+  gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs?branch=${branch}&per_page=30" \
+    | python3 - "$head_sha" "$wf_name" <<'PY'
+import json
+import sys
+
+head_sha = (sys.argv[1] or "").strip()
+workflow_name = sys.argv[2]
+runs = json.load(sys.stdin).get("workflow_runs", [])
+for run in runs:
+    if run.get("name") != workflow_name:
+        continue
+    if run.get("status") != "completed" or run.get("conclusion") != "success":
+        continue
+    if head_sha and run.get("head_sha") != head_sha:
+        continue
+    print(run["id"])
+    break
+PY
+}
+
+find_dispatched_run_id() {
+  local branch="${1:-}"
+  local head_sha="${2:-}"
+  local wf_name
+  wf_name="$(workflow_name)"
+  gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs?branch=${branch}&per_page=30" \
+    | python3 - "$head_sha" "$wf_name" <<'PY'
+import json
+import sys
+
+head_sha = (sys.argv[1] or "").strip()
+workflow_name = sys.argv[2]
+runs = json.load(sys.stdin).get("workflow_runs", [])
+for run in runs:
+    if run.get("name") != workflow_name:
+        continue
+    if run.get("event") != "workflow_dispatch":
+        continue
+    if head_sha and run.get("head_sha") != head_sha:
+        continue
+    print(run["id"])
+    break
+PY
+}
+
 cmd_push() {
   local branch="${1:-}"
   if [[ -z "${branch}" ]]; then
@@ -63,20 +124,76 @@ cmd_dispatch() {
     echo "branch required" >&2
     exit 1
   fi
+  local head_sha
+  head_sha="$(get_branch_sha "${branch}")"
   gh_api \
     -X POST \
     "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/build-selfhosted-binary.yml/dispatches" \
     -d "{\"ref\":\"${branch}\",\"inputs\":{\"ref\":\"${branch}\"}}"
+
+  local run_id=""
+  local i
+  for i in {1..30}; do
+    run_id="$(find_dispatched_run_id "${branch}" "${head_sha}")"
+    if [[ -n "${run_id}" ]]; then
+      printf '%s\n' "${run_id}"
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "dispatched workflow but failed to resolve run id for branch ${branch} sha ${head_sha}" >&2
+  exit 1
 }
 
 cmd_latest_run() {
   local branch="${1:-}"
+  local head_sha="${2:-}"
   if [[ -z "${branch}" ]]; then
     echo "branch required" >&2
     exit 1
   fi
-  gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs?branch=${branch}&per_page=20" \
-    | python3 -c 'import json,sys; runs=json.load(sys.stdin).get("workflow_runs",[]); run=next((r for r in runs if r.get("name")=="Build Self-Hosted Binary" and r.get("status")=="completed" and r.get("conclusion")=="success"), None); print("" if run is None else run["id"])'
+  find_success_run_id "${branch}" "${head_sha}"
+}
+
+cmd_wait_run() {
+  local run_id="${1:-}"
+  local timeout_sec="${2:-1800}"
+  local started_at
+  started_at="$(date +%s)"
+  if [[ -z "${run_id}" ]]; then
+    echo "run id required" >&2
+    exit 1
+  fi
+
+  while true; do
+    local payload
+    payload="$(gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs/${run_id}")"
+    local parsed
+    parsed="$(printf '%s' "${payload}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""), d.get("conclusion") or "", d.get("html_url",""), d.get("head_sha",""))')"
+    local status conclusion html_url head_sha
+    read -r status conclusion html_url head_sha <<<"${parsed}"
+
+    echo "run ${run_id}: status=${status} conclusion=${conclusion:-null} sha=${head_sha}" >&2
+
+    if [[ "${status}" == "completed" ]]; then
+      if [[ "${conclusion}" == "success" ]]; then
+        printf '%s\n' "${run_id}"
+        return 0
+      fi
+      echo "run ${run_id} failed: ${html_url}" >&2
+      return 1
+    fi
+
+    local now
+    now="$(date +%s)"
+    if (( now - started_at >= timeout_sec )); then
+      echo "timed out waiting for run ${run_id}: ${html_url}" >&2
+      return 1
+    fi
+
+    sleep 10
+  done
 }
 
 cmd_download() {
@@ -109,6 +226,7 @@ cmd_download() {
   mkdir -p "${out_dir}/run-${run_id}"
   python3 - "${zip_path}" "${out_dir}/run-${run_id}" <<'PY'
 import sys
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -117,6 +235,11 @@ out_dir = Path(sys.argv[2])
 out_dir.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(zip_path) as zf:
     zf.extractall(out_dir)
+
+root_binary = out_dir / "sub2api"
+dist_binary = out_dir / "dist" / "sub2api"
+if not root_binary.exists() and dist_binary.exists():
+    shutil.copy2(dist_binary, root_binary)
 PY
   printf '%s\n' "${out_dir}/run-${run_id}"
 }
@@ -131,6 +254,16 @@ cmd_deploy() {
   if [[ -z "${binary_path}" ]]; then
     echo "binary path required" >&2
     exit 1
+  fi
+  if [[ -d "${binary_path}" ]]; then
+    if [[ -f "${binary_path}/sub2api" ]]; then
+      binary_path="${binary_path}/sub2api"
+    elif [[ -f "${binary_path}/dist/sub2api" ]]; then
+      binary_path="${binary_path}/dist/sub2api"
+    else
+      echo "binary directory does not contain sub2api: ${binary_path}" >&2
+      exit 1
+    fi
   fi
   if [[ ! -f "${binary_path}" ]]; then
     echo "binary not found: ${binary_path}" >&2
@@ -150,6 +283,7 @@ main() {
     push) cmd_push "$@" ;;
     dispatch) cmd_dispatch "$@" ;;
     latest-run) cmd_latest_run "$@" ;;
+    wait-run) cmd_wait_run "$@" ;;
     download) cmd_download "$@" ;;
     deploy) cmd_deploy "$@" ;;
     ""|-h|--help|help) usage ;;

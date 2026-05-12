@@ -84,7 +84,21 @@ cd /root/shushanfu/sub2api
 tools/release_helper.sh latest-run shanfu-prod
 ```
 
-### 5.4 下载指定 run 的产物
+如果要锁定某一次新提交，避免误拿上一条成功构建，可传 `head sha`：
+
+```bash
+cd /root/shushanfu/sub2api
+tools/release_helper.sh latest-run shanfu-prod <commit-sha>
+```
+
+### 5.4 等待指定 run 完成
+
+```bash
+cd /root/shushanfu/sub2api
+tools/release_helper.sh wait-run <run-id>
+```
+
+### 5.5 下载指定 run 的产物
 
 ```bash
 cd /root/shushanfu/sub2api
@@ -97,31 +111,53 @@ tools/release_helper.sh download <run-id>
 /root/shushanfu/sub2api/.tmp/release-artifacts/run-<run-id>/
 ```
 
-其中二进制通常是：
+下载脚本会自动把二进制整理到根目录，优先使用：
 
 ```bash
 /root/shushanfu/sub2api/.tmp/release-artifacts/run-<run-id>/sub2api
 ```
 
-### 5.5 部署二进制
+如果 GitHub artifact 仍保留原始目录结构，则也可能存在：
+
+```bash
+/root/shushanfu/sub2api/.tmp/release-artifacts/run-<run-id>/dist/sub2api
+```
+
+### 5.6 部署二进制
 
 ```bash
 cd /root/shushanfu/sub2api
 tools/release_helper.sh deploy /root/shushanfu/sub2api/.tmp/release-artifacts/run-<run-id>/sub2api
 ```
 
-### 5.6 一键部署某分支最近一次成功构建
+`deploy` 现在也支持直接传下载目录：
+
+```bash
+cd /root/shushanfu/sub2api
+tools/release_helper.sh deploy /root/shushanfu/sub2api/.tmp/release-artifacts/run-<run-id>/
+```
+
+### 5.7 一键部署某分支最近一次成功构建
 
 ```bash
 cd /root/shushanfu/sub2api
 tools/deploy_latest.sh shanfu-prod
 ```
 
+如果要只部署某一个 commit 对应的成功构建：
+
+```bash
+cd /root/shushanfu/sub2api
+tools/deploy_latest.sh shanfu-prod <commit-sha>
+```
+
 说明：
 
 - `deploy_latest.sh` 只负责“取最近一次成功完成的 Build Self-Hosted Binary 构建并部署”。
 - 它不会自动 push，也不会自动 dispatch。
-- 所以完整动作通常仍是：`push` -> `dispatch` -> 等构建成功 -> `deploy_latest.sh`。
+- 如果不传 `commit-sha`，它会取该分支最近一次成功构建。
+- 所以完整动作通常仍是：`push` -> `dispatch` -> `wait-run` -> `deploy_latest.sh`。
+- 如果要确保部署的是刚推上去的新提交，推荐显式传 `commit-sha`。
 
 ## 6. 文档与前端入口约定
 
@@ -178,10 +214,15 @@ tools/deploy_latest.sh shanfu-prod
   - `push`
   - `dispatch`
   - `latest-run`
+  - `wait-run`
   - `download`
   - `deploy`
 - `tools/deploy_latest.sh`
   - 拉取指定分支最新成功构建并部署
+- `tools/render_docs.mjs`
+  - 临时文档渲染工具：把 `/opt/sub2api/data/docs-source.md` 渲染成 `/opt/sub2api/data/public/docs/index.html`
+  - 当前不是正式发布链的一部分
+  - 线上主文档仍以 `frontend/public/docs/index.html` 为准
 
 ## 9. 建议的日常工作流
 
@@ -197,13 +238,15 @@ git commit -m "..."
 # 4. 推送到生产分支
 tools/release_helper.sh push shanfu-prod
 
-# 5. 触发构建
-tools/release_helper.sh dispatch shanfu-prod
+# 5. 触发构建并拿到 run id
+RUN_ID=$(tools/release_helper.sh dispatch shanfu-prod)
 
 # 6. 等 GitHub Actions 成功
+tools/release_helper.sh wait-run "$RUN_ID"
 
-# 7. 部署最近一次成功构建
-tools/deploy_latest.sh shanfu-prod
+# 7. 部署当前 HEAD 对应构建
+HEAD_SHA=$(git rev-parse HEAD)
+tools/deploy_latest.sh shanfu-prod "$HEAD_SHA"
 ```
 
 ## 10. 本次相关修改
