@@ -14,6 +14,7 @@ func firstNonEmpty(values ...string) string {
 type SystemSettings struct {
 	RegistrationEnabled              bool
 	EmailVerifyEnabled               bool
+	GmailVerificationBypassEnabled   bool
 	RegistrationEmailSuffixWhitelist []string
 	RegistrationIPLimitEnabled       bool
 	PromoCodeEnabled                 bool
@@ -207,6 +208,7 @@ type DefaultSubscriptionSetting struct {
 type PublicSettings struct {
 	RegistrationEnabled              bool
 	EmailVerifyEnabled               bool
+	GmailVerificationBypassEnabled   bool
 	ForceEmailOnThirdPartySignup     bool
 	RegistrationEmailSuffixWhitelist []string
 	RegistrationIPLimitEnabled       bool

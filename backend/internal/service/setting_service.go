@@ -579,6 +579,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	keys := []string{
 		SettingKeyRegistrationEnabled,
 		SettingKeyEmailVerifyEnabled,
+		SettingKeyGmailVerificationBypassEnabled,
 		SettingKeyForceEmailOnThirdPartySignup,
 		SettingKeyRegistrationEmailSuffixWhitelist,
 		SettingKeyRegistrationIPLimitEnabled,
@@ -697,6 +698,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
+		GmailVerificationBypassEnabled:   settings[SettingKeyGmailVerificationBypassEnabled] == "true",
 		ForceEmailOnThirdPartySignup:     settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 		RegistrationEmailSuffixWhitelist: registrationEmailSuffixWhitelist,
 		RegistrationIPLimitEnabled:       settings[SettingKeyRegistrationIPLimitEnabled] == "true",
@@ -904,6 +906,7 @@ func (s *SettingService) SetVersion(version string) {
 type PublicSettingsInjectionPayload struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	GmailVerificationBypassEnabled   bool                     `json:"gmail_verification_bypass_enabled"`
 	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationIPLimitEnabled       bool                     `json:"registration_ip_limit_enabled"`
 	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
@@ -971,6 +974,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	return &PublicSettingsInjectionPayload{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
+		GmailVerificationBypassEnabled:   settings.GmailVerificationBypassEnabled,
 		RegistrationEmailSuffixWhitelist: settings.RegistrationEmailSuffixWhitelist,
 		RegistrationIPLimitEnabled:       settings.RegistrationIPLimitEnabled,
 		PromoCodeEnabled:                 settings.PromoCodeEnabled,
@@ -1444,6 +1448,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 注册设置
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
+	updates[SettingKeyGmailVerificationBypassEnabled] = strconv.FormatBool(settings.GmailVerificationBypassEnabled)
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
@@ -2022,6 +2027,15 @@ func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsGmailVerificationBypassEnabled 检查是否允许 Gmail/Googlemail 注册免邮箱验证码
+func (s *SettingService) IsGmailVerificationBypassEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyGmailVerificationBypassEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
 // IsRegistrationIPLimitEnabled 检查是否启用注册 IP 唯一限制
 func (s *SettingService) IsRegistrationIPLimitEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationIPLimitEnabled)
@@ -2355,6 +2369,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	defaults := map[string]string{
 		SettingKeyRegistrationEnabled:                      "true",
 		SettingKeyEmailVerifyEnabled:                       "false",
+		SettingKeyGmailVerificationBypassEnabled:           "false",
 		SettingKeyRegistrationEmailSuffixWhitelist:         "[]",
 		SettingKeyRegistrationIPLimitEnabled:               "false",
 		SettingKeyPromoCodeEnabled:                         "true", // 默认启用优惠码功能
@@ -2519,6 +2534,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
+		GmailVerificationBypassEnabled:   settings[SettingKeyGmailVerificationBypassEnabled] == "true",
 		RegistrationEmailSuffixWhitelist: ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
 		RegistrationIPLimitEnabled:       settings[SettingKeyRegistrationIPLimitEnabled] == "true",
 		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用

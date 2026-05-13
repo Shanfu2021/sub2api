@@ -192,6 +192,7 @@ export interface LoginAgreementDocument {
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
+  gmail_verification_bypass_enabled: boolean
   force_email_on_third_party_signup: boolean
   registration_email_suffix_whitelist: string[]
   promo_code_enabled: boolean

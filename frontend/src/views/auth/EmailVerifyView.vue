@@ -31,7 +31,7 @@
       <!-- Verification Form -->
       <form v-else @submit.prevent="handleVerify" class="space-y-5">
         <!-- Verification Code Input -->
-        <div>
+        <div v-if="requiresVerificationCode">
           <label for="code" class="input-label text-center">
             {{ t('auth.verificationCode') }}
           </label>
@@ -53,7 +53,7 @@
 
         <!-- Code Status -->
         <div
-          v-if="codeSent"
+          v-if="requiresVerificationCode && codeSent"
           class="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800/50 dark:bg-green-900/20"
         >
           <div class="flex items-start gap-3">
@@ -67,7 +67,7 @@
         </div>
 
         <!-- Turnstile Widget for Resend -->
-        <div v-if="turnstileEnabled && turnstileSiteKey && showResendTurnstile">
+        <div v-if="requiresVerificationCode && turnstileEnabled && turnstileSiteKey && showResendTurnstile">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"
@@ -78,7 +78,11 @@
         </div>
 
         <!-- Submit Button -->
-        <button type="submit" :disabled="isLoading || !verifyCode" class="btn btn-primary w-full">
+        <button
+          type="submit"
+          :disabled="isLoading || (requiresVerificationCode && !verifyCode)"
+          class="btn btn-primary w-full"
+        >
           <svg
             v-if="isLoading"
             class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
@@ -104,7 +108,7 @@
         </button>
 
         <!-- Resend Code -->
-        <div class="text-center">
+        <div v-if="requiresVerificationCode" class="text-center">
           <button
             v-if="countdown > 0"
             type="button"
@@ -163,6 +167,7 @@ import {
 } from '@/api/auth'
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
+import { shouldSkipRegistrationEmailVerification } from '@/utils/emailVerificationPolicy'
 import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
@@ -229,6 +234,7 @@ const hasRegisterData = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('天才程序员补给站')
+const gmailVerificationBypassEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 
 // Turnstile for resend
@@ -244,6 +250,15 @@ const errors = ref({
 const validationToastMessage = computed(
   () => errors.value.code || errors.value.turnstile || ''
 )
+
+const skipEmailVerification = computed(() =>
+  shouldSkipRegistrationEmailVerification(
+    email.value,
+    gmailVerificationBypassEnabled.value,
+  ),
+)
+
+const requiresVerificationCode = computed(() => !skipEmailVerification.value)
 
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {
@@ -294,6 +309,7 @@ onMounted(async () => {
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || '天才程序员补给站'
+    gmailVerificationBypassEnabled.value = settings.gmail_verification_bypass_enabled === true
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
@@ -302,7 +318,7 @@ onMounted(async () => {
   }
 
   // Auto-send verification code if we have valid data
-  if (hasRegisterData.value) {
+  if (hasRegisterData.value && !skipEmailVerification.value) {
     await sendCode()
   }
 })
@@ -451,6 +467,10 @@ async function sendCode(): Promise<void> {
 // ==================== Handlers ====================
 
 async function handleResendCode(): Promise<void> {
+  if (!requiresVerificationCode.value) {
+    return
+  }
+
   // If turnstile is enabled and we haven't shown it yet, show it
   if (turnstileEnabled.value && !showResendTurnstile.value) {
     showResendTurnstile.value = true
@@ -468,6 +488,10 @@ async function handleResendCode(): Promise<void> {
 
 function validateForm(): boolean {
   errors.value.code = ''
+
+  if (!requiresVerificationCode.value) {
+    return true
+  }
 
   if (!verifyCode.value.trim()) {
     errors.value.code = t('auth.codeRequired')
@@ -504,7 +528,9 @@ async function handleVerify(): Promise<void> {
         {
           email: email.value,
           password: password.value,
-          verify_code: verifyCode.value.trim(),
+          ...(requiresVerificationCode.value
+            ? { verify_code: verifyCode.value.trim() }
+            : {}),
           invitation_code: invitationCode.value || undefined,
           ...oauthAffiliatePayload(affCode.value || loadAffiliateReferralCode()),
           adopt_display_name: pendingAdoptionDecision.value?.adoptDisplayName,
@@ -529,7 +555,9 @@ async function handleVerify(): Promise<void> {
       await authStore.register({
         email: email.value,
         password: password.value,
-        verify_code: verifyCode.value.trim(),
+        ...(requiresVerificationCode.value
+          ? { verify_code: verifyCode.value.trim() }
+          : {}),
         turnstile_token: initialTurnstileToken.value || undefined,
         promo_code: promoCode.value || undefined,
         invitation_code: invitationCode.value || undefined,

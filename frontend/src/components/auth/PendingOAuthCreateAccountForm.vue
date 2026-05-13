@@ -16,7 +16,7 @@
       :placeholder="t('auth.passwordPlaceholder')"
       :disabled="isSubmitting"
     />
-    <div v-if="turnstileEnabled && turnstileSiteKey" class="space-y-2">
+    <div v-if="requiresVerificationCode && turnstileEnabled && turnstileSiteKey" class="space-y-2">
       <TurnstileWidget
         ref="turnstileRef"
         :site-key="turnstileSiteKey"
@@ -25,17 +25,17 @@
         @error="onTurnstileError"
       />
     </div>
-    <div class="flex gap-3">
-    <input
-      v-model="verifyCode"
-      :data-testid="`${testIdPrefix}-create-account-verify-code`"
-      type="text"
+    <div v-if="requiresVerificationCode" class="flex gap-3">
+      <input
+        v-model="verifyCode"
+        :data-testid="`${testIdPrefix}-create-account-verify-code`"
+        type="text"
         inputmode="numeric"
-      maxlength="6"
-      class="input min-w-0 flex-1"
-      placeholder="123456"
-      :disabled="isSubmitting"
-    />
+        maxlength="6"
+        class="input min-w-0 flex-1"
+        placeholder="123456"
+        :disabled="isSubmitting"
+      />
       <button
         :data-testid="`${testIdPrefix}-create-account-send-code`"
         type="button"
@@ -52,10 +52,10 @@
         }}
       </button>
     </div>
-    <p v-if="sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
+    <p v-if="requiresVerificationCode && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
       {{ t('auth.codeSentSuccess') }}
     </p>
-    <p v-else class="text-xs text-gray-500 dark:text-dark-400">
+    <p v-else-if="requiresVerificationCode" class="text-xs text-gray-500 dark:text-dark-400">
       {{ t('auth.verificationCodeHint') }}
     </p>
     <input
@@ -88,11 +88,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
 import { useAppStore } from '@/stores'
+import { shouldSkipRegistrationEmailVerification } from '@/utils/emailVerificationPolicy'
 
 export type PendingOAuthCreateAccountPayload = {
   email: string
@@ -129,6 +130,15 @@ const turnstileEnabled = ref(false)
 const turnstileSiteKey = ref('')
 const turnstileToken = ref('')
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const gmailVerificationBypassEnabled = ref(false)
+
+const requiresVerificationCode = computed(
+  () =>
+    !shouldSkipRegistrationEmailVerification(
+      email.value,
+      gmailVerificationBypassEnabled.value,
+    ),
+)
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
@@ -207,6 +217,10 @@ function onTurnstileError() {
 }
 
 async function handleSendCode() {
+  if (!requiresVerificationCode.value) {
+    return
+  }
+
   const trimmedEmail = email.value.trim()
   if (!trimmedEmail) {
     return
@@ -247,7 +261,7 @@ function handleSubmit() {
   emit('submit', {
     email: trimmedEmail,
     password: password.value,
-    verifyCode: verifyCode.value.trim(),
+    verifyCode: requiresVerificationCode.value ? verifyCode.value.trim() : '',
     invitationCode: invitationCode.value.trim() || undefined
   })
 }
@@ -262,10 +276,12 @@ onMounted(async () => {
     invitationCodeEnabled.value = settings.invitation_code_enabled === true
     turnstileEnabled.value = settings.turnstile_enabled === true
     turnstileSiteKey.value = settings.turnstile_site_key || ''
+    gmailVerificationBypassEnabled.value = settings.gmail_verification_bypass_enabled === true
   } catch {
     invitationCodeEnabled.value = false
     turnstileEnabled.value = false
     turnstileSiteKey.value = ''
+    gmailVerificationBypassEnabled.value = false
   }
 })
 

@@ -27,6 +27,7 @@ type CustomEndpoint struct {
 type SystemSettings struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	GmailVerificationBypassEnabled   bool                     `json:"gmail_verification_bypass_enabled"`
 	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationIPLimitEnabled       bool                     `json:"registration_ip_limit_enabled"`
 	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
@@ -235,6 +236,7 @@ type DefaultSubscriptionSetting struct {
 type PublicSettings struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	GmailVerificationBypassEnabled   bool                     `json:"gmail_verification_bypass_enabled"`
 	ForceEmailOnThirdPartySignup     bool                     `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
 	RegistrationIPLimitEnabled       bool                     `json:"registration_ip_limit_enabled"`

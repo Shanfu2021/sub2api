@@ -110,6 +110,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                    settings.RegistrationEnabled,
 		EmailVerifyEnabled:                     settings.EmailVerifyEnabled,
+		GmailVerificationBypassEnabled:         settings.GmailVerificationBypassEnabled,
 		RegistrationEmailSuffixWhitelist:       settings.RegistrationEmailSuffixWhitelist,
 		RegistrationIPLimitEnabled:             settings.RegistrationIPLimitEnabled,
 		PromoCodeEnabled:                       settings.PromoCodeEnabled,
@@ -347,6 +348,7 @@ type UpdateSettingsRequest struct {
 	// 注册设置
 	RegistrationEnabled              bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled               bool                         `json:"email_verify_enabled"`
+	GmailVerificationBypassEnabled   bool                         `json:"gmail_verification_bypass_enabled"`
 	RegistrationEmailSuffixWhitelist []string                     `json:"registration_email_suffix_whitelist"`
 	RegistrationIPLimitEnabled       *bool                        `json:"registration_ip_limit_enabled"`
 	PromoCodeEnabled                 bool                         `json:"promo_code_enabled"`
@@ -1283,6 +1285,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	settings := &service.SystemSettings{
 		RegistrationEnabled:              req.RegistrationEnabled,
 		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		GmailVerificationBypassEnabled:   req.GmailVerificationBypassEnabled,
 		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
 		RegistrationIPLimitEnabled:       registrationIPLimitEnabled,
 		PromoCodeEnabled:                 req.PromoCodeEnabled,
@@ -1667,6 +1670,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                    updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                     updatedSettings.EmailVerifyEnabled,
+		GmailVerificationBypassEnabled:         updatedSettings.GmailVerificationBypassEnabled,
 		RegistrationEmailSuffixWhitelist:       updatedSettings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                       updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                   updatedSettings.PasswordResetEnabled,
@@ -1873,6 +1877,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
 		changed = append(changed, "email_verify_enabled")
+	}
+	if before.GmailVerificationBypassEnabled != after.GmailVerificationBypassEnabled {
+		changed = append(changed, "gmail_verification_bypass_enabled")
 	}
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")

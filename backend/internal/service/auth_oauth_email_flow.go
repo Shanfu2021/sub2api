@@ -38,6 +38,9 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
 	}
+	if s.shouldSkipRegistrationEmailVerification(ctx, email) {
+		return &SendVerifyCodeResult{}, nil
+	}
 	if s == nil || s.emailService == nil {
 		return nil, ErrServiceUnavailable
 	}
@@ -86,6 +89,9 @@ func (s *AuthService) VerifyOAuthEmailCode(ctx context.Context, email, verifyCod
 
 	if email == "" {
 		return ErrEmailVerifyRequired
+	}
+	if s.shouldSkipRegistrationEmailVerification(ctx, email) {
+		return nil
 	}
 	if verifyCode == "" {
 		return ErrEmailVerifyRequired

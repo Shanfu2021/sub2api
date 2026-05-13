@@ -235,7 +235,7 @@
           {{
             isLoading
               ? t('auth.processing')
-              : emailVerifyEnabled
+              : registrationNeedsEmailVerification
                 ? t('auth.continue')
                 : t('auth.createAccount')
           }}
@@ -317,6 +317,7 @@ import {
   validateInvitationCode
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
+import { shouldSkipRegistrationEmailVerification } from '@/utils/emailVerificationPolicy'
 import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
@@ -348,6 +349,7 @@ const showPassword = ref<boolean>(false)
 // Public settings
 const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
+const gmailVerificationBypassEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
@@ -426,6 +428,17 @@ const showOAuthLogin = computed(
     googleOAuthEnabled.value
 )
 
+const skipEmailVerificationForCurrentEmail = computed(() =>
+  shouldSkipRegistrationEmailVerification(
+    formData.email,
+    gmailVerificationBypassEnabled.value,
+  ),
+)
+
+const registrationNeedsEmailVerification = computed(
+  () => emailVerifyEnabled.value && !skipEmailVerificationForCurrentEmail.value,
+)
+
 const agreementGateActive = computed(
   () => loginAgreementEnabled.value && !agreementAccepted.value
 )
@@ -457,6 +470,7 @@ onMounted(async () => {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled
     emailVerifyEnabled.value = settings.email_verify_enabled
+    gmailVerificationBypassEnabled.value = settings.gmail_verification_bypass_enabled === true
     promoCodeEnabled.value = settings.promo_code_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
@@ -880,7 +894,7 @@ async function handleRegister(): Promise<void> {
     }
 
     // If email verification is enabled, redirect to verification page
-    if (emailVerifyEnabled.value) {
+    if (registrationNeedsEmailVerification.value) {
       // Store registration data in sessionStorage
       sessionStorage.setItem(
         'register_data',

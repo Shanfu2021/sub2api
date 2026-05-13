@@ -260,6 +260,35 @@ func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
 }
 
+func TestAuthService_Register_GmailBypassEnabledSkipsVerifyCode(t *testing.T) {
+	repo := &userRepoStub{nextID: 9}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:            "true",
+		SettingKeyEmailVerifyEnabled:             "true",
+		SettingKeyGmailVerificationBypassEnabled: "true",
+	}, nil)
+
+	token, user, err := service.RegisterWithVerification(context.Background(), "user@gmail.com", "password", "", "", "", "", "")
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+	require.NotNil(t, user)
+	require.Equal(t, "user@gmail.com", user.Email)
+	require.Len(t, repo.created, 1)
+}
+
+func TestAuthService_Register_GmailBypassEnabledDoesNotAffectOtherDomains(t *testing.T) {
+	repo := &userRepoStub{}
+	cache := &emailCacheStub{}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:            "true",
+		SettingKeyEmailVerifyEnabled:             "true",
+		SettingKeyGmailVerificationBypassEnabled: "true",
+	}, cache)
+
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "")
+	require.ErrorIs(t, err, ErrEmailVerifyRequired)
+}
+
 func TestAuthService_Register_EmailVerifyInvalid(t *testing.T) {
 	repo := &userRepoStub{}
 	cache := &emailCacheStub{

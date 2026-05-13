@@ -1396,6 +1396,33 @@
                 <Toggle v-model="form.email_verify_enabled" />
               </div>
 
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    localText("Gmail 免验证码", "Gmail Verification Bypass")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{
+                      localText(
+                        "开启后，gmail.com / googlemail.com 注册时不再要求邮箱验证码；其他邮箱保持原规则。",
+                        "When enabled, gmail.com and googlemail.com registrations skip email verification. Other providers keep the normal rule.",
+                      )
+                    }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      localText(
+                        "仅在已开启邮箱验证时生效，适合 Gmail 到达率不稳定时临时放行。",
+                        "Only applies when email verification is enabled. Useful when Gmail delivery is unreliable.",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.gmail_verification_bypass_enabled" />
+              </div>
+
               <!-- Registration IP Limit -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -6470,6 +6497,7 @@ const form = reactive<SettingsForm>({
   registration_enabled: true,
   registration_ip_limit_enabled: false,
   email_verify_enabled: false,
+  gmail_verification_bypass_enabled: false,
   registration_email_suffix_whitelist: [],
   promo_code_enabled: true,
   invitation_code_enabled: false,
@@ -7579,6 +7607,7 @@ async function saveSettings() {
       registration_enabled: form.registration_enabled,
       registration_ip_limit_enabled: form.registration_ip_limit_enabled,
       email_verify_enabled: form.email_verify_enabled,
+      gmail_verification_bypass_enabled: form.gmail_verification_bypass_enabled,
       registration_email_suffix_whitelist:
         registrationEmailSuffixWhitelistTags.value.map(
           (suffix) => `@${suffix}`,

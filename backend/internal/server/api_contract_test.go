@@ -643,6 +643,7 @@ func TestAPIContracts(t *testing.T) {
 				"data": {
 					"registration_enabled": true,
 					"email_verify_enabled": false,
+					"gmail_verification_bypass_enabled": false,
 					"registration_email_suffix_whitelist": [],
 					"registration_ip_limit_enabled": false,
 					"promo_code_enabled": true,
@@ -889,6 +890,7 @@ func TestAPIContracts(t *testing.T) {
 				"data": {
 					"registration_enabled": true,
 					"email_verify_enabled": false,
+					"gmail_verification_bypass_enabled": false,
 					"registration_email_suffix_whitelist": [],
 					"registration_ip_limit_enabled": false,
 					"promo_code_enabled": true,

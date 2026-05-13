@@ -97,6 +97,7 @@ const (
 	// 注册设置
 	SettingKeyRegistrationEnabled              = "registration_enabled"                // 是否开放注册
 	SettingKeyEmailVerifyEnabled               = "email_verify_enabled"                // 是否开启邮件验证
+	SettingKeyGmailVerificationBypassEnabled   = "gmail_verification_bypass_enabled"   // Gmail/Googlemail 注册是否免邮箱验证码
 	SettingKeyRegistrationEmailSuffixWhitelist = "registration_email_suffix_whitelist" // 注册邮箱后缀白名单（JSON 数组）
 	SettingKeyRegistrationIPLimitEnabled       = "registration_ip_limit_enabled"       // 是否启用注册 IP 唯一限制
 	SettingKeyPromoCodeEnabled                 = "promo_code_enabled"                  // 是否启用优惠码功能

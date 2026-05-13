@@ -165,8 +165,12 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		invitationRedeemCode = redeemCode
 	}
 
+	requiresEmailVerification := s.settingService != nil &&
+		s.settingService.IsEmailVerifyEnabled(ctx) &&
+		!s.shouldSkipRegistrationEmailVerification(ctx, email)
+
 	// 检查是否需要邮件验证
-	if s.settingService != nil && s.settingService.IsEmailVerifyEnabled(ctx) {
+	if requiresEmailVerification {
 		// 如果邮件验证已开启但邮件服务未配置，拒绝注册
 		// 这是一个配置错误，不应该允许绕过验证
 		if s.emailService == nil {
