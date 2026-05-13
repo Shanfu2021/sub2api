@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +16,12 @@ import (
 const (
 	TaskTypeVerifyCode    = "verify_code"
 	TaskTypePasswordReset = "password_reset"
+)
+
+const (
+	emailQueueMaxAttempts     = 3
+	emailQueueAttemptTimeout   = 20 * time.Second
+	emailQueueRetryBackoffBase = 2 * time.Second
 )
 
 // EmailTask 邮件发送任务
@@ -77,25 +86,89 @@ func (s *EmailQueueService) worker(id int) {
 
 // processTask 处理任务
 func (s *EmailQueueService) processTask(workerID int, task EmailTask) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	for attempt := 1; attempt <= emailQueueMaxAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), emailQueueAttemptTimeout)
+		err := s.processTaskAttempt(ctx, task, attempt)
+		cancel()
 
+		if err == nil {
+			if attempt == 1 {
+				logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d sent %s to %s", workerID, task.TaskType, task.Email)
+			} else {
+				logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d sent %s to %s after %d attempts", workerID, task.TaskType, task.Email, attempt)
+			}
+			return
+		}
+
+		if attempt >= emailQueueMaxAttempts || !isRetryableEmailError(err) {
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d failed to send %s to %s: %v", workerID, task.TaskType, task.Email, err)
+			return
+		}
+
+		backoff := time.Duration(attempt) * emailQueueRetryBackoffBase
+		logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d retrying %s to %s in %s after error: %v", workerID, task.TaskType, task.Email, backoff, err)
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-timer.C:
+		case <-s.stopChan:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return
+		}
+	}
+}
+
+func (s *EmailQueueService) processTaskAttempt(ctx context.Context, task EmailTask, attempt int) error {
 	switch task.TaskType {
 	case TaskTypeVerifyCode:
-		if err := s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName); err != nil {
-			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d failed to send verify code to %s: %v", workerID, task.Email, err)
-		} else {
-			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d sent verify code to %s", workerID, task.Email)
+		if attempt == 1 {
+			return s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName)
 		}
+		return s.emailService.ResendLatestVerifyCode(ctx, task.Email, task.SiteName)
 	case TaskTypePasswordReset:
-		if err := s.emailService.SendPasswordResetEmailWithCooldown(ctx, task.Email, task.SiteName, task.ResetURL); err != nil {
-			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d failed to send password reset to %s: %v", workerID, task.Email, err)
-		} else {
-			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d sent password reset to %s", workerID, task.Email)
+		if attempt == 1 {
+			return s.emailService.SendPasswordResetEmailWithCooldown(ctx, task.Email, task.SiteName, task.ResetURL)
 		}
+		return s.emailService.SendPasswordResetEmail(ctx, task.Email, task.SiteName, task.ResetURL)
 	default:
-		logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d unknown task type: %s", workerID, task.TaskType)
+		return fmt.Errorf("unknown task type: %s", task.TaskType)
 	}
+}
+
+func isRetryableEmailError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"timeout",
+		"temporary",
+		"connection reset",
+		"broken pipe",
+		"unexpected eof",
+		"tls dial",
+		"i/o timeout",
+		"421 ",
+		"450 ",
+		"451 ",
+		"452 ",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // EnqueueVerifyCode 将验证码发送任务加入队列

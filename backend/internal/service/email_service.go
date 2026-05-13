@@ -1,17 +1,24 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"log/slog"
 	"math/big"
+	"mime"
+	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -160,28 +167,31 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 const smtpDialTimeout = 10 * time.Second
 const smtpIOTimeout = 20 * time.Second
 
+var (
+	emailHTMLScriptPattern = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	emailHTMLStylePattern  = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	emailHTMLTagPattern    = regexp.MustCompile(`(?is)<[^>]+>`)
+	emailBlankLinePattern  = regexp.MustCompile(`\n{3,}`)
+)
+
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
-	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
-	to = sanitizeEmailHeader(to)
-	subject = sanitizeEmailHeader(subject)
-
-	from := sanitizeEmailHeader(config.From)
-	if config.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", sanitizeEmailHeader(config.FromName), sanitizeEmailHeader(config.From))
+	msg, err := buildSMTPMessage(config, to, subject, body)
+	if err != nil {
+		return fmt.Errorf("build smtp message: %w", err)
 	}
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		from, to, subject, body)
+	from := strings.TrimSpace(sanitizeEmailHeader(config.From))
+	to = strings.TrimSpace(sanitizeEmailHeader(to))
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 
 	if config.UseTLS {
-		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host)
+		return s.sendMailTLS(addr, auth, from, to, msg, config.Host)
 	}
 
-	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
+	return s.sendMailPlain(addr, auth, from, to, msg, config.Host)
 }
 
 // sendMailPlain sends mail without TLS using a dialer with timeout.
@@ -336,6 +346,27 @@ func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName strin
 		return fmt.Errorf("send email: %w", err)
 	}
 
+	return nil
+}
+
+// ResendLatestVerifyCode resends the latest cached verification code without
+// generating a new one. This is used by the async queue for transient SMTP
+// failures so the user still receives the same valid code.
+func (s *EmailService) ResendLatestVerifyCode(ctx context.Context, email, siteName string) error {
+	data, err := s.cache.GetVerificationCode(ctx, email)
+	if err != nil {
+		return fmt.Errorf("load verify code: %w", err)
+	}
+	if data == nil || strings.TrimSpace(data.Code) == "" || time.Until(data.ExpiresAt) <= 0 {
+		return ErrInvalidVerifyCode
+	}
+
+	subject := fmt.Sprintf("[%s] Email Verification Code", siteName)
+	body := s.buildVerifyCodeEmailBody(data.Code, siteName)
+
+	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+		return fmt.Errorf("send email: %w", err)
+	}
 	return nil
 }
 
@@ -611,4 +642,174 @@ func (s *EmailService) buildPasswordResetEmailBody(resetURL, siteName string) st
 </body>
 </html>
 `, siteName, resetURL, resetURL)
+}
+
+func buildSMTPMessage(config *SMTPConfig, to, subject, htmlBody string) ([]byte, error) {
+	to = strings.TrimSpace(sanitizeEmailHeader(to))
+	subject = strings.TrimSpace(sanitizeEmailHeader(subject))
+	htmlBody = strings.TrimSpace(bodyWithCRLF(htmlBody))
+	textBody := bodyWithCRLF(htmlToPlainText(htmlBody))
+
+	fromHeader := formatEmailAddress(config.FromName, config.From)
+	toHeader := formatEmailAddress("", to)
+	replyTo := formatEmailAddress("", config.From)
+	encodedSubject := encodeMIMEHeader(subject)
+	messageID := buildMessageID(config.From, config.Host)
+	dateHeader := time.Now().UTC().Format(time.RFC1123Z)
+	boundary := buildMessageBoundary()
+
+	var msg bytes.Buffer
+	fmt.Fprintf(&msg, "From: %s\r\n", fromHeader)
+	fmt.Fprintf(&msg, "To: %s\r\n", toHeader)
+	fmt.Fprintf(&msg, "Subject: %s\r\n", encodedSubject)
+	fmt.Fprintf(&msg, "Date: %s\r\n", dateHeader)
+	fmt.Fprintf(&msg, "Message-ID: %s\r\n", messageID)
+	fmt.Fprintf(&msg, "Reply-To: %s\r\n", replyTo)
+	fmt.Fprintf(&msg, "MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&msg, "Auto-Submitted: auto-generated\r\n")
+	fmt.Fprintf(&msg, "X-Auto-Response-Suppress: All\r\n")
+	fmt.Fprintf(&msg, "Content-Type: multipart/alternative; boundary=%q\r\n", boundary)
+	fmt.Fprintf(&msg, "\r\n")
+
+	if err := writeQuotedPrintablePart(&msg, boundary, `text/plain; charset=UTF-8`, textBody); err != nil {
+		return nil, err
+	}
+	if err := writeQuotedPrintablePart(&msg, boundary, `text/html; charset=UTF-8`, htmlBody); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(&msg, "--%s--\r\n", boundary)
+
+	return msg.Bytes(), nil
+}
+
+func writeQuotedPrintablePart(buf *bytes.Buffer, boundary, contentType, body string) error {
+	fmt.Fprintf(buf, "--%s\r\n", boundary)
+
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Type", contentType)
+	header.Set("Content-Transfer-Encoding", "quoted-printable")
+
+	for key, values := range header {
+		for _, value := range values {
+			fmt.Fprintf(buf, "%s: %s\r\n", key, value)
+		}
+	}
+	fmt.Fprintf(buf, "\r\n")
+
+	qp := quotedprintable.NewWriter(buf)
+	if _, err := qp.Write([]byte(body)); err != nil {
+		return err
+	}
+	if err := qp.Close(); err != nil {
+		return err
+	}
+	fmt.Fprintf(buf, "\r\n")
+	return nil
+}
+
+func formatEmailAddress(name, address string) string {
+	address = strings.TrimSpace(sanitizeEmailHeader(address))
+	if name == "" {
+		return address
+	}
+	return (&mail.Address{
+		Name:    strings.TrimSpace(sanitizeEmailHeader(name)),
+		Address: address,
+	}).String()
+}
+
+func encodeMIMEHeader(value string) string {
+	if value == "" || isASCII(value) {
+		return value
+	}
+	return mime.QEncoding.Encode("utf-8", value)
+}
+
+func isASCII(value string) bool {
+	for _, r := range value {
+		if r > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+func buildMessageBoundary() string {
+	token := make([]byte, 12)
+	if _, err := rand.Read(token); err == nil {
+		return "sub2api-" + hex.EncodeToString(token)
+	}
+	return fmt.Sprintf("sub2api-%d", time.Now().UTC().UnixNano())
+}
+
+func buildMessageID(fromAddress, fallbackHost string) string {
+	domain := extractEmailDomain(fromAddress)
+	if domain == "" {
+		domain = sanitizeMessageIDDomain(fallbackHost)
+	}
+	if domain == "" {
+		domain = "localhost"
+	}
+
+	token := make([]byte, 10)
+	if _, err := rand.Read(token); err == nil {
+		return fmt.Sprintf("<%d.%s@%s>", time.Now().UTC().UnixNano(), hex.EncodeToString(token), domain)
+	}
+	return fmt.Sprintf("<%d@%s>", time.Now().UTC().UnixNano(), domain)
+}
+
+func extractEmailDomain(address string) string {
+	address = strings.TrimSpace(sanitizeEmailHeader(address))
+	at := strings.LastIndex(address, "@")
+	if at < 0 || at == len(address)-1 {
+		return ""
+	}
+	return sanitizeMessageIDDomain(address[at+1:])
+}
+
+func sanitizeMessageIDDomain(domain string) string {
+	domain = strings.TrimSpace(sanitizeEmailHeader(domain))
+	domain = strings.Trim(domain, "[]<>")
+	if host, _, err := net.SplitHostPort(domain); err == nil {
+		domain = host
+	}
+	return strings.ToLower(domain)
+}
+
+func htmlToPlainText(body string) string {
+	text := strings.ReplaceAll(body, "\r\n", "\n")
+	text = strings.NewReplacer(
+		"<br>", "\n",
+		"<br/>", "\n",
+		"<br />", "\n",
+		"</p>", "\n\n",
+		"</div>", "\n",
+		"</section>", "\n",
+		"</article>", "\n",
+		"</li>", "\n",
+		"</tr>", "\n",
+		"</h1>", "\n\n",
+		"</h2>", "\n\n",
+		"</h3>", "\n\n",
+		"</body>", "\n",
+	).Replace(text)
+	text = emailHTMLScriptPattern.ReplaceAllString(text, "")
+	text = emailHTMLStylePattern.ReplaceAllString(text, "")
+	text = emailHTMLTagPattern.ReplaceAllString(text, "")
+	text = html.UnescapeString(text)
+
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimSpace(line)
+	}
+
+	text = strings.Join(lines, "\n")
+	text = emailBlankLinePattern.ReplaceAllString(text, "\n\n")
+	return strings.TrimSpace(text)
+}
+
+func bodyWithCRLF(body string) string {
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
+	return strings.ReplaceAll(body, "\n", "\r\n")
 }
