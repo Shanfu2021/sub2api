@@ -295,8 +295,32 @@
               {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
             </span>
           </template>
-          <template #cell-priority="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
+          <template #cell-priority="{ row }">
+            <div class="flex items-center gap-2">
+              <input
+                :value="getPriorityDraft(row)"
+                type="number"
+                step="1"
+                inputmode="numeric"
+                class="h-8 w-20 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-700 shadow-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:border-gray-600 dark:bg-dark-800 dark:text-gray-200 dark:disabled:bg-dark-700 dark:disabled:text-dark-500"
+                :disabled="isPrioritySaving(row.id)"
+                :title="t('admin.accounts.priorityHint')"
+                @focus="handlePriorityFocus(row)"
+                @input="handlePriorityInput(row, $event)"
+                @keydown.enter.prevent="saveInlinePriority(row)"
+                @keydown.esc.prevent="cancelInlinePriorityEdit(row)"
+                @blur="handlePriorityBlur(row)"
+              />
+              <div class="flex h-4 w-4 items-center justify-center">
+                <Icon
+                  v-if="isPrioritySaving(row.id)"
+                  name="refresh"
+                  size="xs"
+                  class="animate-spin text-primary-500"
+                  :title="t('common.saving')"
+                />
+              </div>
+            </div>
           </template>
           <template #cell-last_used_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatRelativeTime(value) }}</span>
@@ -492,8 +516,12 @@ const exportingData = ref(false)
 const showAccountToolsDropdown = ref(false)
 const accountToolsDropdownRef = ref<HTMLElement | null>(null)
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
+const PRIORITY_COLUMN_MIGRATION_KEY = 'account-hidden-columns-priority-inline-edit-v1'
+const priorityDrafts = reactive<Record<number, string>>({})
+const priorityEditingIds = reactive(new Set<number>())
+const prioritySavingIds = reactive(new Set<number>())
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -548,6 +576,7 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const hasInlinePriorityActivity = computed(() => priorityEditingIds.size > 0 || prioritySavingIds.size > 0)
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -627,6 +656,16 @@ const loadSavedColumns = () => {
     DEFAULT_HIDDEN_COLUMNS.forEach(key => {
       hiddenColumns.add(key)
     })
+  }
+
+  try {
+    if (!localStorage.getItem(PRIORITY_COLUMN_MIGRATION_KEY)) {
+      hiddenColumns.delete('priority')
+      localStorage.setItem(PRIORITY_COLUMN_MIGRATION_KEY, '1')
+      saveColumnsToStorage()
+    }
+  } catch (e) {
+    console.error('Failed to migrate priority column visibility:', e)
   }
 }
 
@@ -1005,6 +1044,7 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
     if (document.hidden) return
     if (loading.value || autoRefreshFetching.value) return
     if (isAnyModalOpen.value) return
+    if (hasInlinePriorityActivity.value) return
     if (menu.show || showAccountToolsDropdown.value || showAutoRefreshDropdown.value) return
     if (inAutoRefreshSilentWindow()) {
       autoRefreshCountdown.value = Math.max(
@@ -1235,6 +1275,78 @@ const handleBulkRefreshToken = async () => {
     appStore.showError(String(error))
   }
 }
+
+const getPriorityDraft = (account: Account) => {
+  return priorityDrafts[account.id] ?? String(account.priority ?? 1)
+}
+
+const setPriorityDraft = (account: Account, value: string) => {
+  priorityDrafts[account.id] = value
+}
+
+const isPrioritySaving = (accountID: number) => prioritySavingIds.has(accountID)
+
+const clearPriorityDraft = (accountID: number) => {
+  delete priorityDrafts[accountID]
+}
+
+const handlePriorityFocus = (account: Account) => {
+  priorityEditingIds.add(account.id)
+  priorityDrafts[account.id] = String(account.priority ?? 1)
+}
+
+const handlePriorityInput = (account: Account, event: Event) => {
+  setPriorityDraft(account, (event.target as HTMLInputElement | null)?.value ?? '')
+}
+
+const cancelInlinePriorityEdit = (account: Account) => {
+  priorityEditingIds.delete(account.id)
+  clearPriorityDraft(account.id)
+}
+
+const parsePriorityDraft = (account: Account): number | null => {
+  const raw = getPriorityDraft(account).trim()
+  if (raw === '') return null
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null
+  return parsed
+}
+
+const saveInlinePriority = async (account: Account) => {
+  if (prioritySavingIds.has(account.id)) return
+
+  const nextPriority = parsePriorityDraft(account)
+  if (nextPriority === null) {
+    clearPriorityDraft(account.id)
+    priorityEditingIds.delete(account.id)
+    return
+  }
+  if (nextPriority === account.priority) {
+    clearPriorityDraft(account.id)
+    priorityEditingIds.delete(account.id)
+    return
+  }
+
+  prioritySavingIds.add(account.id)
+  try {
+    const updated = await adminAPI.accounts.update(account.id, { priority: nextPriority })
+    patchAccountInList(updated)
+    clearPriorityDraft(account.id)
+    enterAutoRefreshSilentWindow()
+  } catch (error: any) {
+    console.error('Failed to update account priority:', error)
+    clearPriorityDraft(account.id)
+    appStore.showError(error?.response?.data?.message || error?.message || t('common.error'))
+  } finally {
+    prioritySavingIds.delete(account.id)
+    priorityEditingIds.delete(account.id)
+  }
+}
+
+const handlePriorityBlur = async (account: Account) => {
+  await saveInlinePriority(account)
+}
+
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
   const idSet = new Set(accountIds)
