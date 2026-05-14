@@ -156,7 +156,7 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 func TestSettingService_GetPublicSettingsForInjection_ExposesQRCodeAndDocURL(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
-			SettingKeySiteName:         "天才程序员补给站",
+			SettingKeySiteName:         "天才程序员拼车站",
 			SettingKeyContactQRCodeURL: "https://api.ise.it.com/qq-group.jpg",
 			SettingKeyDocURL:           "https://api.ise.it.com/docs/",
 		},

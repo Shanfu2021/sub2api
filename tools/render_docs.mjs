@@ -92,9 +92,9 @@ for (const token of tokens) {
 }
 
 const pageTitleToken = tokens.find((token) => token.type === 'heading' && token.depth === 1)
-const pageTitle = pageTitleToken?.text || '天才程序员补给站文档'
+const pageTitle = pageTitleToken?.text || '天才程序员拼车站文档'
 const leadToken = tokens.find((token) => token.type === 'paragraph')
-const pageDescription = leadToken?.text || '天才程序员补给站使用文档'
+const pageDescription = leadToken?.text || '天才程序员拼车站使用文档'
 
 const headingQueue = [...headingIds]
 const renderer = new marked.Renderer()
@@ -563,10 +563,10 @@ const html = `<!doctype html>
     <div class="page">
       <header class="topbar">
         <a class="brand" href="/home">
-          <img src="/logo.png" alt="天才程序员补给站 Logo" />
+          <img src="/logo.png" alt="天才程序员拼车站 Logo" />
           <span class="brand-copy">
-            <strong>天才程序员补给站</strong>
-            <span>一群程序员共建的高质量 AI API 中转站</span>
+            <strong>天才程序员拼车站</strong>
+            <span>一群程序员共建的高质量 AI API 拼车站</span>
           </span>
         </a>
         <div class="top-actions">
@@ -588,8 +588,7 @@ const html = `<!doctype html>
             ${tocHtml}
           </nav>
           <div class="help">
-            <p>官方群：825526434</p>
-            <img src="/qq-group.jpg" alt="QQ群二维码" />
+            <p>客服 QQ：2143428872</p>
           </div>
         </aside>
 
@@ -601,7 +600,7 @@ const html = `<!doctype html>
       </div>
 
       <div class="footer">
-        天才程序员补给站文档页。若站内能力更新，以站内实际页面和公告为准。
+        天才程序员拼车站文档页。若站内能力更新，以站内实际页面和公告为准。
       </div>
     </div>
   </body>

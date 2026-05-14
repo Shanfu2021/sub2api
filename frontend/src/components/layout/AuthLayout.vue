@@ -69,9 +69,9 @@ import { sanitizeUrl } from '@/utils/url'
 
 const appStore = useAppStore()
 
-const siteName = computed(() => appStore.siteName || '天才程序员补给站')
+const siteName = computed(() => appStore.siteName || '天才程序员拼车站')
 const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 中转站')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 拼车站')
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 const currentYear = computed(() => new Date().getFullYear())

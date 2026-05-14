@@ -233,7 +233,7 @@ const hasRegisterData = ref<boolean>(false)
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('天才程序员补给站')
+const siteName = ref<string>('天才程序员拼车站')
 const gmailVerificationBypassEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 
@@ -308,7 +308,7 @@ onMounted(async () => {
     const settings = await getPublicSettings()
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || '天才程序员补给站'
+    siteName.value = settings.site_name || '天才程序员拼车站'
     gmailVerificationBypassEnabled.value = settings.gmail_verification_bypass_enabled === true
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []

@@ -107,7 +107,7 @@ marked.setOptions({
 
 const documentId = computed(() => String(route.params.documentId || ''))
 const documents = computed(() => settings.value?.login_agreement_documents ?? [])
-const siteName = computed(() => settings.value?.site_name || '天才程序员补给站')
+const siteName = computed(() => settings.value?.site_name || '天才程序员拼车站')
 const siteLogo = computed(() => sanitizeUrl(settings.value?.site_logo || '', {
   allowRelative: true,
   allowDataUrl: true,

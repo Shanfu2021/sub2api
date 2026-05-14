@@ -559,7 +559,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
-		assert.Contains(t, w.Body.String(), "天才程序员补给站文档")
+		assert.Contains(t, w.Body.String(), "天才程序员拼车站文档")
 	})
 }
 

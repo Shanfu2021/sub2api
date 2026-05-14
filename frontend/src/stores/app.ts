@@ -26,7 +26,7 @@ export const useAppStore = defineStore('app', () => {
   const publicSettingsLoaded = ref<boolean>(false)
   const publicSettingsLoading = ref<boolean>(false)
   const publicSettingsHydratedFromInjection = ref<boolean>(false)
-  const siteName = ref<string>('天才程序员补给站')
+  const siteName = ref<string>('天才程序员拼车站')
   const siteLogo = ref<string>('')
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
@@ -297,7 +297,7 @@ export const useAppStore = defineStore('app', () => {
       window.__APP_CONFIG__ = normalizedConfig
     }
     cachedPublicSettings.value = normalizedConfig
-    siteName.value = normalizedConfig.site_name || '天才程序员补给站'
+    siteName.value = normalizedConfig.site_name || '天才程序员拼车站'
     siteLogo.value = normalizedConfig.site_logo || ''
     siteVersion.value = normalizedConfig.version || ''
     contactInfo.value = normalizedConfig.contact_info || ''

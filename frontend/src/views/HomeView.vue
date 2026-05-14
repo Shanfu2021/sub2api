@@ -136,18 +136,12 @@
               </span>
               <div class="text-left">
                 <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary-600 dark:text-primary-300">
-                  官方交流群
+                  客服支持
                 </p>
                 <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  QQ 群：825526434
+                  客服 QQ：2143428872
                 </p>
               </div>
-              <img
-                v-if="contactQrCodeUrl"
-                :src="contactQrCodeUrl"
-                alt="QQ群二维码"
-                class="h-16 w-16 rounded-xl border border-primary-100 object-cover shadow-sm dark:border-primary-900/40"
-              />
             </div>
 
             <!-- CTA Button -->
@@ -441,9 +435,9 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 // Site settings - directly from appStore (already initialized from injected config)
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '天才程序员补给站')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '天才程序员拼车站')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 中转站')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 拼车站')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '/docs/')
 const contactQrCodeUrl = computed(() => appStore.cachedPublicSettings?.contact_qr_code_url || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')

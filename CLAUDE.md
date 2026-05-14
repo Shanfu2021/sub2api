@@ -25,10 +25,9 @@
 
 ## 2. 站点定制约定
 
-- 站点名：`天才程序员补给站`
-- 副标题：`一群程序员共建的高质量 AI API 中转站`
-- QQ 群号：`825526434`
-- 群二维码静态文件：`/qq-group.jpg`
+- 站点名：`天才程序员拼车站`
+- 副标题：`一群程序员共建的高质量 AI API 拼车站`
+- 客服 QQ：`2143428872`
 - 站点 logo 静态文件：`/logo.png`
 - 文档页静态入口：`/docs/`
 - 商品总入口：`https://pay.ldxp.cn/shop/CN8U85FN`
@@ -202,7 +201,6 @@ tools/deploy_latest.sh shanfu-prod <commit-sha>
 例如：
 
 - `frontend/public/logo.png`
-- `frontend/public/qq-group.jpg`
 - `frontend/public/docs/*`
 
 这些虽然是“静态文件”，但当前是嵌入到 Go 二进制里，不是热更新目录。
