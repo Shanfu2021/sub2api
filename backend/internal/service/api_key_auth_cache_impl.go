@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 12 // v12: auth snapshot includes promo discount scope
+const apiKeyAuthSnapshotVersion = 13 // v13: auth snapshot includes enterprise context
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -230,6 +230,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			PricingDiscountLabel:  apiKey.User.PricingDiscountLabel,
 			PricingDiscountSource: apiKey.User.PricingDiscountSource,
 			PricingDiscountScope:  NormalizePromoDiscountScope(apiKey.User.PricingDiscountScope),
+			Enterprise:            apiKey.User.Enterprise,
 			Email:                 apiKey.User.Email,
 			Username:              apiKey.User.Username,
 			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
@@ -311,6 +312,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			PricingDiscountLabel:  snapshot.User.PricingDiscountLabel,
 			PricingDiscountSource: snapshot.User.PricingDiscountSource,
 			PricingDiscountScope:  NormalizePromoDiscountScope(snapshot.User.PricingDiscountScope),
+			Enterprise:            snapshot.User.Enterprise,
 			Email:                 snapshot.User.Email,
 			Username:              snapshot.User.Username,
 			BalanceNotifyEnabled:       snapshot.User.BalanceNotifyEnabled,

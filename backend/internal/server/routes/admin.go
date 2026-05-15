@@ -97,6 +97,31 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 企业租户管理
+		registerEnterpriseRoutes(admin, h)
+	}
+}
+
+func registerEnterpriseRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	enterprise := admin.Group("/enterprise")
+	{
+		tenants := enterprise.Group("/tenants")
+		{
+			tenants.GET("", h.Admin.Enterprise.ListTenants)
+			tenants.POST("", h.Admin.Enterprise.CreateTenant)
+			tenants.GET("/:id", h.Admin.Enterprise.GetTenant)
+			tenants.PUT("/:id", h.Admin.Enterprise.UpdateTenant)
+			tenants.POST("/:id/quota", h.Admin.Enterprise.AdjustQuota)
+			tenants.GET("/:id/members", h.Admin.Enterprise.ListMembers)
+			tenants.POST("/:id/members", h.Admin.Enterprise.BindMember)
+			tenants.PUT("/:id/members/:user_id", h.Admin.Enterprise.UpdateMember)
+			tenants.DELETE("/:id/members/:user_id", h.Admin.Enterprise.DeleteMember)
+			tenants.GET("/:id/invite-codes", h.Admin.Enterprise.ListInviteCodes)
+			tenants.POST("/:id/invite-codes", h.Admin.Enterprise.CreateInviteCode)
+			tenants.GET("/:id/ledger", h.Admin.Enterprise.ListLedger)
+		}
+		enterprise.PUT("/invite-codes/:invite_id", h.Admin.Enterprise.UpdateInviteCode)
 	}
 }
 

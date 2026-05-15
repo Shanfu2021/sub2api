@@ -213,6 +213,7 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 		nil, // promoService
 		nil, // defaultSubAssigner
 		nil, // affiliateService
+		nil, // enterpriseService
 	)
 }
 
@@ -244,7 +245,7 @@ func TestAuthService_Register_EmailVerifyEnabledButServiceNotConfigured(t *testi
 	}, nil)
 
 	// 应返回服务不可用错误，而不是允许绕过验证
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code", "", "", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code", "", "", "", "", "")
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 }
 
@@ -256,7 +257,7 @@ func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
 		SettingKeyEmailVerifyEnabled:  "true",
 	}, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
 }
 
@@ -268,7 +269,7 @@ func TestAuthService_Register_GmailBypassEnabledSkipsVerifyCode(t *testing.T) {
 		SettingKeyGmailVerificationBypassEnabled: "true",
 	}, nil)
 
-	token, user, err := service.RegisterWithVerification(context.Background(), "user@gmail.com", "password", "", "", "", "", "")
+	token, user, err := service.RegisterWithVerification(context.Background(), "user@gmail.com", "password", "", "", "", "", "", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	require.NotNil(t, user)
@@ -285,7 +286,7 @@ func TestAuthService_Register_GmailBypassEnabledDoesNotAffectOtherDomains(t *tes
 		SettingKeyGmailVerificationBypassEnabled: "true",
 	}, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
 }
 
@@ -299,7 +300,7 @@ func TestAuthService_Register_EmailVerifyInvalid(t *testing.T) {
 		SettingKeyEmailVerifyEnabled:  "true",
 	}, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong", "", "", "", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong", "", "", "", "", "")
 	require.ErrorIs(t, err, ErrInvalidVerifyCode)
 	require.ErrorContains(t, err, "verify code")
 }
@@ -428,7 +429,7 @@ func TestAuthService_Register_IPLimitRejectsDuplicateSignupIP(t *testing.T) {
 		SettingKeyRegistrationIPLimitEnabled: "true",
 	}, nil)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "203.0.113.10")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "", "203.0.113.10")
 	require.ErrorIs(t, err, ErrRegistrationIPAlreadyUsed)
 	require.Empty(t, repo.created)
 }
@@ -440,7 +441,7 @@ func TestAuthService_Register_IPLimitDisabledAllowsSignup(t *testing.T) {
 		SettingKeyRegistrationIPLimitEnabled: "false",
 	}, nil)
 
-	_, user, err := service.RegisterWithVerification(context.Background(), "user2@test.com", "password", "", "", "", "", "203.0.113.10")
+	_, user, err := service.RegisterWithVerification(context.Background(), "user2@test.com", "password", "", "", "", "", "", "203.0.113.10")
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Len(t, repo.created, 1)
@@ -454,7 +455,7 @@ func TestAuthService_Register_IPLimitEnabledPersistsSignupIP(t *testing.T) {
 		SettingKeyRegistrationIPLimitEnabled: "true",
 	}, nil)
 
-	_, user, err := service.RegisterWithVerification(context.Background(), "user3@test.com", "password", "", "", "", "", "203.0.113.11")
+	_, user, err := service.RegisterWithVerification(context.Background(), "user3@test.com", "password", "", "", "", "", "", "203.0.113.11")
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Len(t, repo.created, 1)

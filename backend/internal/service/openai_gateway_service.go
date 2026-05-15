@@ -1256,7 +1256,7 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs, false, 0)
+	return s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs, false, false, 0)
 }
 
 // noAvailableOpenAISelectionError builds the standard "no account available" error
@@ -1329,6 +1329,54 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 	return out
 }
 
+// isOpenAIImageUpstreamPreferredAccount reports whether an image request should
+// prefer this account over the local OAuth image path.
+//
+// Today we treat OpenAI API Key accounts as the preferred upstream path because
+// they forward image generation directly to the remote images endpoint, while
+// OAuth image generation goes through the heavier local responses bridge.
+func isOpenAIImageUpstreamPreferredAccount(account *Account) bool {
+	return account != nil && account.IsOpenAI() && account.Type == AccountTypeAPIKey
+}
+
+func prioritizeOpenAIImagePreferredAccounts(accounts []*Account) []*Account {
+	if len(accounts) == 0 {
+		return nil
+	}
+	preferred := make([]*Account, 0, len(accounts))
+	fallback := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		if isOpenAIImageUpstreamPreferredAccount(account) {
+			preferred = append(preferred, account)
+			continue
+		}
+		fallback = append(fallback, account)
+	}
+	out := make([]*Account, 0, len(accounts))
+	out = append(out, preferred...)
+	out = append(out, fallback...)
+	return out
+}
+
+func prioritizeOpenAIImagePreferredAccountsWithLoad(accounts []accountWithLoad) []accountWithLoad {
+	if len(accounts) == 0 {
+		return nil
+	}
+	preferred := make([]accountWithLoad, 0, len(accounts))
+	fallback := make([]accountWithLoad, 0, len(accounts))
+	for _, account := range accounts {
+		if isOpenAIImageUpstreamPreferredAccount(account.account) {
+			preferred = append(preferred, account)
+			continue
+		}
+		fallback = append(fallback, account)
+	}
+	out := make([]accountWithLoad, 0, len(accounts))
+	out = append(out, preferred...)
+	out = append(out, fallback...)
+	return out
+}
+
 // resolveOpenAIAccountUpstreamModelForRequest resolves the upstream model that
 // would be sent for a given request, honouring compact-only mappings when the
 // caller is on the /responses/compact path.
@@ -1343,7 +1391,7 @@ func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 	return upstreamModel
 }
 
-func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64) (*Account, error) {
+func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, preferImageUpstream bool, stickyAccountID int64) (*Account, error) {
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
@@ -1366,7 +1414,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 
 	// 3. 按优先级 + LRU 选择最佳账号
 	// Select by priority + LRU
-	selected, compactBlocked := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, requireCompact)
+	selected, compactBlocked := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, requireCompact, preferImageUpstream)
 
 	if selected == nil {
 		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked)
@@ -1445,7 +1493,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // Returns nil if no available account. The second return reports whether at
 // least one candidate was filtered out solely because it lacks compact support
 // (only meaningful when requireCompact=true).
-func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) (*Account, bool) {
+func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, preferImageUpstream bool) (*Account, bool) {
 	var selected *Account
 	selectedCompactTier := -1
 	compactBlocked := false
@@ -1497,6 +1545,18 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			continue
 		}
 
+		if preferImageUpstream {
+			candidatePreferred := isOpenAIImageUpstreamPreferredAccount(fresh)
+			currentPreferred := isOpenAIImageUpstreamPreferredAccount(selected)
+			if candidatePreferred != currentPreferred {
+				if candidatePreferred {
+					selected = fresh
+					selectedCompactTier = compactTier
+				}
+				continue
+			}
+		}
+
 		if s.isBetterAccount(fresh, selected) {
 			selected = fresh
 			selectedCompactTier = compactTier
@@ -1541,10 +1601,10 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
-	return s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs, false)
+	return s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs, false, false)
 }
 
-func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) (*AccountSelectionResult, error) {
+func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, preferImageUpstream bool) (*AccountSelectionResult, error) {
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
@@ -1561,7 +1621,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
-		account, err := s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID)
+		account, err := s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs, requireCompact, preferImageUpstream, stickyAccountID)
 		if err != nil {
 			return nil, err
 		}
@@ -1685,6 +1745,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
+		if preferImageUpstream {
+			ordered = prioritizeOpenAIImagePreferredAccounts(ordered)
+		}
 		for _, acc := range ordered {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
 			if fresh == nil {
@@ -1760,6 +1823,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			} else {
 				selectionOrder = append(selectionOrder, available...)
 			}
+			if preferImageUpstream {
+				selectionOrder = prioritizeOpenAIImagePreferredAccountsWithLoad(selectionOrder)
+			}
 
 			for _, item := range selectionOrder {
 				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, false)
@@ -1788,6 +1854,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
+	}
+	if preferImageUpstream {
+		candidates = prioritizeOpenAIImagePreferredAccounts(candidates)
 	}
 	for _, acc := range candidates {
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)

@@ -54,6 +54,15 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 401, "User account is not active")
 			return
 		}
+		if apiKey.User.Enterprise != nil && apiKey.User.Enterprise.TenantStatus != service.EnterpriseTenantStatusActive {
+			abortWithGoogleError(c, 403, "enterprise tenant is disabled")
+			return
+		}
+		if apiKey.User.Enterprise != nil && apiKey.Group != nil && len(apiKey.User.Enterprise.AllowedGroupIDs) > 0 &&
+			!apiKey.User.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive) {
+			abortWithGoogleError(c, 403, "enterprise does not allow this group")
+			return
+		}
 
 		// 简易模式：跳过余额和订阅检查
 		if cfg.RunMode == config.RunModeSimple {

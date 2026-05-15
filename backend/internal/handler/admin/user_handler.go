@@ -104,11 +104,13 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	filters := service.UserListFilters{
-		Status:     c.Query("status"),
-		Role:       c.Query("role"),
-		Search:     search,
-		GroupName:  strings.TrimSpace(c.Query("group_name")),
-		Attributes: parseAttributeFilters(c),
+		Status:         c.Query("status"),
+		Role:           c.Query("role"),
+		Search:         search,
+		GroupName:      strings.TrimSpace(c.Query("group_name")),
+		TenantID:       parseInt64Query(c.Query("tenant_id")),
+		EnterpriseRole: strings.TrimSpace(c.Query("enterprise_role")),
+		Attributes:     parseAttributeFilters(c),
 	}
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
@@ -171,6 +173,14 @@ func parseAttributeFilters(c *gin.Context) map[int64]string {
 	}
 
 	return result
+}
+
+func parseInt64Query(raw string) int64 {
+	v, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || v <= 0 {
+		return 0
+	}
+	return v
 }
 
 // GetByID handles getting a user by ID

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
-import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import { resolveDocumentTitle } from '@/router/title'
@@ -14,6 +14,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
+const hideAnnouncements = computed(() => appStore.enterprisePortalEnabled || !!authStore.user?.enterprise)
 
 /**
  * Update favicon dynamically
@@ -47,7 +48,7 @@ function onVisibilityChange() {
   if (
     document.visibilityState === 'visible' &&
     authStore.isAuthenticated &&
-    !appStore.enterprisePortalEnabled
+    !hideAnnouncements.value
   ) {
     announcementStore.fetchAnnouncements()
   }
@@ -63,7 +64,7 @@ watch(
       })
       subscriptionStore.startPolling()
 
-      if (appStore.enterprisePortalEnabled) {
+      if (hideAnnouncements.value) {
         document.removeEventListener('visibilitychange', onVisibilityChange)
         return
       }
@@ -91,7 +92,7 @@ watch(
 
 // Route change trigger (throttled by store)
 router.afterEach(() => {
-  if (authStore.isAuthenticated && !appStore.enterprisePortalEnabled) {
+  if (authStore.isAuthenticated && !hideAnnouncements.value) {
     announcementStore.fetchAnnouncements()
   }
 })
@@ -124,5 +125,5 @@ onMounted(async () => {
   <NavigationProgress />
   <RouterView />
   <Toast />
-  <AnnouncementPopup v-if="!appStore.enterprisePortalEnabled" />
+  <AnnouncementPopup v-if="!hideAnnouncements" />
 </template>

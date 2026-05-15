@@ -24,11 +24,11 @@
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
         <!-- Announcement Bell -->
-        <AnnouncementBell v-if="user && !appStore.enterprisePortalEnabled" />
+        <AnnouncementBell v-if="user && !hidePortalExtras" />
 
         <!-- Docs Link -->
         <a
-          v-if="docUrl && !appStore.enterprisePortalEnabled"
+          v-if="docUrl && !hidePortalExtras"
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
@@ -237,6 +237,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl || '/docs/')
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const hidePortalExtras = computed(() => appStore.enterprisePortalEnabled || !!user.value?.enterprise)
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {

@@ -182,6 +182,26 @@
           </transition>
         </div>
 
+        <div>
+          <label for="enterprise_invite_code" class="input-label">
+            企业邀请码
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">(可选)</span>
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="users" size="md" class="text-gray-400 dark:text-dark-500" />
+            </div>
+            <input
+              id="enterprise_invite_code"
+              v-model="formData.enterprise_invite_code"
+              type="text"
+              :disabled="registrationActionDisabled"
+              class="input pl-11"
+              placeholder="填写后将自动归属到对应企业"
+            />
+          </div>
+        </div>
+
         <!-- Turnstile Widget -->
         <div v-if="turnstileEnabled && turnstileSiteKey">
           <TurnstileWidget
@@ -399,7 +419,8 @@ const formData = reactive({
   password: '',
   promo_code: '',
   invitation_code: '',
-  aff_code: ''
+  aff_code: '',
+  enterprise_invite_code: ''
 })
 
 const errors = reactive({
@@ -904,6 +925,7 @@ async function handleRegister(): Promise<void> {
           turnstile_token: turnstileToken.value,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
+          enterprise_invite_code: formData.enterprise_invite_code || undefined,
           ...(affCode ? { aff_code: affCode } : {})
         })
       )
@@ -920,6 +942,7 @@ async function handleRegister(): Promise<void> {
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,
+      enterprise_invite_code: formData.enterprise_invite_code || undefined,
       ...(affCode ? { aff_code: affCode } : {})
     })
     clearAffiliateReferralCode()

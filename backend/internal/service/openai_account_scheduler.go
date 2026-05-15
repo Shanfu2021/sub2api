@@ -586,6 +586,25 @@ func buildOpenAIWeightedSelectionOrder(
 	return order
 }
 
+func prioritizeOpenAIImagePreferredCandidateScores(candidates []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+	if len(candidates) == 0 {
+		return nil
+	}
+	preferred := make([]openAIAccountCandidateScore, 0, len(candidates))
+	fallback := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if isOpenAIImageUpstreamPreferredAccount(candidate.account) {
+			preferred = append(preferred, candidate)
+			continue
+		}
+		fallback = append(fallback, candidate)
+	}
+	out := make([]openAIAccountCandidateScore, 0, len(candidates))
+	out = append(out, preferred...)
+	out = append(out, fallback...)
+	return out
+}
+
 func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -814,6 +833,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	} else {
 		selectionOrder = buildSelectionOrder(candidates)
+	}
+	if req.RequiredImageCapability != "" {
+		selectionOrder = prioritizeOpenAIImagePreferredCandidateScores(selectionOrder)
 	}
 	if len(selectionOrder) == 0 {
 		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, req.RequireCompact && len(allCandidates) > 0)
@@ -1064,7 +1086,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 			for {
-				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact)
+				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredImageCapability != "")
 				if err != nil {
 					return nil, decision, err
 				}
@@ -1089,7 +1111,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 
 		effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 		for {
-			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact)
+			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredImageCapability != "")
 			if err != nil {
 				return nil, decision, err
 			}

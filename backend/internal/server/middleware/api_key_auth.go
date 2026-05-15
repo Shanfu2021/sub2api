@@ -108,6 +108,15 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
+		if apiKey.User.Enterprise != nil && apiKey.User.Enterprise.TenantStatus != service.EnterpriseTenantStatusActive {
+			AbortWithError(c, 403, "ENTERPRISE_TENANT_DISABLED", "enterprise tenant is disabled")
+			return
+		}
+		if apiKey.User.Enterprise != nil && apiKey.Group != nil && len(apiKey.User.Enterprise.AllowedGroupIDs) > 0 &&
+			!apiKey.User.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive) {
+			AbortWithError(c, 403, "ENTERPRISE_GROUP_FORBIDDEN", "enterprise does not allow this group")
+			return
+		}
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 

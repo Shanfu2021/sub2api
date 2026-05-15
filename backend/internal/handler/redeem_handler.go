@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"encoding/hex"
 	"errors"
@@ -32,21 +33,24 @@ var (
 	errMerchantTokenInvalid  = infraerrors.Unauthorized("MERCHANT_TOKEN_INVALID", "invalid merchant callback token")
 	errMerchantOrderRequired = infraerrors.BadRequest("MERCHANT_ORDER_REQUIRED", "merchant order id is required")
 	errMerchantFaceValueBad  = infraerrors.BadRequest("MERCHANT_FACE_VALUE_INVALID", "merchant face value is invalid")
+	errMerchantStatusMissing = infraerrors.BadRequest("MERCHANT_STATUS_REQUIRED", "merchant payment status is required")
 )
 
 // RedeemHandler handles redeem code-related requests
 type RedeemHandler struct {
-	redeemService   *service.RedeemService
-	settingService  *service.SettingService
-	promoService    *service.PromoService
+	redeemService    *service.RedeemService
+	settingService   *service.SettingService
+	promoService     *service.PromoService
+	enterpriseService *service.EnterpriseService
 }
 
 // NewRedeemHandler creates a new RedeemHandler
-func NewRedeemHandler(redeemService *service.RedeemService, settingService *service.SettingService, promoService *service.PromoService) *RedeemHandler {
+func NewRedeemHandler(redeemService *service.RedeemService, settingService *service.SettingService, promoService *service.PromoService, enterpriseService *service.EnterpriseService) *RedeemHandler {
 	return &RedeemHandler{
-		redeemService:  redeemService,
-		settingService: settingService,
-		promoService:   promoService,
+		redeemService:    redeemService,
+		settingService:   settingService,
+		promoService:     promoService,
+		enterpriseService: enterpriseService,
 	}
 }
 
@@ -109,6 +113,17 @@ func (h *RedeemHandler) Redeem(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if h.enterpriseService != nil {
+		enterprise, err := h.enterpriseService.GetUserEnterpriseContext(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if enterprise != nil && enterprise.SelfRedeemBlocked {
+			response.ErrorFrom(c, service.ErrEnterpriseSelfRedeemForbidden)
+			return
+		}
+	}
 
 	result, err := h.redeemService.Redeem(c.Request.Context(), subject.UserID, req.Code)
 	if err != nil {
@@ -163,6 +178,17 @@ func (h *RedeemHandler) ApplyPromoCode(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if h.enterpriseService != nil {
+		enterprise, err := h.enterpriseService.GetUserEnterpriseContext(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if enterprise != nil && enterprise.SelfRedeemBlocked {
+			response.ErrorFrom(c, service.ErrEnterpriseSelfRedeemForbidden)
+			return
+		}
+	}
 
 	result, err := h.promoService.ApplyPromoCodeDetailed(c.Request.Context(), subject.UserID, req.Code)
 	if err != nil {
@@ -181,7 +207,8 @@ func (h *RedeemHandler) ApplyPromoCode(c *gin.Context) {
 	response.Success(c, resp)
 }
 
-// CreateMerchantBalanceCard creates a generic balance card from an external merchant callback.
+// CreateMerchantBalanceCard creates a balance redeem code from an external merchant callback.
+// It never fulfills balance/subscription directly; users still redeem the code manually.
 // POST /api/v1/merchant/callbacks/balance-card?token=...
 func (h *RedeemHandler) CreateMerchantBalanceCard(c *gin.Context) {
 	if h == nil || h.redeemService == nil {
@@ -199,7 +226,7 @@ func (h *RedeemHandler) CreateMerchantBalanceCard(c *gin.Context) {
 		expectedToken, _ = h.settingService.GetRawSetting(c.Request.Context(), service.SettingKeyMerchantCallbackToken)
 		expectedToken = strings.TrimSpace(expectedToken)
 	}
-	if expectedToken == "" || callbackToken != expectedToken {
+	if !merchantTokenMatches(callbackToken, expectedToken) {
 		response.ErrorFrom(c, errMerchantTokenInvalid)
 		return
 	}
@@ -212,7 +239,7 @@ func (h *RedeemHandler) CreateMerchantBalanceCard(c *gin.Context) {
 	if strings.HasPrefix(strings.ToLower(providedToken), "bearer ") {
 		providedToken = strings.TrimSpace(providedToken[7:])
 	}
-	if providedToken != "" && providedToken != callbackToken {
+	if providedToken != "" && !merchantTokenMatches(providedToken, expectedToken) {
 		response.ErrorFrom(c, errMerchantTokenInvalid)
 		return
 	}
@@ -224,6 +251,10 @@ func (h *RedeemHandler) CreateMerchantBalanceCard(c *gin.Context) {
 	}
 	if payload.OrderID == "" {
 		response.ErrorFrom(c, errMerchantOrderRequired)
+		return
+	}
+	if merchantPaymentStatus(payload) == "" {
+		response.ErrorFrom(c, errMerchantStatusMissing)
 		return
 	}
 	if !merchantStatusLooksSuccessful(payload) {
@@ -376,16 +407,29 @@ func resolveMerchantFaceValue(payload *merchantCallbackPayload) (float64, error)
 }
 
 func merchantStatusLooksSuccessful(payload *merchantCallbackPayload) bool {
-	status := strings.ToLower(strings.TrimSpace(firstNonEmpty(payload.PaymentStatus, payload.PaymentStatus2)))
-	if status == "" {
-		return true
-	}
+	status := merchantPaymentStatus(payload)
 	for _, ok := range []string{"success", "paid", "pay_success", "trade_success", "completed", "complete", "1", "true"} {
 		if status == ok {
 			return true
 		}
 	}
 	return false
+}
+
+func merchantPaymentStatus(payload *merchantCallbackPayload) string {
+	if payload == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(firstNonEmpty(payload.PaymentStatus, payload.PaymentStatus2)))
+}
+
+func merchantTokenMatches(provided, expected string) bool {
+	provided = strings.TrimSpace(provided)
+	expected = strings.TrimSpace(expected)
+	if provided == "" || expected == "" || len(provided) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
 func buildMerchantRedeemCode(orderID string) string {

@@ -170,6 +170,17 @@ func (h *UserHandler) GetAffiliate(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	if h.userService != nil {
+		user, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if user != nil && user.Enterprise != nil {
+			response.ErrorFrom(c, service.ErrEnterpriseForbidden)
+			return
+		}
+	}
 
 	detail, err := h.affiliateService.GetAffiliateDetail(c.Request.Context(), subject.UserID)
 	if err != nil {
@@ -186,6 +197,17 @@ func (h *UserHandler) TransferAffiliateQuota(c *gin.Context) {
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
+	}
+	if h.userService != nil {
+		user, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if user != nil && user.Enterprise != nil {
+			response.ErrorFrom(c, service.ErrEnterpriseForbidden)
+			return
+		}
 	}
 
 	transferred, balance, err := h.affiliateService.TransferAffiliateQuota(c.Request.Context(), subject.UserID)

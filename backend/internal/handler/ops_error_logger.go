@@ -428,6 +428,20 @@ func releaseOpsCaptureWriter(w *opsCaptureWriter) {
 	opsCaptureWriterPool.Put(w)
 }
 
+func shouldSkipOpsErrorLogForContext(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	for _, key := range []string{service.OpsSkipPassthroughKey, service.OpsSkipErrorLogKey} {
+		if v, ok := c.Get(key); ok {
+			if skip, _ := v.(bool); skip {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
@@ -719,10 +733,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			attachOpsRequestBodyToEntry(c, entry)
 
 			// Skip logging if a passthrough rule with skip_monitoring=true matched.
-			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
-				if skip, _ := v.(bool); skip {
-					return
-				}
+			if shouldSkipOpsErrorLogForContext(c) {
+				return
 			}
 
 			enqueueOpsErrorLog(ops, entry)
@@ -733,10 +745,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		parsed := parseOpsErrorResponse(body)
 
 		// Skip logging if a passthrough rule with skip_monitoring=true matched.
-		if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
-			if skip, _ := v.(bool); skip {
-				return
-			}
+		if shouldSkipOpsErrorLogForContext(c) {
+			return
 		}
 
 		// Skip logging if the error should be filtered based on settings

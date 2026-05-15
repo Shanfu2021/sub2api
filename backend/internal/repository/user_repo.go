@@ -148,6 +148,9 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if err := r.hydrateUserPricingDiscounts(ctx, out); err != nil {
 		return nil, err
 	}
+	if err := r.hydrateUserEnterpriseContexts(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -176,6 +179,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 		out.AllowedGroups = v
 	}
 	if err := r.hydrateUserPricingDiscounts(ctx, out); err != nil {
+		return nil, err
+	}
+	if err := r.hydrateUserEnterpriseContexts(ctx, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -450,6 +456,34 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 			dbgroup.NameContainsFold(filters.GroupName),
 		))
 	}
+	var enterpriseFilteredUserIDs []int64
+	hasEnterpriseFilter := false
+	if filters.TenantID > 0 {
+		tenantUserIDs, err := r.getEnterpriseUserIDsByTenantID(ctx, filters.TenantID)
+		if err != nil {
+			return nil, nil, err
+		}
+		enterpriseFilteredUserIDs = tenantUserIDs
+		hasEnterpriseFilter = true
+	}
+	if role := normalizeEnterpriseRoleFilter(filters.EnterpriseRole); role != "" {
+		roleUserIDs, err := r.getEnterpriseUserIDsByRole(ctx, role)
+		if err != nil {
+			return nil, nil, err
+		}
+		if hasEnterpriseFilter {
+			enterpriseFilteredUserIDs = intersectPositiveInt64s(enterpriseFilteredUserIDs, roleUserIDs)
+		} else {
+			enterpriseFilteredUserIDs = roleUserIDs
+			hasEnterpriseFilter = true
+		}
+	}
+	if hasEnterpriseFilter {
+		if len(enterpriseFilteredUserIDs) == 0 {
+			return []service.User{}, paginationResultFromTotal(0, params), nil
+		}
+		q = q.Where(dbuser.IDIn(enterpriseFilteredUserIDs...))
+	}
 
 	// If attribute filters are specified, we need to filter by user IDs first
 	var allowedUserIDs []int64
@@ -529,6 +563,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	}
 
 	if err := r.hydrateUserPricingDiscounts(ctx, userMapToSlice(userMap)...); err != nil {
+		return nil, nil, err
+	}
+	if err := r.hydrateUserEnterpriseContexts(ctx, userMapToSlice(userMap)...); err != nil {
 		return nil, nil, err
 	}
 
@@ -1038,6 +1075,97 @@ func userMapToSlice(userMap map[int64]*service.User) []*service.User {
 	return out
 }
 
+func (r *userRepository) getEnterpriseUserIDsByTenantID(ctx context.Context, tenantID int64) ([]int64, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT user_id
+FROM enterprise_memberships
+WHERE tenant_id = $1
+ORDER BY user_id
+`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		out = append(out, userID)
+	}
+	return out, rows.Err()
+}
+
+func (r *userRepository) getEnterpriseUserIDsByRole(ctx context.Context, memberRole string) ([]int64, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT user_id
+FROM enterprise_memberships
+WHERE member_role = $1
+ORDER BY user_id
+`, memberRole)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		out = append(out, userID)
+	}
+	return out, rows.Err()
+}
+
+func normalizeEnterpriseRoleFilter(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "manager":
+		return "manager"
+	case "member":
+		return "member"
+	default:
+		return ""
+	}
+}
+
+func intersectPositiveInt64s(left, right []int64) []int64 {
+	if len(left) == 0 || len(right) == 0 {
+		return []int64{}
+	}
+	rightSet := make(map[int64]struct{}, len(right))
+	for _, id := range right {
+		if id > 0 {
+			rightSet[id] = struct{}{}
+		}
+	}
+	out := make([]int64, 0, len(left))
+	seen := make(map[int64]struct{}, len(left))
+	for _, id := range left {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := rightSet[id]; !ok {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 func (r *userRepository) hydrateUserPricingDiscounts(ctx context.Context, users ...*service.User) error {
 	if len(users) == 0 || r.sql == nil {
 		return nil
@@ -1095,6 +1223,123 @@ WHERE upd.user_id = ANY($1)
 	}
 
 	return rows.Err()
+}
+
+func (r *userRepository) hydrateUserEnterpriseContexts(ctx context.Context, users ...*service.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(users))
+	userMap := make(map[int64]*service.User, len(users))
+	for _, user := range users {
+		if user == nil || user.ID <= 0 {
+			continue
+		}
+		user.Enterprise = nil
+		userMap[user.ID] = user
+		ids = append(ids, user.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	rows, err := exec.QueryContext(ctx, `
+SELECT em.user_id,
+       em.tenant_id,
+       COALESCE(t.name, ''),
+       COALESCE(t.code, ''),
+       COALESCE(t.status, 'active'),
+       COALESCE(t.portal_host, ''),
+       COALESCE(em.member_role, ''),
+       COALESCE(em.member_note, ''),
+       COALESCE(em.joined_via, ''),
+       COALESCE(em.joined_source, ''),
+       COALESCE(em.pricing_factor::double precision, 1.0),
+       COALESCE(em.pricing_scope, 'balance'),
+       COALESCE(t.pricing_floor_factor::double precision, 1.0)
+FROM enterprise_memberships em
+JOIN enterprise_tenants t ON t.id = em.tenant_id
+WHERE em.user_id = ANY($1)
+`, pq.Array(uniquePositiveInt64s(ids)))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	tenantIDs := make([]int64, 0)
+	contexts := make(map[int64]*service.EnterpriseContext)
+	for rows.Next() {
+		ctxItem := &service.EnterpriseContext{}
+		var userID int64
+		if err := rows.Scan(
+			&userID,
+			&ctxItem.TenantID,
+			&ctxItem.TenantName,
+			&ctxItem.TenantCode,
+			&ctxItem.TenantStatus,
+			&ctxItem.PortalHost,
+			&ctxItem.MemberRole,
+			&ctxItem.MemberNote,
+			&ctxItem.JoinedVia,
+			&ctxItem.JoinedSource,
+			&ctxItem.PricingFactor,
+			&ctxItem.PricingScope,
+			&ctxItem.PricingFloorFactor,
+		); err != nil {
+			return err
+		}
+		ctxItem.PricingFactor = service.NormalizePricingDiscountFactorForRepo(ctxItem.PricingFactor)
+		ctxItem.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(ctxItem.PricingScope)
+		ctxItem.PricingFloorFactor = service.NormalizePricingDiscountFactorForRepo(ctxItem.PricingFloorFactor)
+		ctxItem.SelfRechargeBlocked = true
+		ctxItem.SelfRedeemBlocked = true
+		contexts[userID] = ctxItem
+		tenantIDs = append(tenantIDs, ctxItem.TenantID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	allowedGroupsByTenant := make(map[int64][]int64)
+	if len(tenantIDs) > 0 {
+		groupRows, err := exec.QueryContext(ctx, `
+SELECT tenant_id, group_id
+FROM enterprise_tenant_groups
+WHERE tenant_id = ANY($1)
+ORDER BY tenant_id, group_id
+`, pq.Array(uniquePositiveInt64s(tenantIDs)))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = groupRows.Close() }()
+		for groupRows.Next() {
+			var tenantID, groupID int64
+			if err := groupRows.Scan(&tenantID, &groupID); err != nil {
+				return err
+			}
+			allowedGroupsByTenant[tenantID] = append(allowedGroupsByTenant[tenantID], groupID)
+		}
+		if err := groupRows.Err(); err != nil {
+			return err
+		}
+	}
+
+	for userID, enterprise := range contexts {
+		if enterprise == nil {
+			continue
+		}
+		enterprise.AllowedGroupIDs = allowedGroupsByTenant[enterprise.TenantID]
+		if user := userMap[userID]; user != nil {
+			user.Enterprise = enterprise
+		}
+	}
+
+	return nil
 }
 
 // marshalExtraEmails serializes notify email entries to JSON for storage.

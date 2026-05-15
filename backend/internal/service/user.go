@@ -44,6 +44,9 @@ type User struct {
 	PricingDiscountSource string
 	PricingDiscountScope  string
 
+	// Enterprise 企业租户上下文。普通用户为 nil。
+	Enterprise *EnterpriseContext
+
 	// TOTP 双因素认证字段
 	TotpSecretEncrypted *string    // AES-256-GCM 加密的 TOTP 密钥
 	TotpEnabled         bool       // 是否启用 TOTP
@@ -82,6 +85,19 @@ func (u *User) IsActive() bool {
 // - Public groups (non-exclusive): all users can bind
 // - Exclusive groups: only users with the group in AllowedGroups can bind
 func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
+	if u != nil && u.Enterprise != nil && len(u.Enterprise.AllowedGroupIDs) > 0 {
+		allowedByEnterprise := false
+		for _, id := range u.Enterprise.AllowedGroupIDs {
+			if id == groupID {
+				allowedByEnterprise = true
+				break
+			}
+		}
+		if !allowedByEnterprise {
+			return false
+		}
+	}
+
 	// 公开分组（非专属）：所有用户都可以绑定
 	if !isExclusive {
 		return true

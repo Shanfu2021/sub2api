@@ -33,7 +33,31 @@ func UserFromServiceShallow(u *service.User) *User {
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
 		BalanceNotifyExtraEmails:   NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
 		TotalRecharged:             u.TotalRecharged,
+		Enterprise:                 EnterpriseContextFromService(u.Enterprise),
 		RPMLimit:                   u.RPMLimit,
+	}
+}
+
+func EnterpriseContextFromService(in *service.EnterpriseContext) *EnterpriseContext {
+	if in == nil {
+		return nil
+	}
+	return &EnterpriseContext{
+		TenantID:            in.TenantID,
+		TenantName:          in.TenantName,
+		TenantCode:          in.TenantCode,
+		TenantStatus:        in.TenantStatus,
+		PortalHost:          in.PortalHost,
+		MemberRole:          in.MemberRole,
+		MemberNote:          in.MemberNote,
+		JoinedVia:           in.JoinedVia,
+		JoinedSource:        in.JoinedSource,
+		PricingFactor:       service.NormalizePricingDiscountFactorForRepo(in.PricingFactor),
+		PricingScope:        service.NormalizeEnterprisePricingScopeForRepo(in.PricingScope),
+		PricingFloorFactor:  service.NormalizePricingDiscountFactorForRepo(in.PricingFloorFactor),
+		AllowedGroupIDs:     append([]int64(nil), in.AllowedGroupIDs...),
+		SelfRechargeBlocked: in.SelfRechargeBlocked,
+		SelfRedeemBlocked:   in.SelfRedeemBlocked,
 	}
 }
 

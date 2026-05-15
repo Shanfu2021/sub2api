@@ -74,6 +74,7 @@ type AuthService struct {
 	emailQueueService  *EmailQueueService
 	promoService       *PromoService
 	affiliateService   *AffiliateService
+	enterpriseService  EnterpriseInviteBinder
 	defaultSubAssigner DefaultSubscriptionAssigner
 }
 
@@ -101,6 +102,7 @@ func NewAuthService(
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	affiliateService *AffiliateService,
+	enterpriseService EnterpriseInviteBinder,
 ) *AuthService {
 	return &AuthService{
 		entClient:          entClient,
@@ -114,6 +116,7 @@ func NewAuthService(
 		emailQueueService:  emailQueueService,
 		promoService:       promoService,
 		affiliateService:   affiliateService,
+		enterpriseService:  enterpriseService,
 		defaultSubAssigner: defaultSubAssigner,
 	}
 }
@@ -127,11 +130,11 @@ func (s *AuthService) EntClient() *dbent.Client {
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "", "", "")
+	return s.RegisterWithVerification(ctx, email, password, "", "", "", "", "", "")
 }
 
 // RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和邀请返利码），返回token和用户。
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode, signupIP string) (string, *User, error) {
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode, enterpriseInviteCode, signupIP string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -257,8 +260,23 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
 		}
 	}
+	enterpriseBound := false
+	if code := strings.TrimSpace(enterpriseInviteCode); code != "" && s.enterpriseService != nil {
+		if _, err := s.enterpriseService.BindUserByInviteCode(ctx, user.ID, code, "register"); err != nil {
+			if deleteErr := s.userRepo.Delete(ctx, user.ID); deleteErr != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to rollback user after enterprise bind failure for user %d: %v", user.ID, deleteErr)
+			}
+			return "", nil, err
+		}
+		enterpriseBound = true
+		if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
+			user = updatedUser
+		} else {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to reload user after enterprise bind for user %d: %v", user.ID, err)
+		}
+	}
 	// 应用优惠码（如果提供且功能已启用）
-	if promoCode != "" && s.promoService != nil && s.settingService != nil && s.settingService.IsPromoCodeEnabled(ctx) {
+	if promoCode != "" && !enterpriseBound && s.promoService != nil && s.settingService != nil && s.settingService.IsPromoCodeEnabled(ctx) {
 		if _, err := s.promoService.ApplyPromoCodeDetailed(ctx, user.ID, promoCode); err != nil {
 			// 优惠码应用失败不影响注册，只记录日志
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to apply promo code for user %d: %v", user.ID, err)

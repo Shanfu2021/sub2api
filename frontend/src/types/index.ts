@@ -63,6 +63,24 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
+export interface EnterpriseContext {
+  tenant_id: number
+  tenant_name: string
+  tenant_code: string
+  tenant_status: string
+  portal_host?: string | null
+  member_role: 'manager' | 'member' | string
+  member_note?: string | null
+  joined_via?: string | null
+  joined_source?: string | null
+  pricing_factor: number
+  pricing_scope: 'all' | 'balance' | 'subscription' | string
+  pricing_floor_factor: number
+  allowed_group_ids?: number[]
+  self_recharge_blocked: boolean
+  self_redeem_blocked: boolean
+}
+
 export interface User {
   id: number
   username: string
@@ -97,6 +115,7 @@ export interface User {
   pricing_discount_label?: string | null
   pricing_discount_source?: string | null
   pricing_discount_scope?: 'all' | 'balance' | 'subscription' | null
+  enterprise?: EnterpriseContext | null
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -127,6 +146,7 @@ export interface RegisterRequest {
   promo_code?: string
   invitation_code?: string
   aff_code?: string
+  enterprise_invite_code?: string
 }
 
 export interface AffiliateInvitee {
@@ -253,6 +273,73 @@ export interface AuthResponse {
 
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
+}
+
+export interface EnterpriseTenant {
+  id: number
+  name: string
+  code: string
+  status: string
+  notes: string
+  portal_host?: string | null
+  pricing_floor_factor: number
+  pricing_scope: string
+  balance_quota_total: number
+  balance_quota_used: number
+  allowed_group_ids?: number[]
+  manager_count: number
+  member_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface EnterpriseMembership {
+  id: number
+  tenant_id: number
+  user_id: number
+  member_role: string
+  member_note: string
+  joined_via: string
+  joined_source: string
+  pricing_factor: number
+  pricing_scope: string
+  user_email: string
+  user_username: string
+  user_status: string
+  user_balance: number
+  user_concurrency: number
+  allowed_groups?: number[]
+  created_at: string
+  updated_at: string
+}
+
+export interface EnterpriseInviteCode {
+  id: number
+  tenant_id: number
+  code: string
+  status: string
+  max_uses: number
+  used_count: number
+  expires_at?: string | null
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EnterpriseLedgerEntry {
+  id: number
+  tenant_id: number
+  operator_user_id?: number | null
+  target_user_id?: number | null
+  direction: string
+  amount: number
+  balance_before: number
+  balance_after: number
+  notes: string
+  created_at: string
+  operator_email?: string | null
+  target_user_email?: string | null
+  target_user_name?: string | null
 }
 
 // ==================== Subscription Types ====================

@@ -131,6 +131,10 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/spec/
+!docs/spec/enterprise-tenant-management.md
+!docs/implement-plan/
+!docs/implement-plan/enterprise-tenant-management.md
 .serena/
 .codex/
 frontend/coverage/

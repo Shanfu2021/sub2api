@@ -69,6 +69,8 @@ type UserListFilters struct {
 	Role       string           // User role filter
 	Search     string           // Search in email, username
 	GroupName  string           // Filter by allowed group name (fuzzy match)
+	TenantID   int64            // Filter by enterprise tenant ownership
+	EnterpriseRole string       // Filter by enterprise member role (manager/member)
 	Attributes map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.

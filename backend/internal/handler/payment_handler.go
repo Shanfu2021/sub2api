@@ -19,17 +19,24 @@ import (
 
 // PaymentHandler handles user-facing payment requests.
 type PaymentHandler struct {
-	channelService *service.ChannelService
-	paymentService *service.PaymentService
-	configService  *service.PaymentConfigService
+	channelService    *service.ChannelService
+	paymentService    *service.PaymentService
+	configService     *service.PaymentConfigService
+	enterpriseService *service.EnterpriseService
 }
 
 // NewPaymentHandler creates a new PaymentHandler.
-func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, channelService *service.ChannelService) *PaymentHandler {
+func NewPaymentHandler(
+	paymentService *service.PaymentService,
+	configService *service.PaymentConfigService,
+	channelService *service.ChannelService,
+	enterpriseService *service.EnterpriseService,
+) *PaymentHandler {
 	return &PaymentHandler{
-		channelService: channelService,
-		paymentService: paymentService,
-		configService:  configService,
+		channelService:    channelService,
+		paymentService:    paymentService,
+		configService:     configService,
+		enterpriseService: enterpriseService,
 	}
 }
 
@@ -227,6 +234,17 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	subject, ok := requireAuth(c)
 	if !ok {
 		return
+	}
+	if h.enterpriseService != nil {
+		enterprise, err := h.enterpriseService.GetUserEnterpriseContext(c.Request.Context(), subject.UserID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if enterprise != nil && enterprise.SelfRechargeBlocked {
+			response.ErrorFrom(c, service.ErrEnterpriseSelfRechargeForbidden)
+			return
+		}
 	}
 
 	var req CreateOrderRequest

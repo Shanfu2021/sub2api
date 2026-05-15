@@ -119,5 +119,20 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// 企业租户门户
+		enterprise := authenticated.Group("/enterprise")
+		{
+			enterprise.GET("/me", h.Enterprise.GetMe)
+			enterprise.POST("/bind-invite", h.Enterprise.BindInviteCode)
+			enterprise.GET("/members", h.Enterprise.ListMembers)
+			enterprise.POST("/members", h.Enterprise.CreateMember)
+			enterprise.PUT("/members/:user_id", h.Enterprise.UpdateMember)
+			enterprise.POST("/members/:user_id/balance", h.Enterprise.AdjustMemberBalance)
+			enterprise.GET("/invite-codes", h.Enterprise.ListInviteCodes)
+			enterprise.POST("/invite-codes", h.Enterprise.CreateInviteCode)
+			enterprise.PUT("/invite-codes/:invite_id", h.Enterprise.UpdateInviteCode)
+			enterprise.GET("/ledger", h.Enterprise.ListLedger)
+		}
 	}
 }

@@ -61,6 +61,23 @@
               />
             </div>
 
+            <div v-if="visibleFilters.has('enterprise_tenant')" class="w-full sm:w-52">
+              <Select
+                v-model="filters.tenant_id"
+                :options="enterpriseTenantFilterOptions"
+                searchable
+                @change="applyFilter"
+              />
+            </div>
+
+            <div v-if="visibleFilters.has('enterprise_role')" class="w-full sm:w-36">
+              <Select
+                v-model="filters.enterprise_role"
+                :options="enterpriseRoleFilterOptions"
+                @change="applyFilter"
+              />
+            </div>
+
             <!-- Dynamic Attribute Filters -->
             <template v-for="(value, attrId) in activeAttributeFilters" :key="attrId">
               <div
@@ -261,6 +278,52 @@
 
           <template #cell-username="{ value }">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || '-' }}</span>
+          </template>
+
+          <template #cell-enterprise_name="{ row }">
+            <div class="max-w-xs">
+              <span
+                v-if="row.enterprise?.tenant_name"
+                class="block truncate text-sm font-medium text-gray-900 dark:text-white"
+                :title="row.enterprise.tenant_name"
+              >
+                {{ row.enterprise.tenant_name }}
+              </span>
+              <span
+                v-if="row.enterprise?.tenant_code"
+                class="mt-0.5 block truncate text-xs text-gray-500 dark:text-dark-400"
+                :title="row.enterprise.tenant_code"
+              >
+                {{ row.enterprise.tenant_code }}
+              </span>
+              <span v-if="!row.enterprise?.tenant_name" class="text-sm text-gray-400">-</span>
+            </div>
+          </template>
+
+          <template #cell-enterprise_role="{ row }">
+            <span
+              v-if="row.enterprise?.member_role"
+              :class="[
+                'badge',
+                row.enterprise.member_role === 'manager' ? 'badge-primary' : 'badge-gray'
+              ]"
+            >
+              {{ row.enterprise.member_role === 'manager' ? '企业管理员' : '企业成员' }}
+            </span>
+            <span v-else class="text-sm text-gray-400">-</span>
+          </template>
+
+          <template #cell-enterprise_note="{ row }">
+            <div class="max-w-xs">
+              <span
+                v-if="row.enterprise?.member_note"
+                :title="row.enterprise.member_note"
+                class="block truncate text-sm text-gray-600 dark:text-gray-400"
+              >
+                {{ row.enterprise.member_note }}
+              </span>
+              <span v-else class="text-sm text-gray-400">-</span>
+            </div>
           </template>
 
           <template #cell-pricing_discount_source="{ row }">
@@ -671,10 +734,8 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
-
-const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
+import type { AdminUser, AdminGroup, EnterpriseTenant, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -695,6 +756,7 @@ import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
+const { t } = useI18n()
 const appStore = useAppStore()
 
 // Generate dynamic attribute columns from enabled definitions
@@ -764,6 +826,9 @@ const allColumns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true },
   { key: 'id', label: t('admin.users.columns.id'), sortable: true },
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
+  { key: 'enterprise_name', label: '企业归属', sortable: false },
+  { key: 'enterprise_role', label: '企业角色', sortable: false },
+  { key: 'enterprise_note', label: '企业内备注', sortable: false },
   { key: 'pricing_discount_source', label: t('admin.users.columns.promoCode'), sortable: false },
   { key: 'pricing_discount_factor', label: t('admin.users.columns.discountFactor'), sortable: false },
   { key: 'notes', label: t('admin.users.columns.notes'), sortable: false },
@@ -888,12 +953,22 @@ const sortState = reactive(loadInitialSortState())
 
 // Groups data for the groups column
 const allGroups = ref<AdminGroup[]>([])
+const enterpriseTenants = ref<EnterpriseTenant[]>([])
 const loadAllGroups = async () => {
   if (allGroups.value.length > 0) return
   try {
     allGroups.value = await adminAPI.groups.getAll()
   } catch (e) {
     console.error('Failed to load groups:', e)
+  }
+}
+const loadEnterpriseTenants = async () => {
+  if (enterpriseTenants.value.length > 0) return
+  try {
+    const response = await adminAPI.enterprise.listTenants(1, 200)
+    enterpriseTenants.value = response.items
+  } catch (e) {
+    console.error('Failed to load enterprise tenants:', e)
   }
 }
 // Resolve user's accessible groups: exclusive groups first, then public groups
@@ -925,11 +1000,32 @@ const groupFilterOptions = computed(() => {
   return options
 })
 
+const enterpriseTenantFilterOptions = computed(() => {
+  const options: { value: string; label: string }[] = [
+    { value: '', label: '全部企业' }
+  ]
+  for (const tenant of enterpriseTenants.value) {
+    options.push({
+      value: String(tenant.id),
+      label: tenant.code ? `${tenant.name} (${tenant.code})` : tenant.name,
+    })
+  }
+  return options
+})
+
+const enterpriseRoleFilterOptions = [
+  { value: '', label: '全部企业角色' },
+  { value: 'manager', label: '企业管理员' },
+  { value: 'member', label: '企业成员' },
+]
+
 // Filter values (role, status, and custom attributes)
 const filters = reactive({
   role: '',
   status: '',
-  group: ''  // group name for fuzzy match, '' = all
+  group: '',  // group name for fuzzy match, '' = all
+  tenant_id: '',
+  enterprise_role: '',
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
 
@@ -958,7 +1054,9 @@ const filterableAttributes = computed(() =>
 const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
   { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
-  { key: 'group', name: t('admin.users.columns.groups'), type: 'select' as const }
+  { key: 'group', name: t('admin.users.columns.groups'), type: 'select' as const },
+  { key: 'enterprise_tenant', name: '企业归属', type: 'select' as const },
+  { key: 'enterprise_role', name: '企业角色', type: 'select' as const },
 ])
 
 // Load saved filters from localStorage
@@ -977,6 +1075,8 @@ const loadSavedFilters = () => {
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
       if (parsed.group) filters.group = parsed.group
+      if (parsed.tenant_id) filters.tenant_id = parsed.tenant_id
+      if (parsed.enterprise_role) filters.enterprise_role = parsed.enterprise_role
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
       }
@@ -996,6 +1096,8 @@ const saveFiltersToStorage = () => {
       role: filters.role,
       status: filters.status,
       group: filters.group,
+      tenant_id: filters.tenant_id,
+      enterprise_role: filters.enterprise_role,
       attributes: activeAttributeFilters
     }
     localStorage.setItem(FILTER_VALUES_KEY, JSON.stringify(values))
@@ -1235,6 +1337,8 @@ const loadUsers = async () => {
         status: filters.status as any,
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
+        tenant_id: Number(filters.tenant_id) || undefined,
+        enterprise_role: (filters.enterprise_role as 'manager' | 'member' | '') || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
         include_subscriptions: hasVisibleSubscriptionsColumn.value,
         sort_by: sortState.sort_by,
@@ -1317,9 +1421,12 @@ const toggleBuiltInFilter = (key: string) => {
     if (key === 'role') filters.role = ''
     if (key === 'status') filters.status = ''
     if (key === 'group') filters.group = ''
+    if (key === 'enterprise_tenant') filters.tenant_id = ''
+    if (key === 'enterprise_role') filters.enterprise_role = ''
   } else {
     visibleFilters.add(key)
     if (key === 'group') loadAllGroups()
+    if (key === 'enterprise_tenant') loadEnterpriseTenants()
   }
   saveFiltersToStorage()
   pagination.page = 1
@@ -1475,6 +1582,7 @@ const handleScroll = () => {
 
 onMounted(async () => {
   await loadAttributeDefinitions()
+  await loadEnterpriseTenants()
   loadSavedFilters()
   loadSavedColumns()
   loadUsers()

@@ -197,6 +197,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 	if err := hydrateAPIKeyUserPricingDiscount(ctx, clientFromContext(ctx, r.client), out.User); err != nil {
 		return nil, err
 	}
+	if err := hydrateAPIKeyUserEnterpriseContext(ctx, clientFromContext(ctx, r.client), out.User); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -732,6 +735,86 @@ LIMIT 1
 	}
 
 	return rows.Err()
+}
+
+func hydrateAPIKeyUserEnterpriseContext(ctx context.Context, client *dbent.Client, user *service.User) error {
+	if client == nil || user == nil || user.ID <= 0 {
+		return nil
+	}
+
+	user.Enterprise = nil
+	rows, err := client.QueryContext(ctx, `
+SELECT em.tenant_id,
+       COALESCE(t.name, ''),
+       COALESCE(t.code, ''),
+       COALESCE(t.status, 'active'),
+       COALESCE(t.portal_host, ''),
+       COALESCE(em.member_role, ''),
+       COALESCE(em.member_note, ''),
+       COALESCE(em.joined_via, ''),
+       COALESCE(em.joined_source, ''),
+       COALESCE(em.pricing_factor::double precision, 1.0),
+       COALESCE(em.pricing_scope, 'balance'),
+       COALESCE(t.pricing_floor_factor::double precision, 1.0)
+FROM enterprise_memberships em
+JOIN enterprise_tenants t ON t.id = em.tenant_id
+WHERE em.user_id = $1
+LIMIT 1
+`, user.ID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return rows.Err()
+	}
+	out := &service.EnterpriseContext{}
+	if err := rows.Scan(
+		&out.TenantID,
+		&out.TenantName,
+		&out.TenantCode,
+		&out.TenantStatus,
+		&out.PortalHost,
+		&out.MemberRole,
+		&out.MemberNote,
+		&out.JoinedVia,
+		&out.JoinedSource,
+		&out.PricingFactor,
+		&out.PricingScope,
+		&out.PricingFloorFactor,
+	); err != nil {
+		return err
+	}
+	out.PricingFactor = service.NormalizePricingDiscountFactorForRepo(out.PricingFactor)
+	out.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(out.PricingScope)
+	out.PricingFloorFactor = service.NormalizePricingDiscountFactorForRepo(out.PricingFloorFactor)
+	out.SelfRechargeBlocked = true
+	out.SelfRedeemBlocked = true
+
+	groupRows, err := client.QueryContext(ctx, `
+SELECT group_id
+FROM enterprise_tenant_groups
+WHERE tenant_id = $1
+ORDER BY group_id
+`, out.TenantID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = groupRows.Close() }()
+	for groupRows.Next() {
+		var groupID int64
+		if err := groupRows.Scan(&groupID); err != nil {
+			return err
+		}
+		out.AllowedGroupIDs = append(out.AllowedGroupIDs, groupID)
+	}
+	if err := groupRows.Err(); err != nil {
+		return err
+	}
+
+	user.Enterprise = out
+	return nil
 }
 
 func groupEntityToService(g *dbent.Group) *service.Group {

@@ -36,6 +36,10 @@ const (
 	// OpsSkipPassthroughKey 由 applyErrorPassthroughRule 在命中 skip_monitoring=true 的规则时设置。
 	// ops_error_logger 中间件检查此 key，为 true 时跳过错误记录。
 	OpsSkipPassthroughKey = "ops_skip_passthrough"
+
+	// OpsSkipErrorLogKey allows handlers to suppress ops_error_logs for known
+	// noisy client-side disconnects that are not actionable platform failures.
+	OpsSkipErrorLogKey = "ops_skip_error_log"
 )
 
 func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {

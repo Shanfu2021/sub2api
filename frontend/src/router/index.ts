@@ -244,6 +244,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/enterprise',
+    name: 'EnterpriseWorkspace',
+    component: () => import('@/views/enterprise/EnterpriseWorkspaceView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Enterprise Workspace',
+    }
+  },
+  {
     path: '/subscriptions',
     name: 'Subscriptions',
     component: () => import('@/views/user/SubscriptionsView.vue'),
@@ -390,6 +400,16 @@ const routes: RouteRecordRaw[] = [
       title: 'User Management',
       titleKey: 'admin.users.title',
       descriptionKey: 'admin.users.description'
+    }
+  },
+  {
+    path: '/admin/enterprise',
+    name: 'AdminEnterprise',
+    component: () => import('@/views/admin/EnterpriseTenantsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Enterprise Management',
     }
   },
   {
@@ -807,10 +827,13 @@ router.beforeEach((to, _from, next) => {
     }
   }
 
-  if (appStore.enterprisePortalEnabled && !authStore.isAdmin) {
+  if ((appStore.enterprisePortalEnabled || !!authStore.user?.enterprise) && !authStore.isAdmin) {
     const enterpriseAllowedPrefixes = [
       '/dashboard',
       '/keys',
+      '/usage',
+      '/available-channels',
+      '/enterprise',
       '/subscriptions',
       '/profile',
       '/monitor',
@@ -819,7 +842,7 @@ router.beforeEach((to, _from, next) => {
       (path) => to.path === path || to.path.startsWith(`${path}/`)
     )
     if (!isAllowedEnterpriseRoute) {
-      next('/subscriptions')
+      next(authStore.user?.enterprise ? '/enterprise' : '/subscriptions')
       return
     }
   }

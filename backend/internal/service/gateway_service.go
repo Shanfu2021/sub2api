@@ -7872,10 +7872,16 @@ func effectiveUserPricingDiscountFactor(user *User, group *Group) float64 {
 	if user == nil {
 		return DefaultPricingDiscountFactor
 	}
-	if !PromoDiscountAppliesToGroup(user.PricingDiscountScope, group) {
+	if user.Enterprise != nil && user.Enterprise.TenantStatus == EnterpriseTenantStatusActive {
+		if PromoDiscountAppliesToGroup(NormalizeEnterprisePricingScopeForRepo(user.Enterprise.PricingScope), group) {
+			return NormalizePricingDiscountFactorForRepo(user.Enterprise.PricingFactor)
+		}
 		return DefaultPricingDiscountFactor
 	}
-	return NormalizePricingDiscountFactorForRepo(user.PricingDiscountFactor)
+	if PromoDiscountAppliesToGroup(user.PricingDiscountScope, group) {
+		return NormalizePricingDiscountFactorForRepo(user.PricingDiscountFactor)
+	}
+	return DefaultPricingDiscountFactor
 }
 
 // RecordUsageInput 记录使用量的输入参数
