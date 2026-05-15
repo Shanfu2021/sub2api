@@ -62,7 +62,7 @@ find_success_run_id() {
   local wf_name
   wf_name="$(workflow_name)"
   gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs?branch=${branch}&per_page=30" \
-    | python3 - "$head_sha" "$wf_name" <<'PY'
+    | python3 -c '
 import json
 import sys
 
@@ -78,7 +78,7 @@ for run in runs:
         continue
     print(run["id"])
     break
-PY
+' "$head_sha" "$wf_name"
 }
 
 find_dispatched_run_id() {
@@ -87,7 +87,7 @@ find_dispatched_run_id() {
   local wf_name
   wf_name="$(workflow_name)"
   gh_api "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runs?branch=${branch}&per_page=30" \
-    | python3 - "$head_sha" "$wf_name" <<'PY'
+    | python3 -c '
 import json
 import sys
 
@@ -103,7 +103,7 @@ for run in runs:
         continue
     print(run["id"])
     break
-PY
+' "$head_sha" "$wf_name"
 }
 
 cmd_push() {
