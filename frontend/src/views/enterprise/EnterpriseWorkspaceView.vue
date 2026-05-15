@@ -69,7 +69,9 @@
                   </div>
                   <div class="grid grid-cols-2 gap-2">
                     <input v-model="memberForm.pricing_factor" class="input" type="number" min="0.01" step="0.01" placeholder="倍率" />
-                    <input v-model="memberForm.allowed_groups_text" class="input" placeholder="分组 ID，逗号分隔" />
+                    <div class="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                      成员自动继承企业可用分组
+                    </div>
                   </div>
                 </div>
                 <button class="btn btn-primary mt-3 w-full" :disabled="submitting" @click="submitCreateMember">创建成员</button>
@@ -207,7 +209,6 @@ const memberForm = reactive({
   concurrency: 0,
   initial_balance: 0,
   pricing_factor: 1,
-  allowed_groups_text: '',
 })
 
 const inviteForm = reactive({
@@ -225,13 +226,6 @@ function showError(error: unknown) {
   const detail = typeof error === 'object' && error && 'detail' in error ? String((error as { detail?: string }).detail || '') : ''
   const message = detail || (error instanceof Error ? error.message : '操作失败')
   appStore.showError(message)
-}
-
-function parseGroupIDs(input: string): number[] {
-  return input
-    .split(',')
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isFinite(item) && item > 0)
 }
 
 function formatDate(value?: string | null) {
@@ -298,7 +292,6 @@ async function submitCreateMember() {
       username: memberForm.username.trim() || undefined,
       notes: memberForm.notes.trim() || undefined,
       concurrency: Number(memberForm.concurrency) || 0,
-      allowed_groups: parseGroupIDs(memberForm.allowed_groups_text),
       member_note: memberForm.member_note.trim() || undefined,
       pricing_factor: Number(memberForm.pricing_factor) || 1,
       pricing_scope: 'balance',
@@ -313,7 +306,6 @@ async function submitCreateMember() {
     memberForm.concurrency = 0
     memberForm.initial_balance = 0
     memberForm.pricing_factor = 1
-    memberForm.allowed_groups_text = ''
     await Promise.all([loadMembers(), loadLedger(), loadMe()])
   } catch (error) {
     showError(error)

@@ -27,7 +27,49 @@
 	                  </select>
 	                </div>
                 <input v-model="tenantForm.portal_host" class="input" placeholder="门户域名，可留空" />
-                <input v-model="tenantForm.allowed_group_ids_text" class="input" placeholder="允许分组 ID，逗号分隔" />
+                <div class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
+                  <div class="mb-2 flex items-center justify-between gap-2">
+                    <div class="text-xs font-medium text-gray-600 dark:text-dark-200">企业可用分组</div>
+                    <button class="btn btn-secondary btn-sm" type="button" @click="loadGroups">刷新分组</button>
+                  </div>
+                  <div class="max-h-52 space-y-2 overflow-y-auto pr-1">
+                    <label
+                      v-for="group in groupOptions"
+                      :key="group.id"
+                      class="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-100 p-2 text-xs hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/40"
+                    >
+                      <input v-model="tenantForm.allowed_group_ids" class="mt-1" type="checkbox" :value="group.id" />
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate font-medium text-gray-800 dark:text-dark-100">
+                          #{{ group.id }} {{ group.name }}
+                        </span>
+                        <span class="mt-1 block text-gray-500 dark:text-dark-300">
+                          {{ group.platform }} · {{ group.subscription_type === 'subscription' ? '订阅' : '余额' }} · {{ group.is_exclusive ? '专属' : '公开' }}
+                        </span>
+                      </span>
+                    </label>
+                    <div v-if="!groupOptions.length" class="text-xs text-gray-500 dark:text-dark-300">暂无可选分组</div>
+                  </div>
+                  <div v-if="selectedGroupLabels.length || missingGroupIDs.length" class="mt-3 flex flex-wrap gap-2">
+                    <span
+                      v-for="group in selectedGroupLabels"
+                      :key="group.id"
+                      class="rounded-full bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                    >
+                      #{{ group.id }} {{ group.name }}
+                    </span>
+                    <span
+                      v-for="id in missingGroupIDs"
+                      :key="id"
+                      class="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+                    >
+                      未加载分组 #{{ id }}
+                    </span>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
+                    企业成员可直接使用这里选中的分组，包括专属分组；未选择时不额外限制公开分组。
+                  </p>
+                </div>
                 <select v-model="tenantForm.status" class="input">
                   <option value="active">启用</option>
                   <option value="disabled">停用</option>
@@ -220,10 +262,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import enterpriseAdminAPI from '@/api/admin/enterprise'
-import type { EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership, EnterpriseTenant } from '@/types'
+import groupsAPI from '@/api/admin/groups'
+import type { AdminGroup, EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership, EnterpriseTenant } from '@/types'
 import { useAppStore } from '@/stores'
 
 const appStore = useAppStore()
@@ -236,6 +279,7 @@ const selectedTenant = ref<EnterpriseTenant | null>(null)
 const members = ref<EnterpriseMembership[]>([])
 const inviteCodes = ref<EnterpriseInviteCode[]>([])
 const ledger = ref<EnterpriseLedgerEntry[]>([])
+const groups = ref<AdminGroup[]>([])
 
 const tenantForm = reactive({
   name: '',
@@ -245,7 +289,7 @@ const tenantForm = reactive({
   portal_host: '',
   pricing_floor_factor: 1,
   pricing_scope: 'balance',
-  allowed_group_ids_text: '',
+  allowed_group_ids: [] as number[],
 })
 
 const quotaForm = reactive({
@@ -278,12 +322,24 @@ function showError(error: unknown) {
   appStore.showError(message)
 }
 
-function parseGroupIDs(input: string): number[] {
-  return input
-    .split(',')
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isFinite(item) && item > 0)
-}
+const groupOptions = computed(() =>
+  [...groups.value].sort((a, b) => {
+    if (a.platform !== b.platform) return a.platform.localeCompare(b.platform)
+    return a.id - b.id
+  })
+)
+
+const selectedGroupLabels = computed(() => {
+  const byID = new Map(groups.value.map((group) => [group.id, group]))
+  return tenantForm.allowed_group_ids
+    .map((id) => byID.get(id))
+    .filter((group): group is AdminGroup => !!group)
+})
+
+const missingGroupIDs = computed(() => {
+  const known = new Set(groups.value.map((group) => group.id))
+  return tenantForm.allowed_group_ids.filter((id) => !known.has(id))
+})
 
 function resetTenantForm() {
   tenantForm.name = ''
@@ -293,7 +349,7 @@ function resetTenantForm() {
   tenantForm.portal_host = ''
   tenantForm.pricing_floor_factor = 1
   tenantForm.pricing_scope = 'balance'
-  tenantForm.allowed_group_ids_text = ''
+  tenantForm.allowed_group_ids = []
   selectedTenant.value = null
 }
 
@@ -305,7 +361,7 @@ function fillTenantForm(item: EnterpriseTenant) {
   tenantForm.portal_host = item.portal_host || ''
   tenantForm.pricing_floor_factor = item.pricing_floor_factor
   tenantForm.pricing_scope = item.pricing_scope || 'balance'
-  tenantForm.allowed_group_ids_text = (item.allowed_group_ids || []).join(',')
+  tenantForm.allowed_group_ids = [...(item.allowed_group_ids || [])]
 }
 
 function formatDate(value?: string | null) {
@@ -331,6 +387,14 @@ async function loadTenants() {
     showError(error)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadGroups() {
+  try {
+    groups.value = await groupsAPI.getAll()
+  } catch (error) {
+    showError(error)
   }
 }
 
@@ -381,7 +445,7 @@ async function submitTenant() {
       portal_host: tenantForm.portal_host.trim(),
       pricing_floor_factor: Number(tenantForm.pricing_floor_factor) || 1,
       pricing_scope: tenantForm.pricing_scope,
-      allowed_group_ids: parseGroupIDs(tenantForm.allowed_group_ids_text),
+      allowed_group_ids: [...tenantForm.allowed_group_ids],
     }
     if (selectedTenant.value?.id) {
       await enterpriseAdminAPI.updateTenant(selectedTenant.value.id, payload)
@@ -490,5 +554,7 @@ async function toggleInvite(invite: EnterpriseInviteCode) {
   }
 }
 
-onMounted(loadTenants)
+onMounted(() => {
+  void Promise.all([loadTenants(), loadGroups()])
+})
 </script>
