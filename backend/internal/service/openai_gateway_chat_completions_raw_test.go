@@ -76,6 +76,26 @@ func TestBuildOpenAIResponsesURL_ProbeURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeRawChatCompletionsTokenLimit(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"gpt-5.4","max_output_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+	got, err := normalizeRawChatCompletionsTokenLimit(body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(got, "max_output_tokens").Exists())
+	require.Equal(t, int64(16), gjson.GetBytes(got, "max_completion_tokens").Int())
+}
+
+func TestNormalizeRawChatCompletionsTokenLimitPreservesExplicitChatLimit(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"model":"gpt-5.4","max_output_tokens":16,"max_completion_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)
+	got, err := normalizeRawChatCompletionsTokenLimit(body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(got, "max_output_tokens").Exists())
+	require.Equal(t, int64(8), gjson.GetBytes(got, "max_completion_tokens").Int())
+}
+
 func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDownstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

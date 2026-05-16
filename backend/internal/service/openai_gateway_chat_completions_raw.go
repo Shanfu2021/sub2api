@@ -87,6 +87,11 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if upstreamModel != originalModel {
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 	}
+	var limitErr error
+	upstreamBody, limitErr = normalizeRawChatCompletionsTokenLimit(upstreamBody)
+	if limitErr != nil {
+		return nil, fmt.Errorf("normalize chat completions token limit: %w", limitErr)
+	}
 
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
@@ -416,6 +421,30 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}, nil
+}
+
+func normalizeRawChatCompletionsTokenLimit(body []byte) ([]byte, error) {
+	maxOutput := gjson.GetBytes(body, "max_output_tokens")
+	if !maxOutput.Exists() {
+		return body, nil
+	}
+
+	// max_output_tokens is a Responses API field. Raw Chat Completions
+	// upstreams expect max_completion_tokens/max_tokens instead, so bridge it
+	// rather than leaking an unsupported field to strict compatible upstreams.
+	if !gjson.GetBytes(body, "max_completion_tokens").Exists() && !gjson.GetBytes(body, "max_tokens").Exists() {
+		updated, err := sjson.SetBytes(body, "max_completion_tokens", maxOutput.Value())
+		if err != nil {
+			return nil, err
+		}
+		body = updated
+	}
+
+	updated, err := sjson.DeleteBytes(body, "max_output_tokens")
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 // buildOpenAIChatCompletionsURL 拼接上游 Chat Completions 端点 URL。
