@@ -597,11 +597,11 @@ func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverE
 				respCode = *rule.ResponseCode
 			}
 
-			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
-			if !rule.PassthroughBody && rule.CustomMessage != nil {
-				msg = *rule.CustomMessage
-			}
+			// 确定响应消息：错误透传规则不再允许把上游原始 body 暴露给客户端。
+			msg := service.SafePassthroughClientMessage(
+				rule.CustomMessage,
+				service.SafeUpstreamClientMessage(statusCode, "Upstream request failed"),
+			)
 
 			if rule.SkipMonitoring {
 				c.Set(service.OpsSkipPassthroughKey, true)

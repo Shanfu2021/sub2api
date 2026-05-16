@@ -171,8 +171,9 @@ func (s *GatewayService) ForwardAsResponses(
 			}
 		}
 
-		// Non-failover error: return Responses-formatted error to client
-		writeResponsesError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
+		// Non-failover error: return a generic Responses-formatted error to client.
+		_, clientMsg := SafeUpstreamClientError(resp.StatusCode, "server_error", "Upstream request failed")
+		writeResponsesError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", clientMsg)
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 

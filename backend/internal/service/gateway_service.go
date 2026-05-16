@@ -6970,7 +6970,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "Invalid request",
+			},
+		})
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)

@@ -56,10 +56,10 @@ func applyErrorPassthroughRule(
 		status = *rule.ResponseCode
 	}
 
-	errMsg = ExtractUpstreamErrorMessage(responseBody)
-	if !rule.PassthroughBody && rule.CustomMessage != nil {
-		errMsg = *rule.CustomMessage
-	}
+	errMsg = SafePassthroughClientMessage(
+		rule.CustomMessage,
+		SafeUpstreamClientMessage(upstreamStatus, defaultErrMsg),
+	)
 
 	// 命中 skip_monitoring 时在 context 中标记，供 ops_error_logger 跳过记录。
 	if rule.SkipMonitoring {

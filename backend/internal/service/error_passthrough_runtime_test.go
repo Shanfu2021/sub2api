@@ -36,6 +36,40 @@ func TestApplyErrorPassthroughRule_NoBoundService(t *testing.T) {
 	assert.Equal(t, "Upstream request failed", errMsg)
 }
 
+func TestApplyErrorPassthroughRule_PassthroughBodyDoesNotLeakUpstreamBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{{
+		ID:              1,
+		Name:            "no-leak-rule",
+		Enabled:         true,
+		Priority:        1,
+		ErrorCodes:      []int{http.StatusServiceUnavailable},
+		MatchMode:       model.MatchModeAny,
+		PassthroughCode: true,
+		PassthroughBody: true,
+	}})
+	BindErrorPassthroughService(c, ruleSvc)
+
+	status, errType, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusServiceUnavailable,
+		[]byte(`{"error":{"message":"No available channel for model gpt-5.5 under group pro (distributor)"}}`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	assert.Equal(t, http.StatusServiceUnavailable, status)
+	assert.Equal(t, "upstream_error", errType)
+	assert.Equal(t, "Upstream service temporarily unavailable", errMsg)
+}
+
 func TestGatewayHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

@@ -706,7 +706,7 @@ func resolveOpenAIWSFallbackErrorResponse(err error) (statusCode int, errType st
 			errType = "upstream_error"
 		}
 	}
-	clientMessage = upstreamMessage
+	clientMessage = SafeUpstreamClientMessage(statusCode, "Upstream request failed")
 	return statusCode, errType, clientMessage, upstreamMessage, true
 }
 
@@ -3374,12 +3374,13 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		UpstreamResponseBody: upstreamDetail,
 	})
 
-	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/json"
-	}
-	c.Data(resp.StatusCode, contentType, body)
+	errType, clientMsg := SafeUpstreamClientError(resp.StatusCode, "upstream_error", "Upstream request failed")
+	c.JSON(resp.StatusCode, gin.H{
+		"error": gin.H{
+			"type":    errType,
+			"message": clientMsg,
+		},
+	})
 
 	if upstreamMsg == "" {
 		return fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -4245,7 +4246,8 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		errType = "api_error"
 	}
 
-	writeError(c, resp.StatusCode, errType, upstreamMsg)
+	_, clientMsg := SafeUpstreamClientError(resp.StatusCode, errType, "Upstream request failed")
+	writeError(c, resp.StatusCode, errType, clientMsg)
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 
@@ -4883,20 +4885,20 @@ func extractOpenAISSEErrorMessage(payload []byte) string {
 }
 
 func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.Response, c *gin.Context, message string) error {
-	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
-	if message == "" {
-		message = "Upstream returned an invalid non-streaming response"
+	upstreamMessage := sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
+	if upstreamMessage == "" {
+		upstreamMessage = "Upstream returned an invalid non-streaming response"
 	}
-	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
+	setOpsUpstreamError(c, http.StatusBadGateway, upstreamMessage, "")
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusBadGateway, gin.H{
 		"error": gin.H{
 			"type":    "upstream_error",
-			"message": message,
+			"message": "Upstream returned an invalid response",
 		},
 	})
-	return fmt.Errorf("non-streaming openai protocol error: %s", message)
+	return fmt.Errorf("non-streaming openai protocol error: %s", upstreamMessage)
 }
 
 func extractCodexFinalResponse(body string) ([]byte, bool) {
