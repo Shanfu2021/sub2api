@@ -920,7 +920,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false
 	}
-	if req.RequireResponsesAPI && account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	if req.RequireResponsesAPI && !openAIAccountSupportsResponsesAPI(account) {
 		return false
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
@@ -929,6 +929,16 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 		return false
 	}
 	return account.SupportsOpenAIImageCapability(req.RequiredImageCapability)
+}
+
+func openAIAccountSupportsResponsesAPI(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.Type != AccountTypeAPIKey {
+		return true
+	}
+	return openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 
 func (s *defaultOpenAIAccountScheduler) ReportResult(accountID int64, success bool, firstTokenMs *int) {
@@ -1112,7 +1122,8 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 				if selection == nil || selection.Account == nil {
 					return selection, decision, nil
 				}
-				if selection.Account.SupportsOpenAIImageCapability(requiredImageCapability) {
+				if selection.Account.SupportsOpenAIImageCapability(requiredImageCapability) &&
+					(!requireResponsesAPI || openAIAccountSupportsResponsesAPI(selection.Account)) {
 					return selection, decision, nil
 				}
 				if selection.ReleaseFunc != nil {
@@ -1137,7 +1148,8 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 			if selection == nil || selection.Account == nil {
 				return selection, decision, nil
 			}
-			if s.isOpenAIAccountTransportCompatible(selection.Account, requiredTransport) {
+			if s.isOpenAIAccountTransportCompatible(selection.Account, requiredTransport) &&
+				(!requireResponsesAPI || openAIAccountSupportsResponsesAPI(selection.Account)) {
 				return selection, decision, nil
 			}
 			if selection.ReleaseFunc != nil {
