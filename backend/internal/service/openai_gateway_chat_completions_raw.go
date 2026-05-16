@@ -433,7 +433,7 @@ func normalizeRawChatCompletionsTokenLimit(body []byte) ([]byte, error) {
 	// upstreams expect max_completion_tokens/max_tokens instead, so bridge it
 	// rather than leaking an unsupported field to strict compatible upstreams.
 	if !gjson.GetBytes(body, "max_completion_tokens").Exists() && !gjson.GetBytes(body, "max_tokens").Exists() {
-		updated, err := sjson.SetBytes(body, "max_completion_tokens", maxOutput.Value())
+		updated, err := sjson.SetRawBytes(body, "max_completion_tokens", []byte(maxOutput.Raw))
 		if err != nil {
 			return nil, err
 		}
