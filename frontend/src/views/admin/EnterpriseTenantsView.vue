@@ -7,108 +7,146 @@
             <h1 class="text-xl font-semibold text-gray-900 dark:text-white">企业管理</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">管理企业租户、额度池、成员、邀请码与台账。</p>
           </div>
-          <div class="flex gap-2">
-            <input v-model="search" class="input w-56" placeholder="搜索企业名称 / 编码" @keyup.enter="loadTenants" />
-            <button class="btn btn-secondary" :disabled="loading" @click="loadTenants">刷新</button>
-          </div>
+          <button class="btn btn-secondary" :disabled="loading" @click="refreshTenants">刷新</button>
         </div>
 
-        <div class="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <div class="space-y-3">
-            <div class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
-              <div class="mb-3 text-sm font-medium text-gray-700 dark:text-dark-200">新建 / 编辑企业</div>
-              <div class="space-y-2">
-                <input v-model="tenantForm.name" class="input" placeholder="企业名称" />
-                <input v-model="tenantForm.code" class="input" placeholder="企业编码" :disabled="!!selectedTenant?.id" />
-                <div class="grid grid-cols-2 gap-2">
-	                  <input v-model="tenantForm.pricing_floor_factor" class="input" type="number" min="0.01" step="0.01" placeholder="最低倍率" />
-	                  <select v-model="tenantForm.pricing_scope" class="input">
-	                    <option value="balance">仅余额</option>
-	                  </select>
-	                </div>
-                <input v-model="tenantForm.portal_host" class="input" placeholder="门户域名，可留空" />
-                <div class="rounded-xl border border-gray-200 p-3 dark:border-dark-700">
-                  <div class="mb-2 flex items-center justify-between gap-2">
-                    <div class="text-xs font-medium text-gray-600 dark:text-dark-200">企业可用分组</div>
-                    <button class="btn btn-secondary btn-sm" type="button" @click="loadGroups">刷新分组</button>
-                  </div>
-                  <div class="max-h-52 space-y-2 overflow-y-auto pr-1">
-                    <label
-                      v-for="group in groupOptions"
-                      :key="group.id"
-                      class="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-100 p-2 text-xs hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/40"
-                    >
-                      <input v-model="tenantForm.allowed_group_ids" class="mt-1" type="checkbox" :value="group.id" />
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate font-medium text-gray-800 dark:text-dark-100">
-                          #{{ group.id }} {{ group.name }}
-                        </span>
-                        <span class="mt-1 block text-gray-500 dark:text-dark-300">
-                          {{ group.platform }} · {{ group.subscription_type === 'subscription' ? '订阅' : '余额' }} · {{ group.is_exclusive ? '专属' : '公开' }}
-                        </span>
-                      </span>
-                    </label>
-                    <div v-if="!groupOptions.length" class="text-xs text-gray-500 dark:text-dark-300">暂无可选分组</div>
-                  </div>
-                  <div v-if="selectedGroupLabels.length || missingGroupIDs.length" class="mt-3 flex flex-wrap gap-2">
-                    <span
-                      v-for="group in selectedGroupLabels"
-                      :key="group.id"
-                      class="rounded-full bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
-                    >
-                      #{{ group.id }} {{ group.name }}
-                    </span>
-                    <span
-                      v-for="id in missingGroupIDs"
-                      :key="id"
-                      class="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
-                    >
-                      未加载分组 #{{ id }}
-                    </span>
-                  </div>
-                  <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
-                    企业成员可直接使用这里选中的分组，包括专属分组；未选择时不额外限制公开分组。
-                  </p>
+            <div class="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-800">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm font-medium text-gray-800 dark:text-dark-100">企业目录</div>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">共 {{ tenantTotal }} 个企业</div>
                 </div>
-                <select v-model="tenantForm.status" class="input">
-                  <option value="active">启用</option>
-                  <option value="disabled">停用</option>
-                </select>
-                <textarea v-model="tenantForm.notes" class="input min-h-[92px]" placeholder="备注"></textarea>
+                <button class="btn btn-primary btn-sm" type="button" @click="resetTenantForm">新建企业</button>
               </div>
-              <div class="mt-3 flex gap-2">
-                <button class="btn btn-primary flex-1" :disabled="submitting" @click="submitTenant">
-                  {{ selectedTenant?.id ? '保存企业' : '创建企业' }}
-                </button>
-                <button class="btn btn-secondary" @click="resetTenantForm">清空</button>
+              <div class="space-y-2">
+                <input v-model="search" class="input" placeholder="搜索名称 / 编码 / 备注" @keyup.enter="applyTenantFilters" />
+                <div class="grid grid-cols-[1fr_auto] gap-2">
+                  <select v-model="tenantStatusFilter" class="input" @change="applyTenantFilters">
+                    <option value="">全部状态</option>
+                    <option value="active">启用</option>
+                    <option value="disabled">停用</option>
+                  </select>
+                  <button class="btn btn-secondary" :disabled="loading" @click="applyTenantFilters">查询</button>
+                </div>
               </div>
             </div>
 
             <div class="rounded-xl border border-gray-200 dark:border-dark-700">
-              <button
-                v-for="item in tenants"
-                :key="item.id"
-                class="w-full border-b border-gray-100 px-4 py-3 text-left last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/40"
-                :class="selectedTenant?.id === item.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''"
-                @click="selectTenant(item)"
-              >
-                <div class="flex items-center justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="truncate font-medium text-gray-900 dark:text-white">{{ item.name }}</div>
-                    <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">{{ item.code }}</div>
+              <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-dark-300">加载中...</div>
+              <div v-else-if="!tenants.length" class="px-4 py-8 text-center text-sm text-gray-500 dark:text-dark-300">
+                没有找到企业
+              </div>
+              <div v-else class="max-h-[calc(100vh-320px)] min-h-[280px] overflow-y-auto">
+                <button
+                  v-for="item in tenants"
+                  :key="item.id"
+                  class="w-full border-b border-gray-100 px-4 py-3 text-left last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/40"
+                  :class="selectedTenant?.id === item.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''"
+                  @click="selectTenant(item)"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-gray-900 dark:text-white">{{ item.name }}</div>
+                      <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">{{ item.code }}</div>
+                    </div>
+                    <span class="badge" :class="item.status === 'active' ? 'badge-success' : 'badge-warning'">
+                      {{ item.status }}
+                    </span>
                   </div>
-                  <span class="badge" :class="item.status === 'active' ? 'badge-success' : 'badge-warning'">
-                    {{ item.status }}
-                  </span>
-                </div>
-                <div class="mt-2 text-xs text-gray-500 dark:text-dark-300">
-                  已用 {{ item.balance_quota_used.toFixed(2) }} / 总额 {{ item.balance_quota_total.toFixed(2) }}
-                </div>
-              </button>
+                  <div class="mt-2 text-xs text-gray-500 dark:text-dark-300">
+                    已用 {{ item.balance_quota_used.toFixed(2) }} / 总额 {{ item.balance_quota_total.toFixed(2) }}
+                  </div>
+                </button>
+              </div>
+              <div class="flex items-center justify-between gap-3 border-t border-gray-100 px-3 py-3 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                <button class="btn btn-secondary btn-sm" :disabled="loading || tenantPage <= 1" @click="changeTenantPage(tenantPage - 1)">上一页</button>
+                <span>第 {{ tenantPage }} / {{ tenantPages }} 页</span>
+                <button class="btn btn-secondary btn-sm" :disabled="loading || tenantPage >= tenantPages" @click="changeTenantPage(tenantPage + 1)">下一页</button>
+              </div>
             </div>
           </div>
 
-          <div v-if="selectedTenant" class="space-y-4">
+          <div class="space-y-4">
+            <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm font-medium text-gray-700 dark:text-dark-200">
+                    {{ selectedTenant?.id ? '编辑企业' : '新建企业' }}
+                  </div>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
+                    {{ selectedTenant?.id ? `当前编辑：${selectedTenant.name}` : '创建后会出现在左侧企业目录' }}
+                  </div>
+                </div>
+                <button v-if="selectedTenant" class="btn btn-secondary btn-sm" @click="resetTenantForm">切换到新建</button>
+              </div>
+              <div class="grid gap-3 md:grid-cols-2">
+                <input v-model="tenantForm.name" class="input" placeholder="企业名称" />
+                <input v-model="tenantForm.code" class="input" placeholder="企业编码" :disabled="!!selectedTenant?.id" />
+                <input v-model="tenantForm.pricing_floor_factor" class="input" type="number" min="0.01" step="0.01" placeholder="最低倍率" />
+                <select v-model="tenantForm.pricing_scope" class="input">
+                  <option value="balance">仅余额</option>
+                </select>
+                <input v-model="tenantForm.portal_host" class="input" placeholder="门户域名，可留空" />
+                <select v-model="tenantForm.status" class="input">
+                  <option value="active">启用</option>
+                  <option value="disabled">停用</option>
+                </select>
+              </div>
+              <textarea v-model="tenantForm.notes" class="input mt-3 min-h-[76px]" placeholder="备注"></textarea>
+              <div class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-dark-700">
+                <div class="mb-2 flex items-center justify-between gap-2">
+                  <div class="text-xs font-medium text-gray-600 dark:text-dark-200">企业可用分组</div>
+                  <button class="btn btn-secondary btn-sm" type="button" @click="loadGroups">刷新分组</button>
+                </div>
+                <div class="grid max-h-56 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+                  <label
+                    v-for="group in groupOptions"
+                    :key="group.id"
+                    class="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-100 p-2 text-xs hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/40"
+                  >
+                    <input v-model="tenantForm.allowed_group_ids" class="mt-1" type="checkbox" :value="group.id" />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate font-medium text-gray-800 dark:text-dark-100">
+                        #{{ group.id }} {{ group.name }}
+                      </span>
+                      <span class="mt-1 block text-gray-500 dark:text-dark-300">
+                        {{ group.platform }} · {{ group.subscription_type === 'subscription' ? '订阅' : '余额' }} · {{ group.is_exclusive ? '专属' : '公开' }}
+                      </span>
+                    </span>
+                  </label>
+                  <div v-if="!groupOptions.length" class="text-xs text-gray-500 dark:text-dark-300">暂无可选分组</div>
+                </div>
+                <div v-if="selectedGroupLabels.length || missingGroupIDs.length" class="mt-3 flex flex-wrap gap-2">
+                  <span
+                    v-for="group in selectedGroupLabels"
+                    :key="group.id"
+                    class="rounded-full bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                  >
+                    #{{ group.id }} {{ group.name }}
+                  </span>
+                  <span
+                    v-for="id in missingGroupIDs"
+                    :key="id"
+                    class="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+                  >
+                    未加载分组 #{{ id }}
+                  </span>
+                </div>
+                <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
+                  企业成员可直接使用这里选中的分组，包括专属分组；未选择时只允许公开分组。
+                </p>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button class="btn btn-primary" :disabled="submitting" @click="submitTenant">
+                  {{ selectedTenant?.id ? '保存企业' : '创建企业' }}
+                </button>
+                <button class="btn btn-secondary" type="button" @click="resetTenantForm">清空</button>
+              </div>
+            </div>
+
+            <div v-if="selectedTenant" class="space-y-4">
             <div class="grid gap-4 md:grid-cols-4">
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="text-xs text-gray-500 dark:text-dark-300">企业额度</div>
@@ -254,6 +292,10 @@
                 </table>
               </div>
             </div>
+            </div>
+            <div v-else class="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300">
+              选择左侧企业后，可管理额度、成员、邀请码和台账。
+            </div>
           </div>
         </div>
       </section>
@@ -274,6 +316,10 @@ const appStore = useAppStore()
 const loading = ref(false)
 const submitting = ref(false)
 const search = ref('')
+const tenantStatusFilter = ref('')
+const tenantPage = ref(1)
+const tenantPageSize = 20
+const tenantTotal = ref(0)
 const tenants = ref<EnterpriseTenant[]>([])
 const selectedTenant = ref<EnterpriseTenant | null>(null)
 const members = ref<EnterpriseMembership[]>([])
@@ -341,6 +387,8 @@ const missingGroupIDs = computed(() => {
   return tenantForm.allowed_group_ids.filter((id) => !known.has(id))
 })
 
+const tenantPages = computed(() => Math.max(1, Math.ceil(tenantTotal.value / tenantPageSize)))
+
 function resetTenantForm() {
   tenantForm.name = ''
   tenantForm.code = ''
@@ -372,8 +420,12 @@ function formatDate(value?: string | null) {
 async function loadTenants() {
   loading.value = true
   try {
-    const res = await enterpriseAdminAPI.listTenants(1, 100, { search: search.value.trim() || undefined })
+    const res = await enterpriseAdminAPI.listTenants(tenantPage.value, tenantPageSize, {
+      search: search.value.trim() || undefined,
+      status: tenantStatusFilter.value || undefined,
+    })
     tenants.value = res.items
+    tenantTotal.value = res.total
     if (!selectedTenant.value && res.items.length > 0) {
       await selectTenant(res.items[0])
     } else if (selectedTenant.value) {
@@ -381,6 +433,13 @@ async function loadTenants() {
       if (next) {
         selectedTenant.value = next
         fillTenantForm(next)
+      } else if (res.items.length > 0) {
+        await selectTenant(res.items[0])
+      } else {
+        selectedTenant.value = null
+        members.value = []
+        inviteCodes.value = []
+        ledger.value = []
       }
     }
   } catch (error) {
@@ -388,6 +447,20 @@ async function loadTenants() {
   } finally {
     loading.value = false
   }
+}
+
+async function applyTenantFilters() {
+  tenantPage.value = 1
+  await loadTenants()
+}
+
+async function refreshTenants() {
+  await loadTenants()
+}
+
+async function changeTenantPage(page: number) {
+  tenantPage.value = Math.min(Math.max(1, page), tenantPages.value)
+  await loadTenants()
 }
 
 async function loadGroups() {
