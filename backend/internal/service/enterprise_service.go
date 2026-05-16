@@ -847,6 +847,9 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 	if err != nil {
 		return nil, nil, err
 	}
+	if len(input.AllowedGroups) > 0 {
+		return nil, nil, ErrEnterpriseForbidden
+	}
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin transaction: %w", err)
@@ -869,9 +872,6 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 	} else if s.settingService != nil {
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(txCtx)
 	}
-	if err := validateEnterpriseAllowedGroups(input.AllowedGroups, managerCtx.AllowedGroupIDs); err != nil {
-		return nil, nil, err
-	}
 	user := &User{
 		Email:        strings.TrimSpace(input.Email),
 		PasswordHash: passwordHash,
@@ -881,7 +881,6 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 		Balance:      0,
 		Concurrency:  input.Concurrency,
 		Status:       StatusActive,
-		AllowedGroups: append([]int64(nil), input.AllowedGroups...),
 		RPMLimit:      defaultRPMLimit,
 	}
 	if err := s.userRepo.Create(txCtx, user); err != nil {
@@ -925,6 +924,9 @@ func (s *EnterpriseService) UpdateMemberByManager(ctx context.Context, managerUs
 	managerCtx, err := s.GetManagerTenant(ctx, managerUserID)
 	if err != nil {
 		return nil, err
+	}
+	if input.AllowedGroups != nil {
+		return nil, ErrEnterpriseForbidden
 	}
 	member, err := s.repo.GetMembershipByTenantAndUserID(ctx, managerCtx.TenantID, memberUserID)
 	if err != nil {
@@ -1145,7 +1147,7 @@ func generateRandomUpperCode(length int) (string, error) {
 }
 
 func validateEnterpriseAllowedGroups(candidate, allowed []int64) error {
-	if len(candidate) == 0 || len(allowed) == 0 {
+	if len(candidate) == 0 {
 		return nil
 	}
 	allowedSet := make(map[int64]struct{}, len(allowed))
@@ -1157,6 +1159,9 @@ func validateEnterpriseAllowedGroups(candidate, allowed []int64) error {
 	for _, id := range candidate {
 		if id <= 0 {
 			continue
+		}
+		if len(allowedSet) == 0 {
+			return ErrEnterpriseForbidden
 		}
 		if _, ok := allowedSet[id]; !ok {
 			return ErrEnterpriseForbidden

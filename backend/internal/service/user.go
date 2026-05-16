@@ -81,17 +81,17 @@ func (u *User) IsActive() bool {
 }
 
 // CanBindGroup checks whether a user can bind to a given group.
-// Enterprise tenant group allowlist is an authorization boundary: when present,
-// only tenant-allowed groups are visible, and tenant-allowed groups are directly
-// usable even if the group itself is exclusive.
+// Enterprise tenant group allowlist is an authorization boundary. Tenant-allowed
+// groups are directly usable even if exclusive; an empty tenant allowlist falls
+// back to public groups only and must not inherit personal exclusive grants.
 func (u *User) CanBindGroup(groupID int64, isExclusive bool) bool {
-	if u != nil && u.Enterprise != nil && len(u.Enterprise.AllowedGroupIDs) > 0 {
+	if u != nil && u.Enterprise != nil {
 		for _, id := range u.Enterprise.AllowedGroupIDs {
 			if id == groupID {
 				return true
 			}
 		}
-		return false
+		return !isExclusive && len(u.Enterprise.AllowedGroupIDs) == 0
 	}
 
 	// 公开分组（非专属）：所有用户都可以绑定
