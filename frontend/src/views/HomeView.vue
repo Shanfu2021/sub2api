@@ -139,7 +139,7 @@
                   客服支持
                 </p>
                 <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  客服 QQ：2143428872
+                  客服 QQ：1198716953
                 </p>
               </div>
             </div>

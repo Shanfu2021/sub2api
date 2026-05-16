@@ -54,7 +54,7 @@
               </span>
             </div>
             <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">
-              {{ contactInfo || '客服 QQ：2143428872' }}
+              {{ contactInfo || '客服 QQ：1198716953' }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">兑换异常或购买问题请直接联系客服处理</p>
           </div>
