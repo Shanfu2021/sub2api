@@ -23,7 +23,7 @@ export async function getTenant(id: number): Promise<EnterpriseTenant> {
   return data
 }
 
-export async function createTenant(payload: Partial<EnterpriseTenant> & { name: string; code: string }): Promise<EnterpriseTenant> {
+export async function createTenant(payload: Partial<EnterpriseTenant> & { name: string; code?: string }): Promise<EnterpriseTenant> {
   const { data } = await apiClient.post<EnterpriseTenant>('/admin/enterprise/tenants', payload)
   return data
 }

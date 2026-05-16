@@ -2858,6 +2858,7 @@ import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
+import { extractApiErrorMessage } from "@/utils/apiError";
 import {
   createDefaultMessagesDispatchFormState,
   messagesDispatchConfigToFormState,
@@ -3738,9 +3739,7 @@ const handleCreateGroup = async () => {
       onboardingStore.nextStep(500);
     }
   } catch (error: any) {
-    appStore.showError(
-      error.response?.data?.detail || t("admin.groups.failedToCreate"),
-    );
+    appStore.showError(extractApiErrorMessage(error, t("admin.groups.failedToCreate")));
     console.error("Error creating group:", error);
     // Don't advance tour on error
   } finally {
@@ -3865,9 +3864,7 @@ const handleUpdateGroup = async () => {
     closeEditModal();
     loadGroups();
   } catch (error: any) {
-    appStore.showError(
-      error.response?.data?.detail || t("admin.groups.failedToUpdate"),
-    );
+    appStore.showError(extractApiErrorMessage(error, t("admin.groups.failedToUpdate")));
     console.error("Error updating group:", error);
   } finally {
     submitting.value = false;

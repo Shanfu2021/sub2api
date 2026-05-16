@@ -198,6 +198,7 @@ type EnterpriseTenantRepository interface {
 	ListTenants(ctx context.Context, params pagination.PaginationParams, filters EnterpriseTenantListFilters) ([]EnterpriseTenant, int64, error)
 	GetTenantByID(ctx context.Context, tenantID int64) (*EnterpriseTenant, error)
 	GetTenantByCode(ctx context.Context, code string) (*EnterpriseTenant, error)
+	NextTenantCode(ctx context.Context) (string, error)
 	LockTenantByID(ctx context.Context, tenantID int64) (*EnterpriseTenant, error)
 	CreateTenant(ctx context.Context, tenant *EnterpriseTenant) error
 	UpdateTenant(ctx context.Context, tenant *EnterpriseTenant) error
@@ -409,8 +410,8 @@ func (s *EnterpriseService) CreateTenant(ctx context.Context, actorUserID int64,
 		PricingFloorFactor: normalizeEnterprisePricingFactor(input.PricingFloorFactor),
 		PricingScope:       normalizeEnterprisePricingScope(input.PricingScope),
 	}
-	if tenant.Name == "" || tenant.Code == "" {
-		return nil, errors.BadRequest("ENTERPRISE_TENANT_INVALID", "tenant name and code are required")
+	if tenant.Name == "" {
+		return nil, errors.BadRequest("ENTERPRISE_TENANT_INVALID", "tenant name is required")
 	}
 	if tenant.PricingScope != PromoDiscountScopeBalance && tenant.PricingScope != PromoDiscountScopeAll && tenant.PricingScope != PromoDiscountScopeSubscription {
 		return nil, ErrEnterpriseScopeNotSupported
@@ -427,6 +428,13 @@ func (s *EnterpriseService) CreateTenant(ctx context.Context, actorUserID int64,
 	defer func() { _ = tx.Rollback() }()
 	txCtx := dbent.NewTxContext(ctx, tx)
 
+	if tenant.Code == "" {
+		nextCode, err := s.repo.NextTenantCode(txCtx)
+		if err != nil {
+			return nil, err
+		}
+		tenant.Code = nextCode
+	}
 	if err := s.repo.CreateTenant(txCtx, tenant); err != nil {
 		return nil, err
 	}

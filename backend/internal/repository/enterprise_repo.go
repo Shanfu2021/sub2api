@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,19 +65,21 @@ OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer func() { _ = rows.Close() }()
 
 	items := make([]service.EnterpriseTenant, 0)
-	tenantIDs := make([]int64, 0)
 	for rows.Next() {
 		item, err := scanEnterpriseTenant(rows)
 		if err != nil {
+			_ = rows.Close()
 			return nil, 0, err
 		}
 		items = append(items, item)
-		tenantIDs = append(tenantIDs, item.ID)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, 0, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, 0, err
 	}
 	if err := r.hydrateTenantAllowedGroups(ctx, items); err != nil {
@@ -119,15 +122,20 @@ LIMIT 1`
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		_ = rows.Close()
 		return nil, service.ErrEnterpriseTenantNotFound
 	}
 	item, err := scanEnterpriseTenant(rows)
 	if err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	groups, err := r.GetTenantAllowedGroups(ctx, []int64{item.ID})
@@ -136,6 +144,27 @@ LIMIT 1`
 	}
 	item.AllowedGroupIDs = groups[item.ID]
 	return &item, nil
+}
+
+func (r *enterpriseRepository) NextTenantCode(ctx context.Context) (string, error) {
+	exec := r.exec(ctx)
+	const prefix = "ENT"
+	if _, err := exec.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('enterprise_tenants_next_code'))`); err != nil {
+		return "", err
+	}
+	var maxSuffix sql.NullInt64
+	if err := scanSingleRow(ctx, exec, `
+SELECT MAX(NULLIF(regexp_replace(code, '^ENT0*', ''), '')::bigint)
+FROM enterprise_tenants
+WHERE code ~ '^ENT[0-9]+$'
+`, nil, &maxSuffix); err != nil {
+		return "", err
+	}
+	next := int64(1)
+	if maxSuffix.Valid {
+		next = maxSuffix.Int64 + 1
+	}
+	return prefix + leftPadInt(next, 4), nil
 }
 
 func (r *enterpriseRepository) getTenant(ctx context.Context, tenantID int64, forUpdate bool) (*service.EnterpriseTenant, error) {
@@ -166,15 +195,20 @@ WHERE t.id = $1`
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		_ = rows.Close()
 		return nil, service.ErrEnterpriseTenantNotFound
 	}
 	item, err := scanEnterpriseTenant(rows)
 	if err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	groups, err := r.GetTenantAllowedGroups(ctx, []int64{item.ID})
@@ -338,15 +372,20 @@ LIMIT 1`
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		_ = rows.Close()
 		return nil, service.ErrEnterpriseMembershipNotFound
 	}
 	item, err := scanEnterpriseMembership(rows)
 	if err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	items := []service.EnterpriseMembership{item}
@@ -374,16 +413,20 @@ OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer func() { _ = rows.Close() }()
 	items := make([]service.EnterpriseMembership, 0)
 	for rows.Next() {
 		item, err := scanEnterpriseMembership(rows)
 		if err != nil {
+			_ = rows.Close()
 			return nil, 0, err
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, 0, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, 0, err
 	}
 	if err := r.hydrateMembershipAllowedGroups(ctx, items); err != nil {
@@ -682,11 +725,12 @@ LIMIT 1`
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		_ = rows.Close()
 		return nil, nil
 	}
 	var out service.EnterpriseContext
@@ -704,11 +748,15 @@ LIMIT 1`
 		&out.PricingScope,
 		&out.PricingFloorFactor,
 	); err != nil {
+		_ = rows.Close()
 		return nil, err
 	}
 	out.PricingFactor = service.NormalizePricingDiscountFactorForRepo(out.PricingFactor)
 	out.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(out.PricingScope)
 	out.AllowedGroupIDs = nil
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	groups, err := r.GetTenantAllowedGroups(ctx, []int64{out.TenantID})
 	if err != nil {
 		return nil, err
@@ -1065,5 +1113,13 @@ func uniquePositiveInt64s(values []int64) []int64 {
 		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func leftPadInt(v int64, width int) string {
+	out := strconv.FormatInt(v, 10)
+	for len(out) < width {
+		out = "0" + out
+	}
 	return out
 }

@@ -83,7 +83,7 @@
               </div>
               <div class="grid gap-3 md:grid-cols-2">
                 <input v-model="tenantForm.name" class="input" placeholder="企业名称" />
-                <input v-model="tenantForm.code" class="input" placeholder="企业编码" :disabled="!!selectedTenant?.id" />
+                <input v-model="tenantForm.code" class="input" placeholder="企业编码，留空自动生成" :disabled="!!selectedTenant?.id" />
                 <input v-model="tenantForm.pricing_floor_factor" class="input" type="number" min="0.01" step="0.01" placeholder="最低倍率" />
                 <select v-model="tenantForm.pricing_scope" class="input">
                   <option value="balance">仅余额</option>
@@ -363,8 +363,19 @@ function showSuccess(message: string) {
 }
 
 function showError(error: unknown) {
-  const detail = typeof error === 'object' && error && 'detail' in error ? String((error as { detail?: string }).detail || '') : ''
-  const message = detail || (error instanceof Error ? error.message : '操作失败')
+  const apiError = error as {
+    detail?: string
+    message?: string
+    error?: string
+    reason?: string
+    code?: string | number
+  } | null
+  const detail = typeof apiError?.detail === 'string' ? apiError.detail : ''
+  const messageText = typeof apiError?.message === 'string' ? apiError.message : ''
+  const errorText = typeof apiError?.error === 'string' ? apiError.error : ''
+  const reasonText = typeof apiError?.reason === 'string' ? apiError.reason : ''
+  const codeText = apiError?.code ? String(apiError.code) : ''
+  const message = detail || messageText || errorText || reasonText || (error instanceof Error ? error.message : '') || codeText || '操作失败'
   appStore.showError(message)
 }
 
@@ -510,15 +521,27 @@ async function loadLedger() {
 async function submitTenant() {
   submitting.value = true
   try {
-    const payload = {
+    const code = tenantForm.code.trim()
+    const payload: {
+      name: string
+      code?: string
+      status: string
+      notes: string
+      portal_host: string
+      pricing_floor_factor: number
+      pricing_scope: string
+      allowed_group_ids: number[]
+    } = {
       name: tenantForm.name.trim(),
-      code: tenantForm.code.trim(),
       status: tenantForm.status,
       notes: tenantForm.notes.trim(),
       portal_host: tenantForm.portal_host.trim(),
       pricing_floor_factor: Number(tenantForm.pricing_floor_factor) || 1,
       pricing_scope: tenantForm.pricing_scope,
       allowed_group_ids: [...tenantForm.allowed_group_ids],
+    }
+    if (code) {
+      payload.code = code
     }
     if (selectedTenant.value?.id) {
       await enterpriseAdminAPI.updateTenant(selectedTenant.value.id, payload)

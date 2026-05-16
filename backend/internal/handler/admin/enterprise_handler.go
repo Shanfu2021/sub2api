@@ -21,7 +21,7 @@ func NewEnterpriseHandler(enterpriseService *service.EnterpriseService) *Enterpr
 
 type createEnterpriseTenantRequest struct {
 	Name               string  `json:"name" binding:"required"`
-	Code               string  `json:"code" binding:"required"`
+	Code               string  `json:"code"`
 	Status             string  `json:"status"`
 	Notes              string  `json:"notes"`
 	PortalHost         string  `json:"portal_host"`
