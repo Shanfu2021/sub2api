@@ -40,7 +40,7 @@
                 <Icon name="shoppingBag" size="md" class="text-emerald-600 dark:text-emerald-300" />
               </span>
             </div>
-            <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">余额卡 / 订阅卡</p>
+            <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">通用余额卡</p>
             <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">支持链动小铺购买后回到本页兑换</p>
           </div>
 
@@ -626,13 +626,13 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
 
   return [
     {
-      key: 'codex-balance-20',
-      category: 'Codex API 余额',
-      title: 'Codex API 20 刀余额卡',
+      key: 'balance-10',
+      category: '通用余额',
+      title: '10 刀通用余额卡',
       description: '适合首次体验和轻量调用，买完后直接来本页兑换即可。',
-      price: '¥4',
+      price: '价格以小铺为准',
       specs: [
-        { label: '到账', value: '20 USD' },
+        { label: '到账', value: '10 USD' },
         { label: '类型', value: '通用余额卡' }
       ],
       note: '复制兑换码回到本页输入，到账后可直接使用。',
@@ -640,102 +640,46 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
       url: 'https://pay.ldxp.cn/item/a7zg2a'
     },
     {
-      key: 'codex-balance-100',
-      category: 'Codex API 余额',
-      title: 'Codex API 100 刀余额卡',
+      key: 'balance-50',
+      category: '通用余额',
+      title: '50 刀通用余额卡',
       description: '适合日常开发与稳定调用，买完后直接来本页兑换即可。',
-      price: '¥20',
+      price: '价格以小铺为准',
+      specs: [
+        { label: '到账', value: '50 USD' },
+        { label: '类型', value: '通用余额卡' }
+      ],
+      note: '复制兑换码回到本页输入，到账后可直接使用。',
+      badge: '余额',
+      url: 'https://pay.ldxp.cn/item/mwwwvc'
+    },
+    {
+      key: 'balance-100',
+      category: '通用余额',
+      title: '100 刀通用余额卡',
+      description: '适合高频开发、长期使用或项目备量，买完后直接来本页兑换即可。',
+      price: '价格以小铺为准',
       specs: [
         { label: '到账', value: '100 USD' },
         { label: '类型', value: '通用余额卡' }
       ],
       note: '复制兑换码回到本页输入，到账后可直接使用。',
       badge: '余额',
-      url: 'https://pay.ldxp.cn/item/lr5xqf'
+      url: 'https://pay.ldxp.cn/item/mbwrl9'
     },
     {
-      key: 'codex-balance-1000',
-      category: 'Codex API 余额',
-      title: 'Codex API 1000 刀余额卡',
-      description: '适合高频开发、长期使用或项目备量，买完后直接来本页兑换即可。',
-      price: '¥200',
+      key: 'balance-1000',
+      category: '通用余额',
+      title: '1000 刀通用余额卡',
+      description: '适合团队囤货和长期高频调用，买完后直接来本页兑换即可。',
+      price: '价格以小铺为准',
       specs: [
         { label: '到账', value: '1000 USD' },
         { label: '类型', value: '通用余额卡' }
       ],
       note: '复制兑换码回到本页输入，到账后可直接使用。',
       badge: '余额',
-      url: 'https://pay.ldxp.cn/item/myb6wq'
-    },
-    {
-      key: 'codex-balance-5000',
-      category: 'Codex API 余额',
-      title: 'Codex API 5000 刀余额卡',
-      description: '适合团队囤货和长期高频调用，买完后直接来本页兑换即可。',
-      price: '¥1000',
-      specs: [
-        { label: '到账', value: '5000 USD' },
-        { label: '类型', value: '通用余额卡' }
-      ],
-      note: '复制兑换码回到本页输入，到账后可直接使用。',
-      badge: '余额',
-      url: 'https://pay.ldxp.cn/item/785rq4'
-    },
-    {
-      key: 'subscription-daily',
-      category: '订阅套餐',
-      title: '日常使用版订阅',
-      description: '适合日常问答、轻量编码和课程作业等低频使用场景。',
-      price: '¥39.9 / 月',
-      specs: [
-        { label: '每日额度', value: '10 刀' },
-        { label: '类型', value: '月付订阅' }
-      ],
-      note: '购买后输入兑换码，即可开通日常使用版订阅。',
-      badge: '订阅',
-      url: 'https://pay.ldxp.cn/item/fcymlb'
-    },
-    {
-      key: 'subscription-light',
-      category: '订阅套餐',
-      title: '轻度开发版订阅',
-      description: '适合稳定开发与中等频率调用，兼顾成本和日常生产力。',
-      price: '¥99.9 / 月',
-      specs: [
-        { label: '每日额度', value: '30 刀' },
-        { label: '类型', value: '月付订阅' }
-      ],
-      note: '购买后输入兑换码，即可开通轻度开发版订阅。',
-      badge: '订阅',
-      url: 'https://pay.ldxp.cn/item/sadvgi'
-    },
-    {
-      key: 'subscription-heavy',
-      category: '订阅套餐',
-      title: '强度开发版订阅',
-      description: '适合高频编码、长时间开发和多模型协作的重度用户。',
-      price: '¥199 / 月',
-      specs: [
-        { label: '每日额度', value: '60 刀' },
-        { label: '类型', value: '月付订阅' }
-      ],
-      note: '购买后输入兑换码，即可开通强度开发版订阅。',
-      badge: '订阅',
-      url: 'https://pay.ldxp.cn/item/hzios1'
-    },
-    {
-      key: 'subscription-team',
-      category: '订阅套餐',
-      title: '团队协作版订阅',
-      description: '适合多人共享、项目制使用和高强度协作场景。',
-      price: '¥399 / 月',
-      specs: [
-        { label: '每日额度', value: '100 刀' },
-        { label: '类型', value: '月付订阅' }
-      ],
-      note: '购买后输入兑换码，即可开通团队协作版订阅。',
-      badge: '订阅',
-      url: 'https://pay.ldxp.cn/item/ug4w7w'
+      url: 'https://pay.ldxp.cn/item/3p7js8'
     }
   ]
 })
