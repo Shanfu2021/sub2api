@@ -727,6 +727,22 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		"account may be suspended or lack permissions",
 	)
 
+	if isOpenAIDailyUsageLimitExceeded(upstreamMsg, responseBody) {
+		until := nextShanghaiDayCooldown(time.Now())
+		reason := "OpenAI daily usage limit exceeded; cooldown until next Shanghai day"
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+			slog.Warn("openai_daily_limit_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+			s.handleAuthError(ctx, account, msg)
+			return true
+		}
+		slog.Warn(
+			"openai_daily_limit_temp_unschedulable",
+			"account_id", account.ID,
+			"until", until,
+		)
+		return true
+	}
+
 	if s.openAI403CounterCache == nil {
 		s.handleAuthError(ctx, account, msg)
 		return true
@@ -761,6 +777,24 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		"threshold", openAI403DisableThreshold,
 	)
 	return true
+}
+
+func isOpenAIDailyUsageLimitExceeded(upstreamMsg string, responseBody []byte) bool {
+	text := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if len(responseBody) > 0 {
+		text += " " + strings.ToLower(string(responseBody))
+	}
+	return strings.Contains(text, "daily usage limit exceeded")
+}
+
+func nextShanghaiDayCooldown(now time.Time) time.Time {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	local := now.In(loc)
+	nextLocal := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 10, 0, 0, loc)
+	return nextLocal
 }
 
 // handleAntigravity403 处理 Antigravity 平台的 403 错误

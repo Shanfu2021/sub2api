@@ -61,11 +61,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	// 入口分流：
-	//   1. APIKey 账号 + 已探测且确认上游不支持 Responses，走 CC 直转。
-	//   2. 级联/透传 APIKey 上游虽然可用 /v1/responses，但可能不接受
-	//      max_output_tokens；Chat Completions 入站带输出上限时走 CC 直转，
-	//      保留限额语义并避免上游 400。
+	// 入口分流：APIKey 账号 + 已探测且确认上游不支持 Responses，走 CC 直转。
 	// 标记缺失（未探测）按"现状即证据"原则继续走下方原 Responses 转换路径。
 	if shouldForwardChatCompletionsAsRaw(account, body) {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
@@ -360,19 +356,7 @@ func shouldForwardChatCompletionsAsRaw(account *Account, body []byte) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
 	}
-	if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-		return true
-	}
-	if !account.IsOpenAIPassthroughEnabled() {
-		return false
-	}
-	return chatCompletionsBodyHasOutputLimit(body)
-}
-
-func chatCompletionsBodyHasOutputLimit(body []byte) bool {
-	return gjson.GetBytes(body, "max_output_tokens").Exists() ||
-		gjson.GetBytes(body, "max_completion_tokens").Exists() ||
-		gjson.GetBytes(body, "max_tokens").Exists()
+	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 
 // handleChatCompletionsErrorResponse reads an upstream error and returns it in

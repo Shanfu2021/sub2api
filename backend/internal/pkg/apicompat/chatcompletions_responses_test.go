@@ -142,6 +142,23 @@ func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 		require.NotNil(t, resp.MaxOutputTokens)
 		assert.Equal(t, 500, *resp.MaxOutputTokens)
 	})
+
+	t.Run("max_output_tokens_preferred", func(t *testing.T) {
+		maxTokens := 100
+		maxCompletion := 500
+		maxOutput := 64
+		req := &ChatCompletionsRequest{
+			Model:               "gpt-4o",
+			MaxTokens:           &maxTokens,
+			MaxCompletionTokens: &maxCompletion,
+			MaxOutputTokens:     &maxOutput,
+			Messages:            []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponses(req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, minMaxOutputTokens, *resp.MaxOutputTokens)
+	})
 }
 
 func TestChatCompletionsToResponses_ReasoningEffort(t *testing.T) {

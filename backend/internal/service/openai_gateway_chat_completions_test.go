@@ -115,7 +115,7 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 		require.True(t, shouldForwardChatCompletionsAsRaw(account, bodyWithoutOutputLimit))
 	})
 
-	t.Run("passthrough cascade with output limit uses raw", func(t *testing.T) {
+	t.Run("passthrough cascade with output limit keeps responses path", func(t *testing.T) {
 		t.Parallel()
 		account := &Account{
 			Type:     AccountTypeAPIKey,
@@ -126,7 +126,7 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 			},
 		}
 
-		require.True(t, shouldForwardChatCompletionsAsRaw(account, bodyWithOutputLimit))
+		require.False(t, shouldForwardChatCompletionsAsRaw(account, bodyWithOutputLimit))
 	})
 
 	t.Run("passthrough cascade without output limit keeps responses path", func(t *testing.T) {
