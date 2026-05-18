@@ -82,6 +82,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		groupIn.ID = created.ID
 		groupIn.CreatedAt = created.CreatedAt
 		groupIn.UpdatedAt = created.UpdatedAt
+		if normalizeRepositorySchedulingStrategy(groupIn.SchedulingStrategy) == service.GroupSchedulingStrategyStrictPriority {
+			if err := r.updateSchedulingStrategy(ctx, groupIn.ID, groupIn.SchedulingStrategy); err != nil {
+				return err
+			}
+		}
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 		}
@@ -108,7 +113,11 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 	}
-	return groupEntityToService(m), nil
+	out := groupEntityToService(m)
+	if strategy, strategyErr := r.loadSchedulingStrategy(ctx, out.ID); strategyErr == nil {
+		out.SchedulingStrategy = strategy
+	}
+	return out, nil
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
@@ -199,11 +208,23 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
+	if err := r.updateSchedulingStrategy(ctx, groupIn.ID, groupIn.SchedulingStrategy); err != nil {
+		return err
+	}
 	groupIn.UpdatedAt = updated.UpdatedAt
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 	}
 	return nil
+}
+
+func (r *groupRepository) updateSchedulingStrategy(ctx context.Context, groupID int64, strategy string) error {
+	strategy = strings.TrimSpace(strategy)
+	if strategy == "" {
+		strategy = service.GroupSchedulingStrategyWeighted
+	}
+	_, err := r.sql.ExecContext(ctx, `UPDATE groups SET scheduling_strategy = $1 WHERE id = $2`, strategy, groupID)
+	return err
 }
 
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {
@@ -278,6 +299,7 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	r.applySchedulingStrategies(ctx, outGroups)
 
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
@@ -308,6 +330,7 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 		outGroups[i].ActiveAccountCount = c.Active
 		outGroups[i].RateLimitedAccountCount = c.RateLimited
 	}
+	r.applySchedulingStrategies(ctx, outGroups)
 
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 	sort.SliceStable(outGroups, func(i, j int) bool {
@@ -406,6 +429,7 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	r.applySchedulingStrategies(ctx, outGroups)
 
 	return outGroups, nil
 }
@@ -436,8 +460,66 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
+	r.applySchedulingStrategies(ctx, outGroups)
 
 	return outGroups, nil
+}
+
+func (r *groupRepository) loadSchedulingStrategy(ctx context.Context, groupID int64) (string, error) {
+	var strategy string
+	err := scanSingleRow(ctx, r.sql, `SELECT COALESCE(scheduling_strategy, $2) FROM groups WHERE id = $1`, []any{groupID, service.GroupSchedulingStrategyWeighted}, &strategy)
+	if err != nil {
+		return "", err
+	}
+	return normalizeRepositorySchedulingStrategy(strategy), nil
+}
+
+func (r *groupRepository) applySchedulingStrategies(ctx context.Context, groups []service.Group) {
+	strategies, err := r.loadSchedulingStrategies(ctx, groups)
+	if err != nil {
+		return
+	}
+	for i := range groups {
+		groups[i].SchedulingStrategy = normalizeRepositorySchedulingStrategy(strategies[groups[i].ID])
+	}
+}
+
+func (r *groupRepository) loadSchedulingStrategies(ctx context.Context, groups []service.Group) (map[int64]string, error) {
+	if len(groups) == 0 {
+		return map[int64]string{}, nil
+	}
+	ids := make([]int64, 0, len(groups))
+	for i := range groups {
+		ids = append(ids, groups[i].ID)
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT id, COALESCE(scheduling_strategy, $2) FROM groups WHERE id = ANY($1)`, pq.Array(ids), service.GroupSchedulingStrategyWeighted)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	byID := make(map[int64]string, len(groups))
+	for rows.Next() {
+		var id int64
+		var strategy string
+		if err := rows.Scan(&id, &strategy); err != nil {
+			return nil, err
+		}
+		byID[id] = normalizeRepositorySchedulingStrategy(strategy)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return byID, nil
+}
+
+func normalizeRepositorySchedulingStrategy(strategy string) string {
+	switch strings.TrimSpace(strategy) {
+	case service.GroupSchedulingStrategyStrictPriority:
+		return service.GroupSchedulingStrategyStrictPriority
+	default:
+		return service.GroupSchedulingStrategyWeighted
+	}
 }
 
 func (r *groupRepository) ExistsByName(ctx context.Context, name string) (bool, error) {

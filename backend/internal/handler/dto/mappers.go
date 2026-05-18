@@ -216,6 +216,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
+		SchedulingStrategy:              g.SchedulingStrategy,
 		RPMLimit:                        g.RPMLimit,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,

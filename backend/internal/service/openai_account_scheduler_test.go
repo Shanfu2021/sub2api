@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,6 +23,24 @@ type openAISnapshotCacheStub struct {
 type schedulerTestOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account
+}
+
+type schedulerTestGroupRepo struct {
+	GroupRepository
+	groups map[int64]*Group
+}
+
+func (r schedulerTestGroupRepo) GetByID(ctx context.Context, id int64) (*Group, error) {
+	return r.GetByIDLite(ctx, id)
+}
+
+func (r schedulerTestGroupRepo) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	group := r.groups[id]
+	if group == nil {
+		return nil, ErrGroupNotFound
+	}
+	cloned := *group
+	return &cloned, nil
 }
 
 func (r schedulerTestOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -240,6 +259,32 @@ func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int6
 	}
 	cloned := *account
 	return &cloned, nil
+}
+
+func TestOpenAIGatewayService_IsOpenAIGroupStrictPriority_FallsBackWhenContextGroupHasDefaultStrategy(t *testing.T) {
+	groupID := int64(10107)
+	ctxGroup := &Group{
+		ID:                 groupID,
+		Platform:           PlatformOpenAI,
+		Status:             StatusActive,
+		Hydrated:           true,
+		SchedulingStrategy: GroupSchedulingStrategyWeighted,
+	}
+	repoGroup := &Group{
+		ID:                 groupID,
+		Platform:           PlatformOpenAI,
+		Status:             StatusActive,
+		Hydrated:           true,
+		SchedulingStrategy: GroupSchedulingStrategyStrictPriority,
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, ctxGroup)
+	svc := &OpenAIGatewayService{
+		groupRepo: schedulerTestGroupRepo{
+			groups: map[int64]*Group{groupID: repoGroup},
+		},
+	}
+
+	require.True(t, svc.isOpenAIGroupStrictPriority(ctx, &groupID))
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesLegacyLoadAwareness(t *testing.T) {

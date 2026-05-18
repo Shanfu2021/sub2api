@@ -140,6 +140,9 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// SchedulingStrategy 控制 OpenAI 分组账号调度：weighted 或 strict_priority。
+	SchedulingStrategy string `json:"scheduling_strategy"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -853,6 +853,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOauthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
+		SchedulingStrategy:              service.GroupSchedulingStrategyWeighted,
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		RPMLimit:                        g.RpmLimit,

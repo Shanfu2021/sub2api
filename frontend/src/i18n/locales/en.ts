@@ -2018,7 +2018,13 @@ export default {
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        schedulingStrategy: 'OpenAI Scheduling Strategy',
+        schedulingStrategyHint: 'Weighted load balancing spreads requests across high-scoring accounts. Strict priority only falls back when all higher-priority accounts are unavailable, full, or cannot accept waiting.'
+      },
+      scheduling: {
+        weighted: 'Weighted load balancing',
+        strictPriority: 'Strict priority'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',

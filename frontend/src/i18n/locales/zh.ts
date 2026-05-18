@@ -2076,6 +2076,8 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
+        schedulingStrategy: 'OpenAI 调度策略',
+        schedulingStrategyHint: '加权负载均衡会在高分账号中分摊请求；严格优先级只在高优先级账号不可用、满载或无法等待时才降级。',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',
@@ -2085,6 +2087,10 @@ export default {
         priorityLabel: '优先级',
         priorityHint: '数值越小优先级越高，用于账号调度',
         statusLabel: '状态'
+      },
+      scheduling: {
+        weighted: '加权负载均衡',
+        strictPriority: '严格优先级'
       },
       exclusiveObj: {
         yes: '是',

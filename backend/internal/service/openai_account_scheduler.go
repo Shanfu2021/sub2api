@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"golang.org/x/sync/singleflight"
 )
@@ -48,6 +49,7 @@ type OpenAIAccountScheduleRequest struct {
 	RequiredImageCapability OpenAIImagesCapability
 	RequireCompact          bool
 	RequireResponsesAPI     bool
+	StrictPriority          bool
 	ExcludedIDs             map[int64]struct{}
 }
 
@@ -290,12 +292,15 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if err != nil {
 		return nil, decision, err
 	}
-	if selection != nil && selection.Account != nil {
+	if selection != nil && selection.Account != nil && !req.StrictPriority {
 		decision.Layer = openAIAccountScheduleLayerSessionSticky
 		decision.StickySessionHit = true
 		decision.SelectedAccountID = selection.Account.ID
 		decision.SelectedAccountType = selection.Account.Type
 		return selection, decision, nil
+	}
+	if selection != nil && selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
 	}
 
 	selection, candidateCount, topK, loadSkew, err := s.selectByLoadBalance(ctx, req)
@@ -771,6 +776,13 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			topK = 1
 		}
 	}
+	if req.StrictPriority {
+		strictCandidates := append([]openAIAccountCandidateScore(nil), candidates...)
+		if req.RequireCompact && len(staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
+			strictCandidates = append(strictCandidates, staleSnapshotCompactRetry...)
+		}
+		return s.selectStrictPriorityFromOrder(ctx, req, strictCandidates, candidateCount, topK, loadSkew)
+	}
 
 	buildSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
 		if len(pool) == 0 || topK <= 0 {
@@ -894,6 +906,106 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      fresh.ID,
 				MaxConcurrency: fresh.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			},
+		}, candidateCount, topK, loadSkew, nil
+	}
+
+	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked)
+}
+
+func (s *defaultOpenAIAccountScheduler) selectStrictPriorityFromOrder(
+	ctx context.Context,
+	req OpenAIAccountScheduleRequest,
+	selectionOrder []openAIAccountCandidateScore,
+	candidateCount int,
+	topK int,
+	loadSkew float64,
+) (*AccountSelectionResult, int, int, float64, error) {
+	priorityBuckets := make(map[int][]openAIAccountCandidateScore)
+	priorities := make([]int, 0)
+	for _, candidate := range selectionOrder {
+		if _, ok := priorityBuckets[candidate.account.Priority]; !ok {
+			priorities = append(priorities, candidate.account.Priority)
+		}
+		priorityBuckets[candidate.account.Priority] = append(priorityBuckets[candidate.account.Priority], candidate)
+	}
+	sort.Ints(priorities)
+
+	compactBlocked := false
+	cfg := s.service.schedulingConfig()
+	var fallbackWaitAccount *Account
+	balancedReq := req
+	balancedReq.SessionHash = ""
+	balancedReq.PreviousResponseID = ""
+	for _, priority := range priorities {
+		bucket := buildOpenAIWeightedSelectionOrder(priorityBuckets[priority], balancedReq)
+		if req.RequiredImageCapability != "" {
+			bucket = prioritizeOpenAIImagePreferredCandidateScores(bucket)
+		}
+		waitCandidates := make([]*Account, 0, len(bucket))
+		for _, candidate := range bucket {
+			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false)
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+				continue
+			}
+			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, false)
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+				continue
+			}
+			if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
+				compactBlocked = true
+				continue
+			}
+			result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			if acquireErr != nil {
+				return nil, candidateCount, topK, loadSkew, acquireErr
+			}
+			if result != nil && result.Acquired {
+				if req.SessionHash != "" {
+					_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, fresh.ID)
+				}
+				return &AccountSelectionResult{
+					Account:     fresh,
+					Acquired:    true,
+					ReleaseFunc: result.ReleaseFunc,
+				}, candidateCount, topK, loadSkew, nil
+			}
+			waitCandidates = append(waitCandidates, fresh)
+		}
+		if len(waitCandidates) > 0 {
+			sort.SliceStable(waitCandidates, func(i, j int) bool {
+				a, b := waitCandidates[i], waitCandidates[j]
+				if a.Priority != b.Priority {
+					return a.Priority < b.Priority
+				}
+				switch {
+				case a.LastUsedAt == nil && b.LastUsedAt != nil:
+					return true
+				case a.LastUsedAt != nil && b.LastUsedAt == nil:
+					return false
+				case a.LastUsedAt == nil && b.LastUsedAt == nil:
+					return a.ID < b.ID
+				default:
+					if a.LastUsedAt.Equal(*b.LastUsedAt) {
+						return a.ID < b.ID
+					}
+					return a.LastUsedAt.Before(*b.LastUsedAt)
+				}
+			})
+			if fallbackWaitAccount == nil {
+				fallbackWaitAccount = waitCandidates[0]
+			}
+		}
+	}
+
+	if fallbackWaitAccount != nil {
+		return &AccountSelectionResult{
+			Account: fallbackWaitAccount,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      fallbackWaitAccount.ID,
+				MaxConcurrency: fallbackWaitAccount.Concurrency,
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			},
@@ -1109,7 +1221,19 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	requireResponsesAPI bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	decision := OpenAIAccountScheduleDecision{}
+	strictPriority := s.isOpenAIGroupStrictPriority(ctx, groupID)
 	scheduler := s.getOpenAIAccountScheduler(ctx)
+	if scheduler == nil && strictPriority {
+		s.openaiSchedulerOnce.Do(func() {
+			if s.openaiAccountStats == nil {
+				s.openaiAccountStats = newOpenAIAccountRuntimeStats()
+			}
+			if s.openaiScheduler == nil {
+				s.openaiScheduler = newDefaultOpenAIAccountScheduler(s, s.openaiAccountStats)
+			}
+		})
+		scheduler = s.openaiScheduler
+	}
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
@@ -1189,8 +1313,32 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
 		RequireResponsesAPI:     requireResponsesAPI,
+		StrictPriority:          strictPriority,
 		ExcludedIDs:             excludedIDs,
 	})
+}
+
+func (s *OpenAIGatewayService) isOpenAIGroupStrictPriority(ctx context.Context, groupID *int64) bool {
+	if s == nil || groupID == nil || *groupID <= 0 {
+		return false
+	}
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == *groupID {
+		if group.Platform != "" && group.Platform != PlatformOpenAI {
+			return false
+		}
+		if group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority {
+			return true
+		}
+	}
+	var group *Group
+	var err error
+	if s.schedulerSnapshot != nil {
+		group, err = s.schedulerSnapshot.GetGroupByID(ctx, *groupID)
+	}
+	if (group == nil || err != nil) && s.groupRepo != nil {
+		group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
+	}
+	return err == nil && group != nil && group.Platform == PlatformOpenAI && group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority
 }
 
 func cloneExcludedAccountIDs(excludedIDs map[int64]struct{}) map[int64]struct{} {

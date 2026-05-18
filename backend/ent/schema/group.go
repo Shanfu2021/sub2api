@@ -160,6 +160,10 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+		field.String("scheduling_strategy").
+			MaxLen(32).
+			Default("weighted").
+			Comment("OpenAI账号调度策略：weighted=加权负载均衡，strict_priority=严格优先级"),
 	}
 }
 
