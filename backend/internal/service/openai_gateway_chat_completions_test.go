@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -95,6 +96,63 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, tier)
 	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
+}
+
+func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
+	t.Parallel()
+
+	bodyWithOutputLimit := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"}],"max_output_tokens":16}`)
+	bodyWithoutOutputLimit := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hi"}]}`)
+
+	t.Run("unsupported responses always uses raw", func(t *testing.T) {
+		t.Parallel()
+		account := &Account{
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+			Extra:    map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+		}
+
+		require.True(t, shouldForwardChatCompletionsAsRaw(account, bodyWithoutOutputLimit))
+	})
+
+	t.Run("passthrough cascade with output limit uses raw", func(t *testing.T) {
+		t.Parallel()
+		account := &Account{
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+			Extra: map[string]any{
+				openai_compat.ExtraKeyResponsesSupported: true,
+				"openai_passthrough":                    true,
+			},
+		}
+
+		require.True(t, shouldForwardChatCompletionsAsRaw(account, bodyWithOutputLimit))
+	})
+
+	t.Run("passthrough cascade without output limit keeps responses path", func(t *testing.T) {
+		t.Parallel()
+		account := &Account{
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+			Extra: map[string]any{
+				openai_compat.ExtraKeyResponsesSupported: true,
+				"openai_passthrough":                    true,
+			},
+		}
+
+		require.False(t, shouldForwardChatCompletionsAsRaw(account, bodyWithoutOutputLimit))
+	})
+
+	t.Run("non passthrough supported responses keeps responses path", func(t *testing.T) {
+		t.Parallel()
+		account := &Account{
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+			Extra:    map[string]any{openai_compat.ExtraKeyResponsesSupported: true},
+		}
+
+		require.False(t, shouldForwardChatCompletionsAsRaw(account, bodyWithOutputLimit))
+	})
 }
 
 func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *testing.T) {
