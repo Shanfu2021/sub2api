@@ -1335,9 +1335,6 @@ func (s *OpenAIGatewayService) isOpenAIGroupStrictPriority(ctx context.Context, 
 	if s.schedulerSnapshot != nil {
 		group, err = s.schedulerSnapshot.GetGroupByID(ctx, *groupID)
 	}
-	if (group == nil || err != nil) && s.groupRepo != nil {
-		group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
-	}
 	return err == nil && group != nil && group.Platform == PlatformOpenAI && group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority
 }
 

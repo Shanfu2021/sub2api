@@ -279,8 +279,10 @@ func TestOpenAIGatewayService_IsOpenAIGroupStrictPriority_FallsBackWhenContextGr
 	}
 	ctx := context.WithValue(context.Background(), ctxkey.Group, ctxGroup)
 	svc := &OpenAIGatewayService{
-		groupRepo: schedulerTestGroupRepo{
-			groups: map[int64]*Group{groupID: repoGroup},
+		schedulerSnapshot: &SchedulerSnapshotService{
+			groupRepo: schedulerTestGroupRepo{
+				groups: map[int64]*Group{groupID: repoGroup},
+			},
 		},
 	}
 
