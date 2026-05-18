@@ -206,6 +206,57 @@ tools/deploy_latest.sh shanfu-prod <commit-sha>
 这些虽然是“静态文件”，但当前是嵌入到 Go 二进制里，不是热更新目录。
 改完后仍需要重新构建二进制并部署。
 
+### 7.4 OpenAI APIKey 兼容上游默认开启透传
+
+现象：
+
+- 如果 OpenAI 账号类型是 `apikey`，并且 `credentials.base_url` 指向第三方兼容上游或另一个 sub2api，中间多一层网关。
+- 不开启 `openai_passthrough` 时，请求会走标准 OpenAI 改写链路：解析大 JSON、模型/字段/fast policy/图片/previous_response_id 处理后再转发。
+- 对 Codex 长上下文请求，这会放大首 token 延迟，尤其是 `cache_read_tokens > 100k`、`reasoning.effort=high/xhigh` 的请求。
+
+规则：
+
+- 新增 OpenAI APIKey 兼容上游时，如果配置了自定义 `base_url`，默认在 `accounts.extra` 设置：
+
+```json
+{
+  "openai_passthrough": true,
+  "openai_apikey_responses_websockets_v2_enabled": false,
+  "openai_apikey_responses_websockets_v2_mode": "off"
+}
+```
+
+- `openai_passthrough=true` 表示本机只替换鉴权并尽量保持原始 body 转发，减少本机解析/重写开销。
+- WebSocket v2 只在明确确认该上游支持时再开启；对第三方兼容上游默认保持关闭，避免协议不兼容。
+- 官方 OpenAI 直连 APIKey（没有自定义 `base_url`）不强制套用这条规则。
+- 标准 HTTP 上游 Transport 已显式启用 HTTP/2；TLS 指纹伪装路径仍保持 HTTP/1.1，避免破坏伪装行为。
+- 排查首 token 慢时，先查服务日志 `OpenAI passthrough slow first token`。重点字段：
+  - `upstream_header_ms`：本机发到上游并收到响应头的耗时。
+  - `first_output_after_headers_ms`：收到响应头后，到首个可输出 SSE 事件的耗时。
+  - `upstream_body_bytes`：本机发给上游的请求体大小。
+
+应急 SQL：
+
+```sql
+UPDATE accounts
+SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), '{openai_passthrough}', 'true'::jsonb, true),
+    updated_at = NOW()
+WHERE platform = 'openai'
+  AND type = 'apikey'
+  AND COALESCE(credentials->>'base_url', '') <> '';
+```
+
+直接改库后，要写入调度 outbox 或重启服务，确保账号快照刷新：
+
+```sql
+INSERT INTO scheduler_outbox (event_type, account_id)
+SELECT 'account_changed', id
+FROM accounts
+WHERE platform = 'openai'
+  AND type = 'apikey'
+  AND COALESCE(credentials->>'base_url', '') <> '';
+```
+
 ## 8. 当前新增工具
 
 - `tools/release_helper.sh`

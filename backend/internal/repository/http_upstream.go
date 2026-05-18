@@ -766,6 +766,8 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Tra
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		// APIKey 上游多数支持 HTTP/2。显式开启可减少高并发流式请求下的建连与队头阻塞延迟。
+		ForceAttemptHTTP2: true,
 	}
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err

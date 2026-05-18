@@ -55,6 +55,7 @@ const (
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	codexCLIVersion                    = "0.125.0"
+	openAIPassthroughSlowTTFTLogMs     = 3000
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
@@ -3426,6 +3427,83 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 	return matched
 }
 
+func getOpenAIOpsLatencyMs(c *gin.Context, key string) (int64, bool) {
+	if c == nil || strings.TrimSpace(key) == "" {
+		return 0, false
+	}
+	v, ok := c.Get(key)
+	if !ok {
+		return 0, false
+	}
+	switch t := v.(type) {
+	case int:
+		return int64(t), true
+	case int32:
+		return int64(t), true
+	case int64:
+		return t, true
+	case float64:
+		return int64(t), true
+	default:
+		return 0, false
+	}
+}
+
+func getOpenAIOpsUpstreamRequestBodyBytes(c *gin.Context) int {
+	if c == nil {
+		return 0
+	}
+	v, ok := c.Get(OpsUpstreamRequestBodyKey)
+	if !ok {
+		return 0
+	}
+	switch raw := v.(type) {
+	case []byte:
+		return len(raw)
+	case string:
+		return len(raw)
+	default:
+		return 0
+	}
+}
+
+func maybeLogOpenAIPassthroughSlowFirstToken(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	streamReadStart time.Time,
+	firstTokenMs int,
+	eventType string,
+	eventBytes int,
+	upstreamRequestID string,
+) {
+	if firstTokenMs < openAIPassthroughSlowTTFTLogMs {
+		return
+	}
+
+	accountID := int64(0)
+	accountName := ""
+	if account != nil {
+		accountID = account.ID
+		accountName = account.Name
+	}
+	upstreamHeaderMs, _ := getOpenAIOpsLatencyMs(c, OpsUpstreamLatencyMsKey)
+	logger.FromContext(ctx).With(
+		zap.String("component", "service.openai_gateway"),
+		zap.Int64("account_id", accountID),
+		zap.String("account_name", accountName),
+		zap.Int("first_token_ms", firstTokenMs),
+		zap.Int64("upstream_header_ms", upstreamHeaderMs),
+		zap.Int64("first_output_after_headers_ms", time.Since(streamReadStart).Milliseconds()),
+		zap.Int64("forward_elapsed_ms", time.Since(startTime).Milliseconds()),
+		zap.String("first_event_type", strings.TrimSpace(eventType)),
+		zap.Int("first_event_bytes", eventBytes),
+		zap.Int("upstream_body_bytes", getOpenAIOpsUpstreamRequestBodyBytes(c)),
+		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
+	).Info("OpenAI passthrough slow first token")
+}
+
 type openaiStreamingResultPassthrough struct {
 	usage        *OpenAIUsage
 	firstTokenMs *int
@@ -3574,6 +3652,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	streamReadStart := time.Now()
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
@@ -3643,6 +3722,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
+				maybeLogOpenAIPassthroughSlowFirstToken(ctx, c, account, startTime, streamReadStart, ms, eventType, len(dataBytes), upstreamRequestID)
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 		}
