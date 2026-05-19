@@ -188,6 +188,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			// Custom OpenAI-compatible relays are often configured as API-key
 			// accounts locally even when their upstream pool is OAuth/Codex-backed.
 			_ = applyOpenAIResponsesInstructionsCompat(reqBody)
+			if shouldStripOpenAIResponsesMaxOutputTokens(account) {
+				delete(reqBody, "max_output_tokens")
+			}
 		}
 
 		responsesBody, err = json.Marshal(reqBody)
@@ -357,6 +360,13 @@ func shouldForwardChatCompletionsAsRaw(account *Account, body []byte) bool {
 		return false
 	}
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
+}
+
+func shouldStripOpenAIResponsesMaxOutputTokens(account *Account) bool {
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	return !openai_compat.ShouldSendResponsesMaxOutputTokens(account.Extra)
 }
 
 // handleChatCompletionsErrorResponse reads an upstream error and returns it in

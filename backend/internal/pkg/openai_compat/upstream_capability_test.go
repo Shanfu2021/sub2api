@@ -53,3 +53,26 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldSendResponsesMaxOutputTokens(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  bool
+	}{
+		{"nil extra defaults to true", nil, true},
+		{"empty extra defaults to true", map[string]any{}, true},
+		{"wrong type defaults to true", map[string]any{ExtraKeyResponsesMaxOutputTokensSupported: "false"}, true},
+		{"explicitly supported", map[string]any{ExtraKeyResponsesMaxOutputTokensSupported: true}, true},
+		{"explicitly unsupported", map[string]any{ExtraKeyResponsesMaxOutputTokensSupported: false}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ShouldSendResponsesMaxOutputTokens(tc.extra)
+			if got != tc.want {
+				t.Errorf("ShouldSendResponsesMaxOutputTokens(%v) = %v, want %v", tc.extra, got, tc.want)
+			}
+		})
+	}
+}

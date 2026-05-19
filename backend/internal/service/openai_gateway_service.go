@@ -2363,9 +2363,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	// Handle max_output_tokens based on platform and account type
-	if !isCodexCLI {
-		if maxOutputTokens, hasMaxOutputTokens := reqBody["max_output_tokens"]; hasMaxOutputTokens {
+	// Handle max_output_tokens based on platform and account type.
+	// Some OpenAI-compatible APIKey relays support /v1/responses but reject
+	// max_output_tokens. Keep the default as pass-through and only strip when
+	// the account capability flag explicitly says it is unsupported.
+	if maxOutputTokens, hasMaxOutputTokens := reqBody["max_output_tokens"]; hasMaxOutputTokens {
+		if shouldStripOpenAIResponsesMaxOutputTokens(account) {
+			delete(reqBody, "max_output_tokens")
+			bodyModified = true
+			markPatchDelete("max_output_tokens")
+		} else if !isCodexCLI {
 			switch account.Platform {
 			case PlatformOpenAI:
 				// OpenAI Responses supports max_output_tokens for both OAuth and
@@ -2392,7 +2399,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				markPatchDelete("max_output_tokens")
 			}
 		}
+	}
 
+	if !isCodexCLI {
 		// Also handle max_completion_tokens (similar logic)
 		if _, hasMaxCompletionTokens := reqBody["max_completion_tokens"]; hasMaxCompletionTokens {
 			if account.Type == AccountTypeAPIKey || account.Platform != PlatformOpenAI {

@@ -39,6 +39,13 @@ const (
 // 值类型为 bool：true=支持、false=不支持、键缺失=未探测。
 const ExtraKeyResponsesSupported = "openai_responses_supported"
 
+// ExtraKeyResponsesMaxOutputTokensSupported 标记上游 /v1/responses 是否接受
+// max_output_tokens。部分级联 sub2api/兼容上游虽支持 /v1/responses，却会拒绝
+// 该字段并返回 "Unsupported parameter: max_output_tokens"。
+//
+// 缺失时默认 true，保持存量行为；仅显式 false 时网关会剥离该字段。
+const ExtraKeyResponsesMaxOutputTokensSupported = "openai_responses_max_output_tokens_supported"
+
 // ResolveResponsesSupport 从账号的 extra map 中读取探测标记。
 //
 // 标记缺失或类型不匹配时返回 ResponsesSupportUnknown——调用方应按
@@ -72,4 +79,21 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 // （详见 internal/service/openai_gateway_chat_completions_raw.go）。
 func ShouldUseResponsesAPI(extra map[string]any) bool {
 	return ResolveResponsesSupport(extra) != ResponsesSupportNo
+}
+
+// ShouldSendResponsesMaxOutputTokens 判断转发 /v1/responses 请求时是否保留
+// max_output_tokens。默认保留，避免破坏官方 OpenAI 和已验证支持该字段的上游。
+func ShouldSendResponsesMaxOutputTokens(extra map[string]any) bool {
+	if extra == nil {
+		return true
+	}
+	v, ok := extra[ExtraKeyResponsesMaxOutputTokensSupported]
+	if !ok {
+		return true
+	}
+	supported, ok := v.(bool)
+	if !ok {
+		return true
+	}
+	return supported
 }

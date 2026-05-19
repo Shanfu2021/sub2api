@@ -155,6 +155,32 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 	})
 }
 
+func TestShouldStripOpenAIResponsesMaxOutputTokens(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, shouldStripOpenAIResponsesMaxOutputTokens(nil))
+	require.False(t, shouldStripOpenAIResponsesMaxOutputTokens(&Account{
+		Type:     AccountTypeOAuth,
+		Platform: PlatformOpenAI,
+		Extra:    map[string]any{openai_compat.ExtraKeyResponsesMaxOutputTokensSupported: false},
+	}))
+	require.False(t, shouldStripOpenAIResponsesMaxOutputTokens(&Account{
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformOpenAI,
+		Extra:    nil,
+	}))
+	require.False(t, shouldStripOpenAIResponsesMaxOutputTokens(&Account{
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformOpenAI,
+		Extra:    map[string]any{openai_compat.ExtraKeyResponsesMaxOutputTokensSupported: true},
+	}))
+	require.True(t, shouldStripOpenAIResponsesMaxOutputTokens(&Account{
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformOpenAI,
+		Extra:    map[string]any{openai_compat.ExtraKeyResponsesMaxOutputTokensSupported: false},
+	}))
+}
+
 func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
