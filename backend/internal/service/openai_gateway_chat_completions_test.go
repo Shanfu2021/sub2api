@@ -115,6 +115,20 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 		require.True(t, shouldForwardChatCompletionsAsRaw(account, bodyWithoutOutputLimit))
 	})
 
+	t.Run("raw preferred uses raw while responses support stays true", func(t *testing.T) {
+		t.Parallel()
+		account := &Account{
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+			Extra: map[string]any{
+				openai_compat.ExtraKeyResponsesSupported:            true,
+				openai_compat.ExtraKeyChatCompletionsRawPreferred: true,
+			},
+		}
+
+		require.True(t, shouldForwardChatCompletionsAsRaw(account, bodyWithOutputLimit))
+	})
+
 	t.Run("passthrough cascade with output limit keeps responses path", func(t *testing.T) {
 		t.Parallel()
 		account := &Account{

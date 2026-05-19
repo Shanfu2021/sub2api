@@ -222,6 +222,7 @@ tools/deploy_latest.sh shanfu-prod <commit-sha>
 {
   "openai_passthrough": true,
   "openai_responses_max_output_tokens_supported": true,
+  "openai_chat_completions_raw_preferred": false,
   "openai_apikey_responses_websockets_v2_enabled": false,
   "openai_apikey_responses_websockets_v2_mode": "off"
 }
@@ -229,6 +230,7 @@ tools/deploy_latest.sh shanfu-prod <commit-sha>
 
 - `openai_passthrough=true` 表示本机只替换鉴权并尽量保持原始 body 转发，减少本机解析/重写开销。
 - 如果级联 sub2api/兼容上游报 `Unsupported parameter: max_output_tokens`，不要全局关闭该能力；只给对应账号设置 `"openai_responses_max_output_tokens_supported": false`，网关会在转发 `/v1/responses` 时剥离这个字段。
+- 如果级联上游的 `/v1/chat/completions` 兼容性比 `/v1/responses` 更好，不要把 `"openai_responses_supported"` 改成 `false`；应设置 `"openai_chat_completions_raw_preferred": true`。这样只有用户入站 `/v1/chat/completions` 会原样走上游 `/v1/chat/completions`，用户直接请求 `/v1/responses` 仍可调度到该账号。
 - WebSocket v2 只在明确确认该上游支持时再开启；对第三方兼容上游默认保持关闭，避免协议不兼容。
 - 官方 OpenAI 直连 APIKey（没有自定义 `base_url`）不强制套用这条规则。
 - 标准 HTTP 上游 Transport 已显式启用 HTTP/2；TLS 指纹伪装路径仍保持 HTTP/1.1，避免破坏伪装行为。
@@ -253,6 +255,15 @@ WHERE platform = 'openai'
 ```sql
 UPDATE accounts
 SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), '{openai_responses_max_output_tokens_supported}', 'false'::jsonb, true),
+    updated_at = NOW()
+WHERE id = <account_id>;
+```
+
+单个上游希望 Chat Completions 入站保持原生透传时：
+
+```sql
+UPDATE accounts
+SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), '{openai_chat_completions_raw_preferred}', 'true'::jsonb, true),
     updated_at = NOW()
 WHERE id = <account_id>;
 ```

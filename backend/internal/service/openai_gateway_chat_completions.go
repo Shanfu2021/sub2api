@@ -49,6 +49,9 @@ var cursorResponsesUnsupportedFields = []string{
 // 这些上游普遍只支持 /v1/chat/completions，无 /v1/responses 端点。
 //
 // 当前路由策略（基于账号探测标记，详见 openai_compat.ShouldUseResponsesAPI）：
+//   - APIKey 账号 + 显式配置 openai_chat_completions_raw_preferred=true →
+//     走 forwardAsRawChatCompletions，保留用户入站 Chat Completions 协议语义；
+//     这不影响该账号继续承接用户直接发来的 /v1/responses 请求
 //   - APIKey 账号 + 探测确认不支持 Responses → 走 forwardAsRawChatCompletions
 //     直转上游 /v1/chat/completions，不做协议转换
 //   - 其他所有情况（OAuth、APIKey 探测确认支持、未探测）→ 走原有 CC→Responses
@@ -358,6 +361,9 @@ func normalizedOpenAIServiceTierValue(raw string) string {
 func shouldForwardChatCompletionsAsRaw(account *Account, body []byte) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
+	}
+	if openai_compat.ShouldPreferRawChatCompletions(account.Extra) {
+		return true
 	}
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }

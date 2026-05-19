@@ -76,3 +76,26 @@ func TestShouldSendResponsesMaxOutputTokens(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldPreferRawChatCompletions(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  bool
+	}{
+		{"nil extra defaults to false", nil, false},
+		{"empty extra defaults to false", map[string]any{}, false},
+		{"wrong type defaults to false", map[string]any{ExtraKeyChatCompletionsRawPreferred: "true"}, false},
+		{"explicitly disabled", map[string]any{ExtraKeyChatCompletionsRawPreferred: false}, false},
+		{"explicitly enabled", map[string]any{ExtraKeyChatCompletionsRawPreferred: true}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ShouldPreferRawChatCompletions(tc.extra)
+			if got != tc.want {
+				t.Errorf("ShouldPreferRawChatCompletions(%v) = %v, want %v", tc.extra, got, tc.want)
+			}
+		})
+	}
+}

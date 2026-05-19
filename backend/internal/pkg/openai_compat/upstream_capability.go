@@ -46,6 +46,13 @@ const ExtraKeyResponsesSupported = "openai_responses_supported"
 // 缺失时默认 true，保持存量行为；仅显式 false 时网关会剥离该字段。
 const ExtraKeyResponsesMaxOutputTokensSupported = "openai_responses_max_output_tokens_supported"
 
+// ExtraKeyChatCompletionsRawPreferred 标记入站 /v1/chat/completions 是否优先
+// 原样转发到上游 /v1/chat/completions。
+//
+// 这个开关不表示上游不支持 /v1/responses；它只解决部分级联上游
+// "Responses 可用，但 Chat Completions 原生兼容性更好" 的场景。
+const ExtraKeyChatCompletionsRawPreferred = "openai_chat_completions_raw_preferred"
+
 // ResolveResponsesSupport 从账号的 extra map 中读取探测标记。
 //
 // 标记缺失或类型不匹配时返回 ResponsesSupportUnknown——调用方应按
@@ -96,4 +103,21 @@ func ShouldSendResponsesMaxOutputTokens(extra map[string]any) bool {
 		return true
 	}
 	return supported
+}
+
+// ShouldPreferRawChatCompletions 判断入站 /v1/chat/completions 是否应直接
+// 转发到上游 /v1/chat/completions，而不是转换为 /v1/responses。
+func ShouldPreferRawChatCompletions(extra map[string]any) bool {
+	if extra == nil {
+		return false
+	}
+	v, ok := extra[ExtraKeyChatCompletionsRawPreferred]
+	if !ok {
+		return false
+	}
+	preferred, ok := v.(bool)
+	if !ok {
+		return false
+	}
+	return preferred
 }
