@@ -92,6 +92,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			clientIP := ip.GetTrustedClientIP(c)
 			allowed, _ := ip.CheckIPRestrictionWithCompiledRules(clientIP, apiKey.CompiledIPWhitelist, apiKey.CompiledIPBlacklist)
 			if !allowed {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonIPRestriction)
 				AbortWithError(c, 403, "ACCESS_DENIED", "Access denied")
 				return
 			}
@@ -108,17 +109,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}
-		if apiKey.Group != nil && !apiKey.Group.IsActive() {
-			AbortWithError(c, 403, "GROUP_NOT_ACTIVE", "api key group is not active")
-			return
-		}
-		if apiKey.User.Enterprise != nil && apiKey.User.Enterprise.TenantStatus != service.EnterpriseTenantStatusActive {
-			AbortWithError(c, 403, "ENTERPRISE_TENANT_DISABLED", "enterprise tenant is disabled")
-			return
-		}
-		if apiKey.User.Enterprise != nil && apiKey.Group != nil &&
-			!apiKey.User.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive) {
-			AbortWithError(c, 403, "ENTERPRISE_GROUP_FORBIDDEN", "enterprise does not allow this group")
+		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
 		}
 
@@ -262,4 +253,34 @@ func setGroupContext(c *gin.Context, group *service.Group) {
 	}
 	ctx := context.WithValue(c.Request.Context(), ctxkey.Group, group)
 	c.Request = c.Request.WithContext(ctx)
+}
+
+func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool {
+	code, message, ok := validateAPIKeyGroupAvailable(apiKey)
+	if ok {
+		return false
+	}
+	AbortWithError(c, 403, code, message)
+	return true
+}
+
+func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool) {
+	if apiKey == nil || apiKey.GroupID == nil {
+		return "", "", true
+	}
+	group := apiKey.Group
+	if group == nil || strings.EqualFold(group.Status, "deleted") {
+		return "GROUP_DELETED", "API Key 所属分组已删除", false
+	}
+	if !group.IsActive() {
+		return "GROUP_DISABLED", "API Key 所属分组已停用", false
+	}
+	if apiKey.User != nil && apiKey.User.Enterprise != nil && apiKey.User.Enterprise.TenantStatus != service.EnterpriseTenantStatusActive {
+		return "ENTERPRISE_TENANT_DISABLED", "enterprise tenant is disabled", false
+	}
+	if apiKey.User != nil && apiKey.User.Enterprise != nil && apiKey.Group != nil &&
+		!apiKey.User.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive) {
+		return "ENTERPRISE_GROUP_FORBIDDEN", "enterprise does not allow this group", false
+	}
+	return "", "", true
 }

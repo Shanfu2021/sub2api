@@ -54,17 +54,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 401, "User account is not active")
 			return
 		}
-		if apiKey.Group != nil && !apiKey.Group.IsActive() {
-			abortWithGoogleError(c, 403, "api key group is not active")
-			return
-		}
-		if apiKey.User.Enterprise != nil && apiKey.User.Enterprise.TenantStatus != service.EnterpriseTenantStatusActive {
-			abortWithGoogleError(c, 403, "enterprise tenant is disabled")
-			return
-		}
-		if apiKey.User.Enterprise != nil && apiKey.Group != nil &&
-			!apiKey.User.CanBindGroup(apiKey.Group.ID, apiKey.Group.IsExclusive) {
-			abortWithGoogleError(c, 403, "enterprise does not allow this group")
+		if _, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
+			abortWithGoogleError(c, 403, message)
 			return
 		}
 

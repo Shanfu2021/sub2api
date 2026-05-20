@@ -30,6 +30,7 @@ type EmailTask struct {
 	SiteName string
 	TaskType string // "verify_code" or "password_reset"
 	ResetURL string // Only used for password_reset task type
+	Locale   string // Optional Accept-Language locale hint
 }
 
 // EmailQueueService 异步邮件队列服务
@@ -124,14 +125,14 @@ func (s *EmailQueueService) processTaskAttempt(ctx context.Context, task EmailTa
 	switch task.TaskType {
 	case TaskTypeVerifyCode:
 		if attempt == 1 {
-			return s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName)
+			return s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName, task.Locale)
 		}
 		return s.emailService.ResendLatestVerifyCode(ctx, task.Email, task.SiteName)
 	case TaskTypePasswordReset:
 		if attempt == 1 {
-			return s.emailService.SendPasswordResetEmailWithCooldown(ctx, task.Email, task.SiteName, task.ResetURL)
+			return s.emailService.SendPasswordResetEmailWithCooldown(ctx, task.Email, task.SiteName, task.ResetURL, task.Locale)
 		}
-		return s.emailService.SendPasswordResetEmail(ctx, task.Email, task.SiteName, task.ResetURL)
+		return s.emailService.SendPasswordResetEmail(ctx, task.Email, task.SiteName, task.ResetURL, task.Locale)
 	default:
 		return fmt.Errorf("unknown task type: %s", task.TaskType)
 	}
@@ -172,11 +173,12 @@ func isRetryableEmailError(err error) bool {
 }
 
 // EnqueueVerifyCode 将验证码发送任务加入队列
-func (s *EmailQueueService) EnqueueVerifyCode(email, siteName string) error {
+func (s *EmailQueueService) EnqueueVerifyCode(email, siteName string, locale ...string) error {
 	task := EmailTask{
 		Email:    email,
 		SiteName: siteName,
 		TaskType: TaskTypeVerifyCode,
+		Locale:   firstEmailLocale(locale),
 	}
 
 	select {
@@ -189,12 +191,13 @@ func (s *EmailQueueService) EnqueueVerifyCode(email, siteName string) error {
 }
 
 // EnqueuePasswordReset 将密码重置邮件任务加入队列
-func (s *EmailQueueService) EnqueuePasswordReset(email, siteName, resetURL string) error {
+func (s *EmailQueueService) EnqueuePasswordReset(email, siteName, resetURL string, locale ...string) error {
 	task := EmailTask{
 		Email:    email,
 		SiteName: siteName,
 		TaskType: TaskTypePasswordReset,
 		ResetURL: resetURL,
+		Locale:   firstEmailLocale(locale),
 	}
 
 	select {
