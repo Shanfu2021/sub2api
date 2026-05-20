@@ -340,7 +340,6 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 			entries[i].accountCount = c.Total
 		}
 	}
-	r.applySchedulingStrategies(ctx, outGroups)
 
 	// 第三步：Go 侧排序（数据量 = Group 总数，通常 < 200，安全）。
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
@@ -391,6 +390,7 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 			outGroups[idx] = *g
 		}
 	}
+	r.applySchedulingStrategies(ctx, outGroups)
 
 	return outGroups, paginationResultFromTotal(int64(total), params), nil
 }
