@@ -1032,6 +1032,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false
 	}
+	if req.RequestedModel != "" && account.GetModelRateLimitRemainingTimeWithContext(ctx, req.RequestedModel) > 0 {
+		return false
+	}
 	if req.RequireResponsesAPI && !openAIAccountSupportsResponsesAPI(account) {
 		return false
 	}

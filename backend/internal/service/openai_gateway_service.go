@@ -48,16 +48,17 @@ const (
 	OpenAIParsedRequestBodyKey = "openai_parsed_request_body"
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
 	// 与 Codex 客户端保持一致：失败后最多重连 5 次。
-	openAIWSReconnectRetryLimit = 5
+	openAIWSReconnectRetryLimit                 = 5
 	// OpenAI WS Mode 重连退避默认值（可由配置覆盖）。
-	openAIWSRetryBackoffInitialDefault = 120 * time.Millisecond
-	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
-	openAIWSRetryJitterRatioDefault    = 0.2
-	openAICompactSessionSeedKey        = "openai_compact_session_seed"
-	codexCLIVersion                    = "0.125.0"
-	openAIPassthroughSlowTTFTLogMs     = 3000
+	openAIWSRetryBackoffInitialDefault          = 120 * time.Millisecond
+	openAIWSRetryBackoffMaxDefault              = 2 * time.Second
+	openAIWSRetryJitterRatioDefault             = 0.2
+	openAICompactSessionSeedKey                 = "openai_compact_session_seed"
+	codexCLIVersion                             = "0.125.0"
+	openAIPassthroughSlowTTFTLogMs              = 3000
+	openAIPassthroughModelUnavailableCooldown   = 2 * time.Minute
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
-	openAICodexSnapshotPersistMinInterval = 30 * time.Second
+	openAICodexSnapshotPersistMinInterval       = 30 * time.Second
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -3087,7 +3088,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
 		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
 		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, reqModel)
 		}
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
 	}
@@ -3253,11 +3254,64 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 func shouldFailoverOpenAIPassthroughResponse(statusCode int) bool {
 	switch statusCode {
-	case http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return true
 	default:
+		return statusCode >= http.StatusInternalServerError
+	}
+}
+
+func isOpenAIPassthroughModelUnavailableMessage(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
 		return false
 	}
+	return strings.Contains(normalized, "auth_unavailable") ||
+		strings.Contains(normalized, "no auth available") ||
+		strings.Contains(normalized, "no available channel for model")
+}
+
+func (s *OpenAIGatewayService) markOpenAIPassthroughModelUnavailable(
+	ctx context.Context,
+	account *Account,
+	statusCode int,
+	requestBody []byte,
+	requestedModel string,
+	upstreamMessage string,
+) {
+	if s == nil || s.accountRepo == nil || account == nil || statusCode != http.StatusServiceUnavailable {
+		return
+	}
+	if !isOpenAIPassthroughModelUnavailableMessage(upstreamMessage) {
+		return
+	}
+	modelKey := strings.TrimSpace(requestedModel)
+	if modelKey == "" {
+		modelKey = strings.TrimSpace(gjson.GetBytes(requestBody, "model").String())
+	}
+	if modelKey == "" {
+		return
+	}
+	modelKey = strings.TrimSpace(account.GetMappedModel(modelKey))
+	if modelKey == "" {
+		return
+	}
+	resetAt := time.Now().Add(openAIPassthroughModelUnavailableCooldown)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt); err != nil {
+		logger.FromContext(ctx).With(
+			zap.String("component", "service.openai_gateway"),
+			zap.Int64("account_id", account.ID),
+			zap.String("model", modelKey),
+			zap.Error(err),
+		).Warn("OpenAI passthrough model-unavailable cooldown failed")
+		return
+	}
+	logger.FromContext(ctx).With(
+		zap.String("component", "service.openai_gateway"),
+		zap.Int64("account_id", account.ID),
+		zap.String("model", modelKey),
+		zap.Duration("cooldown", openAIPassthroughModelUnavailableCooldown),
+	).Warn("OpenAI passthrough model temporarily unavailable; model cooldown applied")
 }
 
 func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
@@ -3266,6 +3320,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	requestBody []byte,
+	requestedModel string,
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -3284,6 +3339,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	if s.rateLimitService != nil {
 		_ = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	}
+	s.markOpenAIPassthroughModelUnavailable(ctx, account, resp.StatusCode, requestBody, requestedModel, upstreamMsg)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:             account.Platform,
 		AccountID:            account.ID,
