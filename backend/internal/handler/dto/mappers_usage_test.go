@@ -95,8 +95,6 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	require.Equal(t, serviceTier, *userDTO.ServiceTier)
 	require.NotNil(t, userDTO.InboundEndpoint)
 	require.Equal(t, inboundEndpoint, *userDTO.InboundEndpoint)
-	require.NotNil(t, userDTO.UpstreamEndpoint)
-	require.Equal(t, upstreamEndpoint, *userDTO.UpstreamEndpoint)
 	require.NotNil(t, adminDTO.ServiceTier)
 	require.Equal(t, serviceTier, *adminDTO.ServiceTier)
 	require.NotNil(t, adminDTO.InboundEndpoint)
@@ -105,6 +103,30 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	require.Equal(t, upstreamEndpoint, *adminDTO.UpstreamEndpoint)
 	require.NotNil(t, adminDTO.AccountRateMultiplier)
 	require.InDelta(t, 1.5, *adminDTO.AccountRateMultiplier, 1e-12)
+}
+
+func TestUsageLogFromService_HidesRoutingMetadataFromUser(t *testing.T) {
+	t.Parallel()
+
+	upstreamEndpoint := "/v1/responses"
+	log := &service.UsageLog{
+		RequestID:        "req_hidden",
+		AccountID:        123,
+		Model:            "gpt-5.5",
+		UpstreamEndpoint: &upstreamEndpoint,
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "account_id")
+	require.NotContains(t, string(userJSON), "upstream_endpoint")
+
+	require.Equal(t, int64(123), adminDTO.AccountID)
+	require.NotNil(t, adminDTO.UpstreamEndpoint)
+	require.Equal(t, upstreamEndpoint, *adminDTO.UpstreamEndpoint)
 }
 
 func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *testing.T) {

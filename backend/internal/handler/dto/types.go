@@ -386,7 +386,6 @@ type UsageLog struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
 	APIKeyID  int64  `json:"api_key_id"`
-	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
@@ -396,8 +395,6 @@ type UsageLog struct {
 	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
 	InboundEndpoint *string `json:"inbound_endpoint,omitempty"`
-	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
-	UpstreamEndpoint *string `json:"upstream_endpoint,omitempty"`
 
 	GroupID        *int64 `json:"group_id"`
 	SubscriptionID *int64 `json:"subscription_id"`
@@ -450,6 +447,12 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+
+	// AccountID is internal routing metadata and only returned from admin APIs.
+	AccountID int64 `json:"account_id"`
+
+	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
+	UpstreamEndpoint *string `json:"upstream_endpoint,omitempty"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).

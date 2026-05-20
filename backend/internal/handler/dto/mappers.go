@@ -599,13 +599,11 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ID:                    l.ID,
 		UserID:                l.UserID,
 		APIKeyID:              l.APIKeyID,
-		AccountID:             l.AccountID,
 		RequestID:             l.RequestID,
 		Model:                 requestedModel,
 		ServiceTier:           l.ServiceTier,
 		ReasoningEffort:       l.ReasoningEffort,
 		InboundEndpoint:       l.InboundEndpoint,
-		UpstreamEndpoint:      l.UpstreamEndpoint,
 		GroupID:               l.GroupID,
 		SubscriptionID:        l.SubscriptionID,
 		InputTokens:           l.InputTokens,
@@ -659,6 +657,8 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	}
 	return &AdminUsageLog{
 		UsageLog:              usageLogFromServiceUser(l),
+		AccountID:             l.AccountID,
+		UpstreamEndpoint:      l.UpstreamEndpoint,
 		UpstreamModel:         l.UpstreamModel,
 		ChannelID:             l.ChannelID,
 		ModelMappingChain:     l.ModelMappingChain,

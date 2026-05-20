@@ -67,6 +67,7 @@ export default defineConfig(({ mode, command }) => {
   build: {
     outDir: '../backend/internal/web/dist',
     emptyOutDir: true,
+    sourcemap: false,
     rollupOptions: {
       output: {
         /**
