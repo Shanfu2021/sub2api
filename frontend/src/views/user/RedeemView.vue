@@ -626,6 +626,20 @@ const purchaseProducts = computed<PurchaseProduct[]>(() => {
 
   return [
     {
+      key: 'balance-2',
+      category: '通用余额',
+      title: '2 刀通用余额卡',
+      description: '适合小额试用和快速补一点余额，买完后直接来本页兑换即可。',
+      price: '价格以小铺为准',
+      specs: [
+        { label: '到账', value: '2 USD' },
+        { label: '类型', value: '通用余额卡' }
+      ],
+      note: '复制兑换码回到本页输入，到账后可直接使用。',
+      badge: '余额',
+      url: 'https://pay.ldxp.cn/item/jeu966'
+    },
+    {
       key: 'balance-10',
       category: '通用余额',
       title: '10 刀通用余额卡',
