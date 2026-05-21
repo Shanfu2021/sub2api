@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -318,6 +319,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
+				if sanitizedPayload, sanitized := sanitizeRawChatCompletionsErrorPayload(payload); sanitized {
+					line = "data: " + sanitizedPayload
+					payload = sanitizedPayload
+					trimmedPayload = strings.TrimSpace(payload)
+				}
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
@@ -395,6 +401,26 @@ func ensureOpenAIChatStreamUsage(body []byte) ([]byte, error) {
 	return updated, nil
 }
 
+func sanitizeRawChatCompletionsErrorPayload(payload string) (string, bool) {
+	if strings.TrimSpace(payload) == "" {
+		return payload, false
+	}
+	if !isRawChatCompletionsErrorJSON([]byte(payload)) {
+		return payload, false
+	}
+	errType := strings.TrimSpace(gjson.Get(payload, "error.type").String())
+	if errType == "" {
+		errType = strings.TrimSpace(gjson.Get(payload, "type").String())
+	}
+	statusCode := int(gjson.Get(payload, "error.status_code").Int())
+	if statusCode == 0 {
+		statusCode = int(gjson.Get(payload, "status_code").Int())
+	}
+	safeType, safeMessage := SafeUpstreamClientError(statusCode, errType, "Upstream request failed")
+	out := `{"error":{"type":` + strconv.Quote(safeType) + `,"message":` + strconv.Quote(safeMessage) + `}}`
+	return out, true
+}
+
 func isOpenAIChatUsageOnlyStreamChunk(payload string) bool {
 	if strings.TrimSpace(payload) == "" {
 		return false
@@ -444,6 +470,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		}
 		return nil, fmt.Errorf("read upstream body: %w", err)
 	}
+	if sanitizedBody, sanitized := sanitizeRawChatCompletionsErrorBody(respBody); sanitized {
+		respBody = sanitizedBody
+	}
 
 	var ccResp apicompat.ChatCompletionsResponse
 	var usage OpenAIUsage
@@ -479,6 +508,30 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		Stream:          false,
 		Duration:        time.Since(startTime),
 	}, nil
+}
+
+func sanitizeRawChatCompletionsErrorBody(body []byte) ([]byte, bool) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || !isRawChatCompletionsErrorJSON(trimmed) {
+		return body, false
+	}
+	errType := strings.TrimSpace(gjson.GetBytes(trimmed, "error.type").String())
+	if errType == "" {
+		errType = strings.TrimSpace(gjson.GetBytes(trimmed, "type").String())
+	}
+	statusCode := int(gjson.GetBytes(trimmed, "error.status_code").Int())
+	if statusCode == 0 {
+		statusCode = int(gjson.GetBytes(trimmed, "status_code").Int())
+	}
+	safeType, safeMessage := SafeUpstreamClientError(statusCode, errType, "Upstream request failed")
+	return []byte(`{"error":{"type":` + strconv.Quote(safeType) + `,"message":` + strconv.Quote(safeMessage) + `}}`), true
+}
+
+func isRawChatCompletionsErrorJSON(body []byte) bool {
+	if gjson.GetBytes(body, "error").Exists() {
+		return true
+	}
+	return strings.TrimSpace(gjson.GetBytes(body, "type").String()) == "error"
 }
 
 func normalizeRawChatCompletionsTokenLimit(body []byte) ([]byte, error) {

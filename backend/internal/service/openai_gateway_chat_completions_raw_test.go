@@ -215,6 +215,68 @@ func TestForwardAsRawChatCompletions_PreservesDeepSeekReasoningContentStreaming(
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestForwardAsRawChatCompletions_SanitizesStreamingErrorPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"error":{"type":"upstream_error","message":"No available channel at https://zz1cc.cc.cd/v1/chat/completions"}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_stream_error"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+	account := rawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), "Upstream request failed")
+	require.NotContains(t, rec.Body.String(), "zz1cc.cc.cd")
+	require.NotContains(t, rec.Body.String(), "No available channel")
+}
+
+func TestBufferRawChatCompletions_SanitizesErrorJSONWithHTTP200(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"upstream_error","message":"provider failed at https://zz1cc.cc.cd/v1/chat/completions"}}`)),
+	}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+
+	result, err := svc.bufferRawChatCompletions(c, resp, "gpt-5.5", "gpt-5.5", "gpt-5.5", nil, nil, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), "Upstream request failed")
+	require.NotContains(t, rec.Body.String(), "zz1cc.cc.cd")
+	require.NotContains(t, rec.Body.String(), "provider failed")
+}
+
+func TestSanitizeRawChatCompletionsErrorPayloadHandlesTopLevelErrorEvent(t *testing.T) {
+	payload := `{"type":"error","message":"failed at https://zz1cc.cc.cd"}`
+	got, sanitized := sanitizeRawChatCompletionsErrorPayload(payload)
+	require.True(t, sanitized)
+	require.Contains(t, got, "Upstream request failed")
+	require.NotContains(t, got, "zz1cc.cc.cd")
+}
+
 func TestForwardAsRawChatCompletions_PreservesDeepSeekReasoningContentInRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
