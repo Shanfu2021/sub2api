@@ -951,11 +951,16 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
 		platform = forcedPlatform
 	}
+	allowImageGeneration := true
+	if apiKey != nil && apiKey.Group != nil {
+		allowImageGeneration = service.GroupAllowsImageGeneration(apiKey.Group)
+	}
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 
 	if len(availableModels) > 0 {
+		availableModels = openai.FilterPublicModelIDsForCapabilities(availableModels, allowImageGeneration)
 		// Build model list from whitelist
 		models := make([]claude.Model, 0, len(availableModels))
 		for _, modelID := range availableModels {
@@ -977,7 +982,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if platform == service.PlatformOpenAI {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   openai.DefaultModels,
+			"data":   openai.FilterPublicModelsForCapabilities(openai.DefaultModels, allowImageGeneration),
 		})
 		return
 	}

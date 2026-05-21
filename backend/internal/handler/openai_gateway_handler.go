@@ -15,6 +15,7 @@ import (
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -160,6 +161,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	if openai.IsUnsupportedPublicModel(reqModel) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", openai.ModelUnavailableMessage)
+		return
+	}
 
 	streamResult := gjson.GetBytes(body, "stream")
 	if streamResult.Exists() && streamResult.Type != gjson.True && streamResult.Type != gjson.False {
@@ -1164,6 +1169,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
 	}
+	if openai.IsUnsupportedPublicModel(reqModel) {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, openai.ModelUnavailableMessage)
+		return
+	}
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
 	previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
@@ -1313,6 +1322,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 			if model == "" {
 				model = reqModel
+			}
+			if openai.IsUnsupportedPublicModel(model) {
+				return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, openai.ModelUnavailableMessage, nil)
 			}
 			if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
 				writeContentModerationWSError(ctx, wsConn, decision)
