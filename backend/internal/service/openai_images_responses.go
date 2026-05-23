@@ -524,10 +524,9 @@ func openAIImagesStreamPrefix(parsed *OpenAIImagesRequest) string {
 
 func buildOpenAIImagesStreamErrorBody(message string) []byte {
 	body := []byte(`{"type":"error","error":{"type":"upstream_error","message":""}}`)
-	if strings.TrimSpace(message) == "" {
-		message = "upstream request failed"
-	}
-	body, _ = sjson.SetBytes(body, "error.message", message)
+	// Never expose raw upstream stream errors to clients; they may contain
+	// provider domains, request IDs, or internal routing details.
+	body, _ = sjson.SetBytes(body, "error.message", "Image generation failed, please retry later")
 	return body
 }
 
