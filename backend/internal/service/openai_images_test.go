@@ -10,9 +10,12 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -22,6 +25,32 @@ type failingOpenAIImageWriter struct {
 	gin.ResponseWriter
 	failAfter int
 	writes    int
+}
+
+type delayedHTTPUpstreamRecorder struct {
+	httpUpstreamRecorder
+	delay time.Duration
+}
+
+func (u *delayedHTTPUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	if u.delay > 0 {
+		time.Sleep(u.delay)
+	}
+	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func (u *delayedHTTPUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+type countingOpenAIImageWriter struct {
+	gin.ResponseWriter
+	writes atomic.Int32
+}
+
+func (w *countingOpenAIImageWriter) Write(p []byte) (int, error) {
+	w.writes.Add(1)
+	return w.ResponseWriter.Write(p)
 }
 
 func (w *failingOpenAIImageWriter) Write(p []byte) (int, error) {
@@ -658,6 +687,62 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t 
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.lastReq.URL.String())
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyNonStreamKeepsDownstreamAlive(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	writer := &countingOpenAIImageWriter{ResponseWriter: c.Writer}
+	c.Writer = writer
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				ImageStreamKeepaliveInterval: 1,
+			},
+		},
+		httpUpstream: &delayedHTTPUpstreamRecorder{
+			delay: 1100 * time.Millisecond,
+			httpUpstreamRecorder: httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+						"X-Request-Id": []string{"req_img_nonstream_keepalive"},
+					},
+					Body: io.NopCloser(strings.NewReader(`{"created":1710000012,"usage":{"input_tokens":12,"output_tokens":21,"output_tokens_details":{"image_tokens":9}},"data":[{"b64_json":"aGVsbG8="}]}`)),
+				},
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	require.False(t, parsed.Stream)
+
+	account := &Account{
+		ID:       12,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Stream)
+	require.GreaterOrEqual(t, writer.writes.Load(), int32(2))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
