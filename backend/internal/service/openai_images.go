@@ -595,7 +595,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
-	upstreamReq, err := s.buildOpenAIImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint)
+	upstreamReq, err := s.buildOpenAIImagesRequest(upstreamCtx, c, account, forwardBody, forwardContentType, token, parsed.Endpoint, parsed.Stream)
 	if err != nil {
 		return nil, err
 	}
@@ -725,6 +725,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	contentType string,
 	token string,
 	endpoint string,
+	stream bool,
 ) (*http.Request, error) {
 	targetURL := openAIImagesGenerationsURL
 	if endpoint == openAIImagesEditsEndpoint {
@@ -755,6 +756,11 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	customUA := account.GetOpenAIUserAgent()
 	if customUA != "" {
 		req.Header.Set("User-Agent", customUA)
+	}
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	} else if strings.TrimSpace(req.Header.Get("Accept")) == "" {
+		req.Header.Set("Accept", "application/json")
 	}
 	if strings.TrimSpace(contentType) != "" {
 		req.Header.Set("Content-Type", contentType)
