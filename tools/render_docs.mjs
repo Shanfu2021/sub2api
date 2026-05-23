@@ -17,6 +17,9 @@ const { marked } = await import(markedModule)
 
 const sourcePath = process.argv[2] || '/opt/sub2api/data/docs-source.md'
 const outputPath = process.argv[3] || '/opt/sub2api/data/public/docs/index.html'
+if (path.basename(outputPath) === 'docs.html') {
+  throw new Error('Refuse to render full docs to docs.html; render to docs/index.html and keep docs.html as a redirect.')
+}
 const sourceDir = path.dirname(sourcePath)
 const outputDir = path.dirname(outputPath)
 
@@ -309,12 +312,30 @@ const html = `<!doctype html>
         position: sticky;
         top: 20px;
         align-self: start;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         border: 1px solid var(--line);
         border-radius: 24px;
         background: var(--panel);
         box-shadow: var(--shadow);
         padding: 18px;
         backdrop-filter: blur(14px);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(15, 118, 110, 0.34) transparent;
+      }
+
+      .sidebar::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .sidebar::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: rgba(15, 118, 110, 0.28);
+      }
+
+      .sidebar::-webkit-scrollbar-track {
+        background: transparent;
       }
 
       .sidebar h2 {
@@ -526,6 +547,8 @@ const html = `<!doctype html>
 
         .sidebar {
           position: static;
+          max-height: none;
+          overflow: visible;
         }
       }
 

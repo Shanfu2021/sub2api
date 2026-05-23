@@ -608,8 +608,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	upstreamStart := time.Now()
 	stopHeaderKeepalive := s.startOpenAIImagesNonStreamKeepalive(c, parsed.Stream)
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	headerKeepaliveWrote := false
 	if stopHeaderKeepalive != nil {
-		stopHeaderKeepalive()
+		headerKeepaliveWrote = stopHeaderKeepalive()
 	}
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
@@ -624,6 +625,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if headerKeepaliveWrote {
+			writeOpenAIImagesNonStreamFinalError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		}
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	if resp.StatusCode >= 400 {
@@ -632,6 +636,21 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if headerKeepaliveWrote {
+			errType, errMsg := SafeUpstreamClientError(resp.StatusCode, "upstream_error", "Upstream request failed")
+			writeOpenAIImagesNonStreamFinalError(c, http.StatusBadGateway, errType, errMsg)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+				Kind:               "http_error_after_keepalive",
+				Message:            upstreamMsg,
+			})
+			return nil, fmt.Errorf("upstream error after image keepalive: %d message=%s", resp.StatusCode, upstreamMsg)
+		}
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
@@ -866,13 +885,18 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
 	stopKeepalive := s.startOpenAIImagesNonStreamKeepalive(c, false)
 	body, err := readUpstreamResponseBodyLimited(resp.Body, resolveUpstreamResponseReadLimit(s.cfg))
+	bodyKeepaliveWrote := false
 	if stopKeepalive != nil {
-		stopKeepalive()
+		bodyKeepaliveWrote = stopKeepalive()
 	}
 	if err != nil {
 		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
 			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			openAITooLargeError(c)
+			if bodyKeepaliveWrote {
+				writeOpenAIImagesNonStreamFinalError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+			} else {
+				openAITooLargeError(c)
+			}
 		}
 		return OpenAIUsage{}, 0, nil, err
 	}
@@ -889,7 +913,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
 }
 
-func (s *OpenAIGatewayService) startOpenAIImagesNonStreamKeepalive(c *gin.Context, stream bool) func() {
+func (s *OpenAIGatewayService) startOpenAIImagesNonStreamKeepalive(c *gin.Context, stream bool) func() bool {
 	if stream || c == nil || c.Writer == nil {
 		return nil
 	}
@@ -904,6 +928,7 @@ func (s *OpenAIGatewayService) startOpenAIImagesNonStreamKeepalive(c *gin.Contex
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
+	var wrote atomic.Bool
 	go func() {
 		defer close(stopped)
 		ticker := time.NewTicker(interval)
@@ -916,13 +941,49 @@ func (s *OpenAIGatewayService) startOpenAIImagesNonStreamKeepalive(c *gin.Contex
 				if _, err := c.Writer.Write([]byte(" \n")); err != nil {
 					return
 				}
+				wrote.Store(true)
 				flusher.Flush()
 			}
 		}
 	}()
-	return func() {
+	return func() bool {
 		close(done)
 		<-stopped
+		return wrote.Load()
+	}
+}
+
+func writeOpenAIImagesNonStreamFinalError(c *gin.Context, status int, errType, message string) {
+	if c == nil || c.Writer == nil {
+		return
+	}
+	if status <= 0 {
+		status = http.StatusBadGateway
+	}
+	errType = strings.TrimSpace(errType)
+	if errType == "" {
+		errType = "upstream_error"
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = "Upstream request failed"
+	}
+	if !c.Writer.Written() {
+		c.JSON(status, gin.H{
+			"error": gin.H{
+				"type":    errType,
+				"message": message,
+			},
+		})
+		return
+	}
+	_, _ = io.WriteString(c.Writer, fmt.Sprintf(
+		`\n{"error":{"type":%s,"message":%s}}`,
+		strconv.Quote(errType),
+		strconv.Quote(message),
+	))
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
 	}
 }
 

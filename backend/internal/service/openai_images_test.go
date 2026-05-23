@@ -747,6 +747,58 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyNonStreamKeepsDownstreamAlive(t
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyNonStreamKeepaliveSanitizesLateUpstreamError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				ImageStreamKeepaliveInterval: 1,
+			},
+		},
+		httpUpstream: &delayedHTTPUpstreamRecorder{
+			delay: 1100 * time.Millisecond,
+			httpUpstreamRecorder: httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusServiceUnavailable,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+						"X-Request-Id": []string{"req_img_late_error"},
+					},
+					Body: io.NopCloser(strings.NewReader(`{"error":{"message":"No available channel at https://raw-upstream.example","type":"upstream_error"}}`)),
+				},
+			},
+		},
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       12,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Upstream service temporarily unavailable")
+	require.NotContains(t, rec.Body.String(), "raw-upstream.example")
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamRawJSONEventStreamFallbackBillsImage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"b64_json"}`)
