@@ -206,6 +206,31 @@ func TestAccountIsModelSupported(t *testing.T) {
 			requestedModel: "gemini-3-flash",
 			expected:       false,
 		},
+		{
+			name:           "openai image variant requires explicit mapping",
+			platform:       PlatformOpenAI,
+			credentials:    nil,
+			requestedModel: "gpt-image-2-4k",
+			expected:       false,
+		},
+		{
+			name:     "openai image variant allowed with explicit mapping",
+			platform: PlatformOpenAI,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-image-2-4k": "gpt-image-2-4k",
+				},
+			},
+			requestedModel: "gpt-image-2-4k",
+			expected:       true,
+		},
+		{
+			name:           "openai default image model remains allowed without mapping",
+			platform:       PlatformOpenAI,
+			credentials:    nil,
+			requestedModel: "gpt-image-2",
+			expected:       true,
+		},
 	}
 
 	for _, tt := range tests {

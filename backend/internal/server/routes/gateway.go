@@ -27,6 +27,11 @@ func RegisterGatewayRoutes(
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 
+	// Short-lived image download proxy. This intentionally does not require an
+	// API key because Images API returns signed asset URLs to clients.
+	r.GET("/v1/image-assets/:token", h.OpenAIGateway.ImageAsset)
+	r.GET("/image-assets/:token", h.OpenAIGateway.ImageAsset)
+
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)

@@ -637,6 +637,128 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyURLResponseUsesLocalAssetProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"url"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Host = "codex.ise.it.com"
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstreamURL := "https://assets.upstream.example/output.png?sig=secret"
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{},
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_url"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000017,"data":[{"url":"` + upstreamURL + `","revised_prompt":"draw a cat"}]}`)),
+			},
+		},
+		openaiImageAssetProxy: newOpenAIImageAssetProxy(),
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:          16,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 3,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+
+	gotURL := gjson.Get(rec.Body.String(), "data.0.url").String()
+	require.NotEmpty(t, gotURL)
+	require.Contains(t, gotURL, "https://codex.ise.it.com/v1/image-assets/")
+	require.NotContains(t, rec.Body.String(), "assets.upstream.example")
+	require.NotContains(t, rec.Body.String(), "sig=secret")
+
+	token := strings.TrimPrefix(gotURL, "https://codex.ise.it.com/v1/image-assets/")
+	item, ok := svc.openaiImageAssetProxy.Resolve(token, time.Now())
+	require.True(t, ok)
+	require.Equal(t, upstreamURL, item.URL)
+	require.Equal(t, int64(16), item.AccountID)
+	require.Equal(t, 3, item.AccountConcurrency)
+}
+
+func TestOpenAIGatewayServiceRewriteOpenAIImagesAssetURLs_RewritesNestedImageURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	req.Host = "codex.ise.it.com"
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		openaiImageAssetProxy: newOpenAIImageAssetProxy(),
+	}
+	body := []byte(`{"data":[{"metadata":{"image_url":"https://assets.upstream.example/nested.png?sig=secret"}}]}`)
+
+	rewritten, count, err := svc.rewriteOpenAIImagesAssetURLs(c, body, openAIImageAssetProxyMetadata{})
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	gotURL := gjson.GetBytes(rewritten, "data.0.metadata.image_url").String()
+	require.Contains(t, gotURL, "https://codex.ise.it.com/v1/image-assets/")
+	require.NotContains(t, string(rewritten), "assets.upstream.example")
+	require.NotContains(t, string(rewritten), "sig=secret")
+}
+
+func TestOpenAIGatewayServiceProxyOpenAIImageAssetStreamsRegisteredURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/image-assets/token", nil)
+
+	proxy := newOpenAIImageAssetProxy()
+	token, err := proxy.Register("https://assets.upstream.example/output.png?sig=secret", openAIImageAssetProxyMetadata{
+		ProxyURL:           "http://127.0.0.1:7890",
+		AccountID:          23,
+		AccountConcurrency: 7,
+	}, time.Now())
+	require.NoError(t, err)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"image/png"},
+			},
+			Body: io.NopCloser(strings.NewReader("png-bytes")),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:                   &config.Config{},
+		httpUpstream:          upstream,
+		openaiImageAssetProxy: proxy,
+	}
+
+	err = svc.ProxyOpenAIImageAsset(context.Background(), c, token)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "image/png", rec.Header().Get("Content-Type"))
+	require.Equal(t, "png-bytes", rec.Body.String())
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://assets.upstream.example/output.png?sig=secret", upstream.lastReq.URL.String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"b64_json"}`)

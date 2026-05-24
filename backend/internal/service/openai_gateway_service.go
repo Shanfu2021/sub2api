@@ -361,6 +361,9 @@ type OpenAIGatewayService struct {
 	codexSnapshotThrottle               *accountWriteThrottle
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+
+	openaiImageAssetProxyOnce sync.Once
+	openaiImageAssetProxy     *openAIImageAssetProxy
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -418,6 +421,7 @@ func NewOpenAIGatewayService(
 		settingService:        settingService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		openaiImageAssetProxy: newOpenAIImageAssetProxy(),
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc

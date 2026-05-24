@@ -259,6 +259,55 @@ SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), '{openai_responses_max_outpu
 WHERE id = <account_id>;
 ```
 
+### 7.5 生图上游模型能力必须按账号声明
+
+现象：
+
+- 生图分组里可能同时存在两类 OpenAI APIKey 上游：
+  - 官方兼容上游，只暴露 `gpt-image-2`
+  - 规格别名上游，额外暴露 `gpt-image-2-2k`、`gpt-image-2-2k-square`、`gpt-image-2-2k-landscape`、`gpt-image-2-4k`、`gpt-image-2-4k-landscape`、`gpt-image-2-4k-portrait`
+- 如果不做账号级模型声明，用户请求规格别名时可能被调度到只支持 `gpt-image-2` 的上游，导致上游报模型不存在。
+
+规则：
+
+- `gpt-image-2` 是公共默认模型；单模型上游和规格别名上游都可以承接。
+- `gpt-image-2-*` 规格别名必须由账号 `credentials.model_mapping` 显式声明，调度器才会把该账号视为支持这些模型。
+- 不要给只支持官方单模型的上游声明 6 个规格别名。
+- 新增生图 APIKey 上游后，优先点后台“同步上游支持模型”，再把返回的图片模型填入账号 `model_mapping`。
+
+规格别名上游示例：
+
+```json
+{
+  "model_mapping": {
+    "gpt-image-2": "gpt-image-2",
+    "gpt-image-2-2k": "gpt-image-2-2k",
+    "gpt-image-2-2k-square": "gpt-image-2-2k-square",
+    "gpt-image-2-2k-landscape": "gpt-image-2-2k-landscape",
+    "gpt-image-2-4k": "gpt-image-2-4k",
+    "gpt-image-2-4k-landscape": "gpt-image-2-4k-landscape",
+    "gpt-image-2-4k-portrait": "gpt-image-2-4k-portrait"
+  }
+}
+```
+
+官方单模型上游示例：
+
+```json
+{
+  "model_mapping": {
+    "gpt-image-2": "gpt-image-2"
+  }
+}
+```
+
+生图 URL 返回安全规则：
+
+- 永远不要把上游返回的 `url`、`image_url`、`download_url` 直接返回给用户，否则会暴露上游域名或签名参数。
+- APIKey 生图上游如果返回 `response_format=url`，后端必须改写为本站短期代理地址：`/v1/image-assets/{token}`。
+- 图片代理只保存短期内存映射，不落盘；下载时流式转发上游图片内容，不进入二次计费。
+- 代理错误响应只能返回本站通用错误，例如 `Image asset is unavailable`，不要把上游状态正文或上游 URL 返回给客户。
+
 单个上游希望 Chat Completions 入站保持原生透传时：
 
 ```sql

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -13,10 +14,13 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +30,7 @@ import (
 	"github.com/imroc/req/v3"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 const (
@@ -41,6 +46,9 @@ const (
 	openAIImageMaxDownloadBytes    = 20 << 20 // 20MB per image download
 	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
+	openAIImagesSlowNonStreamLogMs = 30_000
+	openAIImageAssetProxyTTL       = 30 * time.Minute
+	openAIImageAssetProxyMaxItems  = 4096
 )
 
 type OpenAIImagesCapability string
@@ -57,6 +65,146 @@ type OpenAIImagesUpload struct {
 	Data        []byte
 	Width       int
 	Height      int
+}
+
+type openAIImageAssetProxyItem struct {
+	URL                string
+	ProxyURL           string
+	AccountID          int64
+	AccountConcurrency int
+	ExpireAt           time.Time
+}
+
+type openAIImageAssetProxyMetadata struct {
+	ProxyURL           string
+	AccountID          int64
+	AccountConcurrency int
+}
+
+type openAIImageAssetProxy struct {
+	mu    sync.Mutex
+	items map[string]openAIImageAssetProxyItem
+}
+
+func newOpenAIImageAssetProxy() *openAIImageAssetProxy {
+	return &openAIImageAssetProxy{items: make(map[string]openAIImageAssetProxyItem)}
+}
+
+func (p *openAIImageAssetProxy) Register(rawURL string, metadata openAIImageAssetProxyMetadata, now time.Time) (string, error) {
+	if p == nil {
+		return "", fmt.Errorf("image asset proxy is not initialized")
+	}
+	normalized, err := validateOpenAIImageAssetURL(rawURL)
+	if err != nil {
+		return "", err
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	token, err := randomOpenAIImageAssetToken()
+	if err != nil {
+		return "", err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pruneLocked(now)
+	if len(p.items) >= openAIImageAssetProxyMaxItems {
+		p.evictOldestLocked()
+	}
+	if len(p.items) >= openAIImageAssetProxyMaxItems {
+		return "", fmt.Errorf("image asset proxy cache is full")
+	}
+	p.items[token] = openAIImageAssetProxyItem{
+		URL:                normalized,
+		ProxyURL:           strings.TrimSpace(metadata.ProxyURL),
+		AccountID:          metadata.AccountID,
+		AccountConcurrency: metadata.AccountConcurrency,
+		ExpireAt:           now.Add(openAIImageAssetProxyTTL),
+	}
+	return token, nil
+}
+
+func (p *openAIImageAssetProxy) Resolve(token string, now time.Time) (openAIImageAssetProxyItem, bool) {
+	if p == nil {
+		return openAIImageAssetProxyItem{}, false
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return openAIImageAssetProxyItem{}, false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.pruneLocked(now)
+	item, ok := p.items[token]
+	if !ok || !item.ExpireAt.After(now) {
+		if ok {
+			delete(p.items, token)
+		}
+		return openAIImageAssetProxyItem{}, false
+	}
+	return item, true
+}
+
+func (p *openAIImageAssetProxy) pruneLocked(now time.Time) {
+	for token, item := range p.items {
+		if !item.ExpireAt.After(now) {
+			delete(p.items, token)
+		}
+	}
+}
+
+func (p *openAIImageAssetProxy) evictOldestLocked() {
+	oldestToken := ""
+	var oldestExpireAt time.Time
+	for token, item := range p.items {
+		if oldestToken == "" || item.ExpireAt.Before(oldestExpireAt) {
+			oldestToken = token
+			oldestExpireAt = item.ExpireAt
+		}
+	}
+	if oldestToken != "" {
+		delete(p.items, oldestToken)
+	}
+}
+
+func randomOpenAIImageAssetToken() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
+func validateOpenAIImageAssetURL(rawURL string) (string, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return "", fmt.Errorf("image asset url is empty")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return "", fmt.Errorf("invalid image asset url")
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	if scheme != "https" && scheme != "http" {
+		return "", fmt.Errorf("invalid image asset url scheme")
+	}
+	if strings.TrimSpace(parsed.Hostname()) == "" {
+		return "", fmt.Errorf("invalid image asset host")
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return "", fmt.Errorf("image asset host is not allowed")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return "", fmt.Errorf("image asset host is not allowed")
+		}
+	}
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }
 
 type OpenAIImagesRequest struct {
@@ -677,7 +825,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	imageCount := parsed.N
 	var firstTokenMs *int
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
-		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
+		streamUsage, streamCount, streamSizes, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime, openAIImageAssetProxyMetadata{
+			ProxyURL:           proxyURL,
+			AccountID:          account.ID,
+			AccountConcurrency: account.Concurrency,
+		})
 		if err != nil {
 			if streamCount > 0 {
 				return &OpenAIForwardResult{
@@ -716,7 +868,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
+		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(resp, c, openAIImageAssetProxyMetadata{
+			ProxyURL:           proxyURL,
+			AccountID:          account.ID,
+			AccountConcurrency: account.Concurrency,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -882,9 +1038,11 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	return dst
 }
 
-func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, []string, error) {
+func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context, assetMetadata openAIImageAssetProxyMetadata) (OpenAIUsage, int, []string, error) {
 	stopKeepalive := s.startOpenAIImagesNonStreamKeepalive(c, false)
+	readStart := time.Now()
 	body, err := readUpstreamResponseBodyLimited(resp.Body, resolveUpstreamResponseReadLimit(s.cfg))
+	readDuration := time.Since(readStart)
 	bodyKeepaliveWrote := false
 	if stopKeepalive != nil {
 		bodyKeepaliveWrote = stopKeepalive()
@@ -907,10 +1065,300 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 			contentType = upstreamType
 		}
 	}
+	writeStart := time.Now()
+	rewrittenBody, rewrittenURLCount, rewriteErr := s.rewriteOpenAIImagesAssetURLs(c, body, assetMetadata)
+	if rewriteErr != nil {
+		setOpsUpstreamError(c, http.StatusBadGateway, "image asset proxy unavailable", "")
+		if bodyKeepaliveWrote {
+			writeOpenAIImagesNonStreamFinalError(c, http.StatusBadGateway, "upstream_error", "Image asset proxy unavailable")
+		} else {
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Image asset proxy unavailable",
+				},
+			})
+		}
+		return OpenAIUsage{}, 0, nil, rewriteErr
+	}
+	if rewrittenURLCount > 0 {
+		body = rewrittenBody
+	}
 	c.Data(resp.StatusCode, contentType, body)
+	writeDuration := time.Since(writeStart)
+	s.maybeLogOpenAIImagesNonStreamTiming(c, resp, len(body), readDuration, writeDuration, bodyKeepaliveWrote)
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
 	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+}
+
+func (s *OpenAIGatewayService) getOpenAIImageAssetProxy() *openAIImageAssetProxy {
+	if s == nil {
+		return nil
+	}
+	s.openaiImageAssetProxyOnce.Do(func() {
+		if s.openaiImageAssetProxy == nil {
+			s.openaiImageAssetProxy = newOpenAIImageAssetProxy()
+		}
+	})
+	return s.openaiImageAssetProxy
+}
+
+func (s *OpenAIGatewayService) rewriteOpenAIImagesAssetURLs(c *gin.Context, body []byte, assetMetadata openAIImageAssetProxyMetadata) ([]byte, int, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, 0, nil
+	}
+	if !mayContainOpenAIImageAssetURLField(body) {
+		return body, 0, nil
+	}
+	proxy := s.getOpenAIImageAssetProxy()
+	if proxy == nil {
+		return body, 0, fmt.Errorf("image asset proxy is not initialized")
+	}
+
+	var payload any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
+		return body, 0, nil
+	}
+	now := time.Now()
+	rewrittenCount := 0
+	var rewriteValue func(any) error
+	rewriteValue = func(value any) error {
+		switch typed := value.(type) {
+		case map[string]any:
+			for key, child := range typed {
+				if isOpenAIImageAssetURLField(key) {
+					if rawURL, ok := child.(string); ok && shouldProxyOpenAIImageAssetURL(rawURL) {
+						token, err := proxy.Register(rawURL, assetMetadata, now)
+						if err != nil {
+							return err
+						}
+						typed[key] = buildOpenAIImageAssetProxyURL(c, token)
+						rewrittenCount++
+						continue
+					}
+				}
+				if err := rewriteValue(child); err != nil {
+					return err
+				}
+			}
+		case []any:
+			for _, child := range typed {
+				if err := rewriteValue(child); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if err := rewriteValue(payload); err != nil {
+		return body, 0, err
+	}
+	if rewrittenCount == 0 {
+		return body, 0, nil
+	}
+	rewritten, err := json.Marshal(payload)
+	if err != nil {
+		return body, 0, err
+	}
+	return rewritten, rewrittenCount, nil
+}
+
+func isOpenAIImageAssetURLField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "url", "image_url", "download_url":
+		return true
+	default:
+		return false
+	}
+}
+
+func mayContainOpenAIImageAssetURLField(body []byte) bool {
+	return bytes.Contains(body, []byte(`"url"`)) ||
+		bytes.Contains(body, []byte(`"image_url"`)) ||
+		bytes.Contains(body, []byte(`"download_url"`))
+}
+
+func shouldProxyOpenAIImageAssetURL(rawURL string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || strings.HasPrefix(strings.ToLower(rawURL), "data:") {
+		return false
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return false
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	return scheme == "https" || scheme == "http"
+}
+
+func (s *OpenAIGatewayService) rewriteOpenAIImagesSSELineAssetURLs(c *gin.Context, line []byte, assetMetadata openAIImageAssetProxyMetadata) ([]byte, error) {
+	trimmedLine := strings.TrimRight(string(line), "\r\n")
+	data, ok := extractOpenAISSEDataLine(trimmedLine)
+	if !ok {
+		return line, nil
+	}
+	data = strings.TrimSpace(data)
+	if data == "" || data == "[DONE]" || !mayContainOpenAIImageAssetURLField([]byte(data)) {
+		return line, nil
+	}
+	rewritten, count, err := s.rewriteOpenAIImagesAssetURLs(c, []byte(data), assetMetadata)
+	if err != nil || count == 0 {
+		return line, err
+	}
+	suffix := ""
+	lineString := string(line)
+	switch {
+	case strings.HasSuffix(lineString, "\r\n"):
+		suffix = "\r\n"
+	case strings.HasSuffix(lineString, "\n"):
+		suffix = "\n"
+	}
+	return []byte("data: " + string(rewritten) + suffix), nil
+}
+
+func buildOpenAIImageAssetProxyURL(c *gin.Context, token string) string {
+	path := "/v1/image-assets/" + url.PathEscape(strings.TrimSpace(token))
+	if c == nil || c.Request == nil {
+		return path
+	}
+	host := firstForwardedHeaderValue(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+	}
+	if host == "" {
+		return path
+	}
+	scheme := firstForwardedHeaderValue(c.GetHeader("X-Forwarded-Proto"))
+	if scheme == "" && c.Request.URL != nil {
+		scheme = strings.TrimSpace(c.Request.URL.Scheme)
+	}
+	if scheme == "" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "https"
+		}
+	}
+	scheme = strings.ToLower(strings.TrimSpace(scheme))
+	if scheme != "http" && scheme != "https" {
+		scheme = "https"
+	}
+	host = strings.TrimSpace(strings.Split(host, ",")[0])
+	host = strings.ReplaceAll(host, "\r", "")
+	host = strings.ReplaceAll(host, "\n", "")
+	if host == "" {
+		return path
+	}
+	return scheme + "://" + host + path
+}
+
+func firstForwardedHeaderValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return strings.TrimSpace(strings.Split(value, ",")[0])
+}
+
+func (s *OpenAIGatewayService) ProxyOpenAIImageAsset(ctx context.Context, c *gin.Context, token string) error {
+	proxy := s.getOpenAIImageAssetProxy()
+	if proxy == nil {
+		return fmt.Errorf("image asset proxy is not initialized")
+	}
+	item, ok := proxy.Resolve(token, time.Now())
+	if !ok {
+		return fmt.Errorf("image asset token is missing or expired")
+	}
+	if _, err := validateOpenAIImageAssetURL(item.URL); err != nil {
+		return err
+	}
+	if s.httpUpstream == nil {
+		return fmt.Errorf("http upstream is not initialized")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "image/*,*/*;q=0.8")
+	req.Header.Set("User-Agent", openAIImageBackendUserAgent)
+
+	resp, err := s.httpUpstream.Do(req, item.ProxyURL, item.AccountID, item.AccountConcurrency)
+	if err != nil {
+		return fmt.Errorf("image asset upstream request failed: %s", sanitizeUpstreamErrorMessage(err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("image asset upstream returned status %d", resp.StatusCode)
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if !isAllowedOpenAIImageAssetContentType(contentType) {
+		contentType = "application/octet-stream"
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "private, max-age=1800")
+	c.Status(http.StatusOK)
+	_, err = io.Copy(c.Writer, resp.Body)
+	return err
+}
+
+func isAllowedOpenAIImageAssetContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = contentType
+	}
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	return strings.HasPrefix(mediaType, "image/")
+}
+
+func (s *OpenAIGatewayService) maybeLogOpenAIImagesNonStreamTiming(
+	c *gin.Context,
+	resp *http.Response,
+	bodyBytes int,
+	readDuration time.Duration,
+	writeDuration time.Duration,
+	keepaliveWrote bool,
+) {
+	if readDuration < openAIImagesSlowNonStreamLogMs*time.Millisecond && writeDuration < openAIImagesSlowNonStreamLogMs*time.Millisecond && bodyBytes < 8<<20 {
+		return
+	}
+	var upstreamHeaderMs int64
+	if v, ok := getOpenAIOpsLatencyMs(c, OpsUpstreamLatencyMsKey); ok {
+		upstreamHeaderMs = v
+	}
+	statusCode := 0
+	contentLength := int64(-1)
+	contentType := ""
+	upstreamRequestID := ""
+	if resp != nil {
+		statusCode = resp.StatusCode
+		contentLength = resp.ContentLength
+		contentType = strings.TrimSpace(resp.Header.Get("Content-Type"))
+		upstreamRequestID = strings.TrimSpace(resp.Header.Get("x-request-id"))
+	}
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	logger.FromContext(ctx).With(
+		zap.String("component", "service.openai_gateway"),
+		zap.Int("status_code", statusCode),
+		zap.Int("body_bytes", bodyBytes),
+		zap.Int64("upstream_header_ms", upstreamHeaderMs),
+		zap.Int64("upstream_body_read_ms", readDuration.Milliseconds()),
+		zap.Int64("downstream_write_ms", writeDuration.Milliseconds()),
+		zap.Int64("upstream_content_length", contentLength),
+		zap.String("upstream_content_type", contentType),
+		zap.String("upstream_request_id", upstreamRequestID),
+		zap.Bool("nonstream_keepalive_wrote", keepaliveWrote),
+	).Info("OpenAI images non-stream timing")
 }
 
 func (s *OpenAIGatewayService) startOpenAIImagesNonStreamKeepalive(c *gin.Context, stream bool) func() bool {
@@ -991,6 +1439,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	startTime time.Time,
+	assetMetadata openAIImageAssetProxyMetadata,
 ) (OpenAIUsage, int, []string, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
@@ -1016,6 +1465,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	seenSSEData := false
 	fallbackTooLarge := false
 	var sseData openAISSEDataAccumulator
+	assetProxyWriteStopped := false
 
 	processSSEData := func(dataBytes []byte) {
 		seenSSEData = true
@@ -1037,8 +1487,20 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
-		if !clientDisconnected {
-			if _, writeErr := c.Writer.Write(line); writeErr != nil {
+		lineToWrite := line
+		writeAllowed := !clientDisconnected
+		if rewrittenLine, rewriteErr := s.rewriteOpenAIImagesSSELineAssetURLs(c, line, assetMetadata); rewriteErr != nil {
+			if !clientDisconnected && !assetProxyWriteStopped {
+				_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody("image asset proxy unavailable"))
+			}
+			assetProxyWriteStopped = true
+			clientDisconnected = true
+			writeAllowed = false
+		} else if len(rewrittenLine) > 0 {
+			lineToWrite = rewrittenLine
+		}
+		if writeAllowed {
+			if _, writeErr := c.Writer.Write(lineToWrite); writeErr != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected, continue draining upstream for billing")
 			} else {

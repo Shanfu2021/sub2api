@@ -598,6 +598,20 @@ func mappingSupportsRequestedModel(mapping map[string]string, requestedModel str
 	return false
 }
 
+func isOpenAIImageVariantModel(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "gpt-image-2-2k",
+		"gpt-image-2-2k-square",
+		"gpt-image-2-2k-landscape",
+		"gpt-image-2-4k",
+		"gpt-image-2-4k-landscape",
+		"gpt-image-2-4k-portrait":
+		return true
+	default:
+		return false
+	}
+}
+
 func resolveRequestedModelInMapping(mapping map[string]string, requestedModel string) (mappedModel string, matched bool) {
 	if requestedModel == "" {
 		return "", false
@@ -613,6 +627,9 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
+		if a != nil && a.Platform == PlatformOpenAI && isOpenAIImageVariantModel(requestedModel) {
+			return false
+		}
 		return true // 无映射 = 允许所有
 	}
 	if mappingSupportsRequestedModel(mapping, requestedModel) {

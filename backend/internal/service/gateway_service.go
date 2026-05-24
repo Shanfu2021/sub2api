@@ -3722,6 +3722,9 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
 	}
+	if account.Platform == PlatformOpenAI && isOpenAIImageVariantModel(requestedModel) {
+		return account.IsModelSupported(requestedModel)
+	}
 	// OpenAI 透传模式：仅替换认证，允许所有模型
 	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
 		return true

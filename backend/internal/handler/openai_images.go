@@ -17,6 +17,29 @@ import (
 	"go.uber.org/zap"
 )
 
+// ImageAsset streams a short-lived proxied image URL returned by Images API.
+// GET /v1/image-assets/:token
+// GET /image-assets/:token
+func (h *OpenAIGatewayHandler) ImageAsset(c *gin.Context) {
+	if h == nil || h.gatewayService == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Image asset is unavailable"}})
+		return
+	}
+	token := strings.TrimSpace(c.Param("token"))
+	if token == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Image asset is unavailable"}})
+		return
+	}
+	if err := h.gatewayService.ProxyOpenAIImageAsset(c.Request.Context(), c, token); err != nil {
+		reqLog := requestLogger(c, "handler.openai_gateway.image_asset")
+		reqLog.Warn("openai.images.asset_proxy_failed", zap.Error(err))
+		if !c.Writer.Written() {
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Image asset is unavailable"}})
+			return
+		}
+	}
+}
+
 // Images handles OpenAI Images API requests.
 // POST /v1/images/generations
 // POST /v1/images/edits
