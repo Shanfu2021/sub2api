@@ -11,6 +11,9 @@ on:
   push:
     branches:
       - shanfu-prod
+  repository_dispatch:
+    types:
+      - build-selfhosted-binary
 
 permissions:
   contents: read
@@ -26,7 +29,7 @@ jobs:
       - name: Checkout target ref
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
