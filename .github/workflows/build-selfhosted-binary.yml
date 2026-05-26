@@ -51,12 +51,14 @@ jobs:
         run: pnpm run build:lite
 
       - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: backend/go.mod
-          check-latest: false
-          cache: true
-          cache-dependency-path: backend/go.sum
+        run: |
+          GO_VERSION="$(awk '/^go / {print $2; exit}' backend/go.mod)"
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o "${RUNNER_TEMP}/go.tar.gz"
+          rm -rf "${RUNNER_TEMP}/go"
+          mkdir -p "${RUNNER_TEMP}/go"
+          tar -C "${RUNNER_TEMP}/go" --strip-components=1 -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${RUNNER_TEMP}/go/bin" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/go/bin/go" version
 
       - name: Verify Go version
         run: |
