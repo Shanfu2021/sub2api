@@ -3,8 +3,11 @@ package service
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 )
+
+const AdminBalanceRedeemCodePrefix = "ADMIN-BAL-"
 
 type RedeemCode struct {
 	ID        int64
@@ -53,4 +56,16 @@ func GenerateRedeemCode() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func GenerateRedeemCodeWithPrefix(prefix string) (string, error) {
+	if len(prefix) >= 32 {
+		return "", errors.New("redeem code prefix is too long")
+	}
+	suffixLen := 32 - len(prefix)
+	b := make([]byte, (suffixLen+1)/2)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return prefix + hex.EncodeToString(b)[:suffixLen], nil
 }

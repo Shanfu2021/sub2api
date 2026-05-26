@@ -1083,7 +1083,7 @@ export default {
       title: 'How It Works',
       line1: 'Share your affiliate code or invite link with new users.',
       line2: 'Only the invitee’s first 3 balance credit events generate rebate, and you receive {rate} of the face value as rebate quota.',
-      line3: 'Direct balance top-ups and balance-card / redeem-code exchanges qualify; subscriptions do not. There is no time limit or amount cap.',
+      line3: 'Direct balance top-ups, balance-card / redeem-code exchanges, and positive admin balance top-ups qualify; subscriptions do not. There is no time limit or amount cap.',
       line4: 'Transfer rebate quota to balance at any time; if a freeze period is enabled, newly earned rebates unlock later.'
     }
   },
@@ -5267,7 +5267,7 @@ export default {
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
-          description: 'Existing users invite new ones; only the invitee’s first 3 balance credit events generate rebate. Direct balance top-ups and balance-card exchanges qualify, while subscriptions do not. Disabled by default.',
+          description: 'Existing users invite new ones; only the invitee’s first 3 balance credit events generate rebate. Direct balance top-ups, balance-card exchanges, and positive admin balance top-ups qualify, while subscriptions do not. Disabled by default.',
           enabled: 'Enable Affiliate',
           enabledHint: 'When off, the affiliate menu is hidden, the aff parameter is ignored at signup, and new recharges generate no rebate. Existing rebate balances can still be transferred.',
           rebateRate: 'Global Rebate Rate',

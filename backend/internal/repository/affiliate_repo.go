@@ -29,12 +29,19 @@ SELECT ua.user_id,
        ua.aff_code,
        COALESCE(ua.aff_rebate_rate_percent, 0)::double precision,
        (ua.aff_rebate_rate_percent IS NOT NULL) AS has_custom_rate,
-       ua.aff_count,
+       COALESCE(active_invitees.active_invitee_count, ua.aff_count),
        COALESCE(rebated.rebated_invitee_count, 0),
        (ua.aff_quota + COALESCE(matured.matured_frozen_quota, 0))::double precision,
        ua.aff_history_quota::double precision
 FROM user_affiliates ua
 JOIN users u ON u.id = ua.user_id
+LEFT JOIN (
+    SELECT inviter_id, COUNT(*)::integer AS active_invitee_count
+    FROM user_affiliates child
+    JOIN users child_user ON child_user.id = child.user_id AND child_user.deleted_at IS NULL
+    WHERE child.inviter_id IS NOT NULL
+    GROUP BY inviter_id
+) active_invitees ON active_invitees.inviter_id = ua.user_id
 LEFT JOIN (
     SELECT user_id, COUNT(DISTINCT source_user_id)::integer AS rebated_invitee_count
     FROM user_affiliate_ledger
@@ -186,7 +193,10 @@ func (r *affiliateRepository) CountEligibleBalanceCredits(ctx context.Context, i
 SELECT COUNT(*)::integer
 FROM redeem_codes rc
 WHERE rc.used_by = $1
-  AND rc.type = 'balance'
+  AND (
+    rc.type = 'balance'
+    OR (rc.type = 'admin_balance' AND rc.code LIKE $4::text)
+  )
   AND rc.value > 0
   AND rc.status = 'used'
   AND ($2::text = '' OR rc.code <> $2::text)
@@ -199,6 +209,7 @@ WHERE rc.used_by = $1
 		inviteeUserID,
 		strings.TrimSpace(excludeRedeemCode),
 		nullableInt64Arg(excludeOrderID),
+		service.AdminBalanceRedeemCodePrefix+"%",
 	)
 	if err != nil {
 		return 0, fmt.Errorf("count eligible balance credits: %w", err)
@@ -387,7 +398,7 @@ SELECT ua.user_id,
        ua.created_at,
        COALESCE(SUM(ual.amount), 0)::double precision AS total_rebate
 FROM user_affiliates ua
-LEFT JOIN users u ON u.id = ua.user_id
+JOIN users u ON u.id = ua.user_id AND u.deleted_at IS NULL
 LEFT JOIN user_affiliate_ledger ual
        ON ual.user_id = $1
       AND ual.source_user_id = ua.user_id
@@ -427,8 +438,8 @@ func (r *affiliateRepository) ListAffiliateInviteRecords(ctx context.Context, fi
 	total, err := queryAffiliateRecordCount(ctx, client, `
 SELECT COUNT(*)
 FROM user_affiliates ua
-JOIN users invitee ON invitee.id = ua.user_id
-JOIN users inviter ON inviter.id = ua.inviter_id
+JOIN users invitee ON invitee.id = ua.user_id AND invitee.deleted_at IS NULL
+JOIN users inviter ON inviter.id = ua.inviter_id AND inviter.deleted_at IS NULL
 JOIN user_affiliates inviter_aff ON inviter_aff.user_id = ua.inviter_id
 `+where, args...)
 	if err != nil {
@@ -454,8 +465,8 @@ SELECT ua.inviter_id,
        COALESCE(SUM(ual.amount), 0)::double precision AS total_rebate,
        ua.created_at
 FROM user_affiliates ua
-JOIN users invitee ON invitee.id = ua.user_id
-JOIN users inviter ON inviter.id = ua.inviter_id
+JOIN users invitee ON invitee.id = ua.user_id AND invitee.deleted_at IS NULL
+JOIN users inviter ON inviter.id = ua.inviter_id AND inviter.deleted_at IS NULL
 JOIN user_affiliates inviter_aff ON inviter_aff.user_id = ua.inviter_id
 LEFT JOIN user_affiliate_ledger ual
        ON ual.user_id = ua.inviter_id
@@ -1176,7 +1187,7 @@ func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, f
 
 	const baseFrom = `
 FROM user_affiliates ua
-JOIN users u ON u.id = ua.user_id
+JOIN users u ON u.id = ua.user_id AND u.deleted_at IS NULL
 WHERE (ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL)
   AND (u.email ILIKE $1 OR u.username ILIKE $1)`
 

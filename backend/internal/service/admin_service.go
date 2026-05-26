@@ -534,6 +534,7 @@ type adminServiceImpl struct {
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
+	affiliateService     *AffiliateService
 }
 
 type userGroupRateBatchReader interface {
@@ -559,6 +560,7 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	affiliateService *AffiliateService,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -578,6 +580,7 @@ func NewAdminService(
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
+		affiliateService:     affiliateService,
 	}
 }
 
@@ -975,7 +978,7 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	}
 
 	if balanceDiff != 0 {
-		code, err := GenerateRedeemCode()
+		code, err := GenerateRedeemCodeWithPrefix(AdminBalanceRedeemCodePrefix)
 		if err != nil {
 			logger.LegacyPrintf("service.admin", "failed to generate adjustment redeem code: %v", err)
 			return user, nil
@@ -994,10 +997,29 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to create balance adjustment redeem code: %v", err)
+		} else if balanceDiff > 0 {
+			s.tryAccrueAffiliateRebateForAdminBalance(ctx, userID, balanceDiff, code)
 		}
 	}
 
 	return user, nil
+}
+
+func (s *adminServiceImpl) tryAccrueAffiliateRebateForAdminBalance(ctx context.Context, userID int64, amount float64, code string) {
+	if s.affiliateService == nil {
+		return
+	}
+	if !s.affiliateService.IsEnabled(ctx) {
+		return
+	}
+	rebate, err := s.affiliateService.AccrueInviteRebateForRedeemCode(ctx, userID, amount, code)
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "[AdminBalance] affiliate rebate failed for user %d amount %.2f: %v", userID, amount, err)
+		return
+	}
+	if rebate > 0 {
+		logger.LegacyPrintf("service.admin", "[AdminBalance] affiliate rebate accrued %.8f for inviter of user %d", rebate, userID)
+	}
 }
 
 func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error) {
