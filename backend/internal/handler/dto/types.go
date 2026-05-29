@@ -9,21 +9,21 @@ import (
 )
 
 type User struct {
-	ID            int64      `json:"id"`
-	Email         string     `json:"email"`
-	Username      string     `json:"username"`
-	Role          string     `json:"role"`
-	Balance       float64    `json:"balance"`
-	Concurrency   int        `json:"concurrency"`
-	Status        string     `json:"status"`
-	AllowedGroups []int64    `json:"allowed_groups"`
-	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	PricingDiscountFactor float64 `json:"pricing_discount_factor,omitempty"`
-	PricingDiscountLabel  string  `json:"pricing_discount_label,omitempty"`
-	PricingDiscountSource string  `json:"pricing_discount_source,omitempty"`
-	PricingDiscountScope  string  `json:"pricing_discount_scope,omitempty"`
+	ID                    int64      `json:"id"`
+	Email                 string     `json:"email"`
+	Username              string     `json:"username"`
+	Role                  string     `json:"role"`
+	Balance               float64    `json:"balance"`
+	Concurrency           int        `json:"concurrency"`
+	Status                string     `json:"status"`
+	AllowedGroups         []int64    `json:"allowed_groups"`
+	LastActiveAt          *time.Time `json:"last_active_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	PricingDiscountFactor float64    `json:"pricing_discount_factor,omitempty"`
+	PricingDiscountLabel  string     `json:"pricing_discount_label,omitempty"`
+	PricingDiscountSource string     `json:"pricing_discount_source,omitempty"`
+	PricingDiscountScope  string     `json:"pricing_discount_scope,omitempty"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`

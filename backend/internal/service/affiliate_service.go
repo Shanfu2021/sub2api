@@ -20,7 +20,7 @@ var (
 )
 
 const (
-	affiliateInviteesLimit = 100
+	affiliateInviteesLimit                = 100
 	affiliateEligibleBalanceRechargeLimit = 3
 	// AffiliateCodeMinLength / AffiliateCodeMaxLength bound both system-generated
 	// 12-char codes and admin-customized codes (e.g. "VIP2026").

@@ -46,9 +46,9 @@ type RedeemHandler struct {
 // NewRedeemHandler creates a new RedeemHandler
 func NewRedeemHandler(redeemService *service.RedeemService, settingService *service.SettingService, promoService *service.PromoService, enterpriseService *service.EnterpriseService) *RedeemHandler {
 	return &RedeemHandler{
-		redeemService:    redeemService,
-		settingService:   settingService,
-		promoService:     promoService,
+		redeemService:     redeemService,
+		settingService:    settingService,
+		promoService:      promoService,
 		enterpriseService: enterpriseService,
 	}
 }
