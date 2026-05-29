@@ -50,17 +50,17 @@ const (
 	OpenAIParsedRequestBodyKey = "openai_parsed_request_body"
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
 	// 与 Codex 客户端保持一致：失败后最多重连 5 次。
-	openAIWSReconnectRetryLimit                 = 5
+	openAIWSReconnectRetryLimit = 5
 	// OpenAI WS Mode 重连退避默认值（可由配置覆盖）。
-	openAIWSRetryBackoffInitialDefault          = 120 * time.Millisecond
-	openAIWSRetryBackoffMaxDefault              = 2 * time.Second
-	openAIWSRetryJitterRatioDefault             = 0.2
-	openAICompactSessionSeedKey                 = "openai_compact_session_seed"
-	codexCLIVersion                             = "0.125.0"
-	openAIPassthroughSlowTTFTLogMs              = 3000
-	openAIPassthroughModelUnavailableCooldown   = 2 * time.Minute
+	openAIWSRetryBackoffInitialDefault        = 120 * time.Millisecond
+	openAIWSRetryBackoffMaxDefault            = 2 * time.Second
+	openAIWSRetryJitterRatioDefault           = 0.2
+	openAICompactSessionSeedKey               = "openai_compact_session_seed"
+	codexCLIVersion                           = "0.125.0"
+	openAIPassthroughSlowTTFTLogMs            = 3000
+	openAIPassthroughModelUnavailableCooldown = 2 * time.Minute
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
-	openAICodexSnapshotPersistMinInterval       = 30 * time.Second
+	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -1939,23 +1939,23 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return selection, nil
 			}
 		}
-		} else {
-			if selection, attempted, selectErr := tryAcquireFromLoadMap(loadMap); selectErr != nil {
-				return nil, selectErr
-			} else if selection != nil {
-				return selection, nil
-			} else if attempted {
-				if freshLoadMap, loadErr := s.concurrencyService.GetAccountsLoadBatchFresh(ctx, accountLoads); loadErr == nil {
-					if selection, _, selectErr := tryAcquireFromLoadMap(freshLoadMap); selectErr != nil {
-						return nil, selectErr
-					} else if selection != nil {
-						return selection, nil
-					}
+	} else {
+		if selection, attempted, selectErr := tryAcquireFromLoadMap(loadMap); selectErr != nil {
+			return nil, selectErr
+		} else if selection != nil {
+			return selection, nil
+		} else if attempted {
+			if freshLoadMap, loadErr := s.concurrencyService.GetAccountsLoadBatchFresh(ctx, accountLoads); loadErr == nil {
+				if selection, _, selectErr := tryAcquireFromLoadMap(freshLoadMap); selectErr != nil {
+					return nil, selectErr
+				} else if selection != nil {
+					return selection, nil
 				}
 			}
 		}
+	}
 
-		// ============ Layer 3: Fallback wait ============
+	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)

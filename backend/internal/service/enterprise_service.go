@@ -33,26 +33,26 @@ const (
 )
 
 var (
-	ErrEnterpriseTenantNotFound          = errors.NotFound("ENTERPRISE_TENANT_NOT_FOUND", "enterprise tenant not found")
-	ErrEnterpriseMembershipNotFound      = errors.NotFound("ENTERPRISE_MEMBERSHIP_NOT_FOUND", "enterprise membership not found")
-	ErrEnterpriseInviteCodeNotFound      = errors.NotFound("ENTERPRISE_INVITE_CODE_NOT_FOUND", "enterprise invite code not found")
-	ErrEnterpriseInviteCodeInvalid       = errors.BadRequest("ENTERPRISE_INVITE_CODE_INVALID", "enterprise invite code is invalid")
-	ErrEnterpriseInviteCodeDisabled      = errors.BadRequest("ENTERPRISE_INVITE_CODE_DISABLED", "enterprise invite code is disabled")
-	ErrEnterpriseInviteCodeExpired       = errors.BadRequest("ENTERPRISE_INVITE_CODE_EXPIRED", "enterprise invite code has expired")
-	ErrEnterpriseInviteCodeUsedOut       = errors.BadRequest("ENTERPRISE_INVITE_CODE_USED_OUT", "enterprise invite code has reached max uses")
-	ErrEnterpriseUserAlreadyBound        = errors.Conflict("ENTERPRISE_USER_ALREADY_BOUND", "user already belongs to an enterprise")
-	ErrEnterpriseManagerRequired         = errors.Forbidden("ENTERPRISE_MANAGER_REQUIRED", "enterprise manager permission required")
-	ErrEnterpriseForbidden               = errors.Forbidden("ENTERPRISE_FORBIDDEN", "enterprise access denied")
-	ErrEnterpriseTenantDisabled          = errors.Forbidden("ENTERPRISE_TENANT_DISABLED", "enterprise tenant is disabled")
-	ErrEnterpriseQuotaExceeded           = errors.BadRequest("ENTERPRISE_QUOTA_EXCEEDED", "enterprise quota exceeded")
-	ErrEnterpriseMemberBalanceNegative   = errors.BadRequest("ENTERPRISE_MEMBER_BALANCE_NEGATIVE", "member balance cannot become negative")
-	ErrEnterprisePricingTooLow           = errors.BadRequest("ENTERPRISE_PRICING_TOO_LOW", "member pricing factor is better than tenant floor")
-	ErrEnterpriseSelfRechargeForbidden   = errors.Forbidden("ENTERPRISE_SELF_RECHARGE_FORBIDDEN", "enterprise users cannot self recharge")
-	ErrEnterpriseSelfRedeemForbidden     = errors.Forbidden("ENTERPRISE_SELF_REDEEM_FORBIDDEN", "enterprise users cannot redeem balance codes")
-	ErrEnterpriseScopeNotSupported       = errors.BadRequest("ENTERPRISE_SCOPE_NOT_SUPPORTED", "enterprise pricing scope is not supported")
-	ErrEnterpriseLastManagerRequired     = errors.Forbidden("ENTERPRISE_LAST_MANAGER_REQUIRED", "cannot remove the last enterprise manager")
-	ErrEnterpriseMemberStatusInvalid     = errors.BadRequest("ENTERPRISE_MEMBER_STATUS_INVALID", "enterprise member status is invalid")
-	ErrEnterpriseInviteMaxUsesInvalid    = errors.BadRequest("ENTERPRISE_INVITE_MAX_USES_INVALID", "enterprise invite max uses cannot be negative")
+	ErrEnterpriseTenantNotFound        = errors.NotFound("ENTERPRISE_TENANT_NOT_FOUND", "enterprise tenant not found")
+	ErrEnterpriseMembershipNotFound    = errors.NotFound("ENTERPRISE_MEMBERSHIP_NOT_FOUND", "enterprise membership not found")
+	ErrEnterpriseInviteCodeNotFound    = errors.NotFound("ENTERPRISE_INVITE_CODE_NOT_FOUND", "enterprise invite code not found")
+	ErrEnterpriseInviteCodeInvalid     = errors.BadRequest("ENTERPRISE_INVITE_CODE_INVALID", "enterprise invite code is invalid")
+	ErrEnterpriseInviteCodeDisabled    = errors.BadRequest("ENTERPRISE_INVITE_CODE_DISABLED", "enterprise invite code is disabled")
+	ErrEnterpriseInviteCodeExpired     = errors.BadRequest("ENTERPRISE_INVITE_CODE_EXPIRED", "enterprise invite code has expired")
+	ErrEnterpriseInviteCodeUsedOut     = errors.BadRequest("ENTERPRISE_INVITE_CODE_USED_OUT", "enterprise invite code has reached max uses")
+	ErrEnterpriseUserAlreadyBound      = errors.Conflict("ENTERPRISE_USER_ALREADY_BOUND", "user already belongs to an enterprise")
+	ErrEnterpriseManagerRequired       = errors.Forbidden("ENTERPRISE_MANAGER_REQUIRED", "enterprise manager permission required")
+	ErrEnterpriseForbidden             = errors.Forbidden("ENTERPRISE_FORBIDDEN", "enterprise access denied")
+	ErrEnterpriseTenantDisabled        = errors.Forbidden("ENTERPRISE_TENANT_DISABLED", "enterprise tenant is disabled")
+	ErrEnterpriseQuotaExceeded         = errors.BadRequest("ENTERPRISE_QUOTA_EXCEEDED", "enterprise quota exceeded")
+	ErrEnterpriseMemberBalanceNegative = errors.BadRequest("ENTERPRISE_MEMBER_BALANCE_NEGATIVE", "member balance cannot become negative")
+	ErrEnterprisePricingTooLow         = errors.BadRequest("ENTERPRISE_PRICING_TOO_LOW", "member pricing factor is better than tenant floor")
+	ErrEnterpriseSelfRechargeForbidden = errors.Forbidden("ENTERPRISE_SELF_RECHARGE_FORBIDDEN", "enterprise users cannot self recharge")
+	ErrEnterpriseSelfRedeemForbidden   = errors.Forbidden("ENTERPRISE_SELF_REDEEM_FORBIDDEN", "enterprise users cannot redeem balance codes")
+	ErrEnterpriseScopeNotSupported     = errors.BadRequest("ENTERPRISE_SCOPE_NOT_SUPPORTED", "enterprise pricing scope is not supported")
+	ErrEnterpriseLastManagerRequired   = errors.Forbidden("ENTERPRISE_LAST_MANAGER_REQUIRED", "cannot remove the last enterprise manager")
+	ErrEnterpriseMemberStatusInvalid   = errors.BadRequest("ENTERPRISE_MEMBER_STATUS_INVALID", "enterprise member status is invalid")
+	ErrEnterpriseInviteMaxUsesInvalid  = errors.BadRequest("ENTERPRISE_INVITE_MAX_USES_INVALID", "enterprise invite max uses cannot be negative")
 )
 
 type EnterpriseTenant struct {
@@ -83,25 +83,25 @@ func (t *EnterpriseTenant) AvailableBalanceQuota() float64 {
 }
 
 type EnterpriseMembership struct {
-	ID              int64     `json:"id"`
-	TenantID        int64     `json:"tenant_id"`
-	UserID          int64     `json:"user_id"`
-	MemberRole      string    `json:"member_role"`
-	MemberNote      string    `json:"member_note"`
-	JoinedVia       string    `json:"joined_via"`
-	JoinedSource    string    `json:"joined_source"`
-	PricingFactor   float64   `json:"pricing_factor"`
-	PricingScope    string    `json:"pricing_scope"`
-	CreatedBy       *int64    `json:"created_by,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID            int64     `json:"id"`
+	TenantID      int64     `json:"tenant_id"`
+	UserID        int64     `json:"user_id"`
+	MemberRole    string    `json:"member_role"`
+	MemberNote    string    `json:"member_note"`
+	JoinedVia     string    `json:"joined_via"`
+	JoinedSource  string    `json:"joined_source"`
+	PricingFactor float64   `json:"pricing_factor"`
+	PricingScope  string    `json:"pricing_scope"`
+	CreatedBy     *int64    `json:"created_by,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 
-	UserEmail       string    `json:"user_email"`
-	UserUsername    string    `json:"user_username"`
-	UserStatus      string    `json:"user_status"`
-	UserBalance     float64   `json:"user_balance"`
-	UserConcurrency int       `json:"user_concurrency"`
-	AllowedGroups   []int64   `json:"allowed_groups,omitempty"`
+	UserEmail       string  `json:"user_email"`
+	UserUsername    string  `json:"user_username"`
+	UserStatus      string  `json:"user_status"`
+	UserBalance     float64 `json:"user_balance"`
+	UserConcurrency int     `json:"user_concurrency"`
+	AllowedGroups   []int64 `json:"allowed_groups,omitempty"`
 }
 
 type EnterpriseInviteCode struct {
@@ -135,39 +135,39 @@ func (c *EnterpriseInviteCode) CanUse(now time.Time) error {
 }
 
 type EnterpriseWalletLedgerEntry struct {
-	ID               int64      `json:"id"`
-	TenantID         int64      `json:"tenant_id"`
-	OperatorUserID   *int64     `json:"operator_user_id,omitempty"`
-	TargetUserID     *int64     `json:"target_user_id,omitempty"`
-	Direction        string     `json:"direction"`
-	Amount           float64    `json:"amount"`
-	BalanceBefore    float64    `json:"balance_before"`
-	BalanceAfter     float64    `json:"balance_after"`
-	Notes            string     `json:"notes"`
-	CreatedAt        time.Time  `json:"created_at"`
-	OperatorEmail    string     `json:"operator_email,omitempty"`
-	TargetUserEmail  string     `json:"target_user_email,omitempty"`
-	TargetUserName   string     `json:"target_user_name,omitempty"`
-	TenantName       string     `json:"tenant_name,omitempty"`
-	TenantCode       string     `json:"tenant_code,omitempty"`
+	ID              int64     `json:"id"`
+	TenantID        int64     `json:"tenant_id"`
+	OperatorUserID  *int64    `json:"operator_user_id,omitempty"`
+	TargetUserID    *int64    `json:"target_user_id,omitempty"`
+	Direction       string    `json:"direction"`
+	Amount          float64   `json:"amount"`
+	BalanceBefore   float64   `json:"balance_before"`
+	BalanceAfter    float64   `json:"balance_after"`
+	Notes           string    `json:"notes"`
+	CreatedAt       time.Time `json:"created_at"`
+	OperatorEmail   string    `json:"operator_email,omitempty"`
+	TargetUserEmail string    `json:"target_user_email,omitempty"`
+	TargetUserName  string    `json:"target_user_name,omitempty"`
+	TenantName      string    `json:"tenant_name,omitempty"`
+	TenantCode      string    `json:"tenant_code,omitempty"`
 }
 
 type EnterpriseContext struct {
-	TenantID            int64    `json:"tenant_id"`
-	TenantName          string   `json:"tenant_name"`
-	TenantCode          string   `json:"tenant_code"`
-	TenantStatus        string   `json:"tenant_status"`
-	PortalHost          string   `json:"portal_host,omitempty"`
-	MemberRole          string   `json:"member_role"`
-	MemberNote          string   `json:"member_note,omitempty"`
-	JoinedVia           string   `json:"joined_via,omitempty"`
-	JoinedSource        string   `json:"joined_source,omitempty"`
-	PricingFactor       float64  `json:"pricing_factor"`
-	PricingScope        string   `json:"pricing_scope"`
-	PricingFloorFactor  float64  `json:"pricing_floor_factor"`
-	AllowedGroupIDs     []int64  `json:"allowed_group_ids,omitempty"`
-	SelfRechargeBlocked bool     `json:"self_recharge_blocked"`
-	SelfRedeemBlocked   bool     `json:"self_redeem_blocked"`
+	TenantID            int64   `json:"tenant_id"`
+	TenantName          string  `json:"tenant_name"`
+	TenantCode          string  `json:"tenant_code"`
+	TenantStatus        string  `json:"tenant_status"`
+	PortalHost          string  `json:"portal_host,omitempty"`
+	MemberRole          string  `json:"member_role"`
+	MemberNote          string  `json:"member_note,omitempty"`
+	JoinedVia           string  `json:"joined_via,omitempty"`
+	JoinedSource        string  `json:"joined_source,omitempty"`
+	PricingFactor       float64 `json:"pricing_factor"`
+	PricingScope        string  `json:"pricing_scope"`
+	PricingFloorFactor  float64 `json:"pricing_floor_factor"`
+	AllowedGroupIDs     []int64 `json:"allowed_group_ids,omitempty"`
+	SelfRechargeBlocked bool    `json:"self_recharge_blocked"`
+	SelfRedeemBlocked   bool    `json:"self_redeem_blocked"`
 }
 
 func (c *EnterpriseContext) IsManager() bool {
@@ -289,16 +289,16 @@ type UpdateEnterpriseMemberInput struct {
 }
 
 type CreateEnterpriseMemberUserInput struct {
-	Email         string
-	Password      string
-	Username      string
-	Notes         string
-	Concurrency   int
-	RPMLimit      *int
-	AllowedGroups []int64
-	MemberNote    string
-	PricingFactor float64
-	PricingScope  string
+	Email          string
+	Password       string
+	Username       string
+	Notes          string
+	Concurrency    int
+	RPMLimit       *int
+	AllowedGroups  []int64
+	MemberNote     string
+	PricingFactor  float64
+	PricingScope   string
 	InitialBalance float64
 }
 
@@ -889,7 +889,7 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 		Balance:      0,
 		Concurrency:  input.Concurrency,
 		Status:       StatusActive,
-		RPMLimit:      defaultRPMLimit,
+		RPMLimit:     defaultRPMLimit,
 	}
 	if err := s.userRepo.Create(txCtx, user); err != nil {
 		return nil, nil, err
