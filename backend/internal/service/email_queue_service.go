@@ -19,7 +19,7 @@ const (
 )
 
 const (
-	emailQueueMaxAttempts     = 3
+	emailQueueMaxAttempts      = 3
 	emailQueueAttemptTimeout   = 20 * time.Second
 	emailQueueRetryBackoffBase = 2 * time.Second
 )
