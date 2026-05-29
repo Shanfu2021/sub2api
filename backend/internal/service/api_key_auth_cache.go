@@ -30,15 +30,15 @@ type APIKeyAuthSnapshot struct {
 
 // APIKeyAuthUserSnapshot 用户快照
 type APIKeyAuthUserSnapshot struct {
-	ID          int64   `json:"id"`
-	Status      string  `json:"status"`
-	Role        string  `json:"role"`
-	Balance     float64 `json:"balance"`
-	Concurrency int     `json:"concurrency"`
-	PricingDiscountFactor float64 `json:"pricing_discount_factor"`
-	PricingDiscountLabel  string  `json:"pricing_discount_label,omitempty"`
-	PricingDiscountSource string  `json:"pricing_discount_source,omitempty"`
-	PricingDiscountScope  string  `json:"pricing_discount_scope,omitempty"`
+	ID                    int64              `json:"id"`
+	Status                string             `json:"status"`
+	Role                  string             `json:"role"`
+	Balance               float64            `json:"balance"`
+	Concurrency           int                `json:"concurrency"`
+	PricingDiscountFactor float64            `json:"pricing_discount_factor"`
+	PricingDiscountLabel  string             `json:"pricing_discount_label,omitempty"`
+	PricingDiscountSource string             `json:"pricing_discount_source,omitempty"`
+	PricingDiscountScope  string             `json:"pricing_discount_scope,omitempty"`
 	Enterprise            *EnterpriseContext `json:"enterprise,omitempty"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
