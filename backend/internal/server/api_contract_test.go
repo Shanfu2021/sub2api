@@ -65,6 +65,8 @@ func TestAPIContracts(t *testing.T) {
 					"balance_notify_threshold": null,
 					"balance_notify_extra_emails": null,
 					"total_recharged": 0,
+					"pricing_discount_factor": 1,
+					"pricing_discount_scope": "all",
 					"linuxdo_bound": false,
 					"oidc_bound": false,
 					"wechat_bound": false,
@@ -363,6 +365,7 @@ func TestAPIContracts(t *testing.T) {
 						"require_oauth_only": false,
 						"require_privacy_set": false,
 						"rpm_limit": 0,
+						"scheduling_strategy": "",
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -639,12 +642,13 @@ func TestAPIContracts(t *testing.T) {
 					service.SettingKeyOIDCConnectUserInfoIDPath:       "",
 					service.SettingKeyOIDCConnectUserInfoUsernamePath: "",
 
-					service.SettingKeySiteName:     "Sub2API",
-					service.SettingKeySiteLogo:     "",
-					service.SettingKeySiteSubtitle: "Subtitle",
-					service.SettingKeyAPIBaseURL:   "https://api.example.com",
-					service.SettingKeyContactInfo:  "support",
-					service.SettingKeyDocURL:       "https://docs.example.com",
+					service.SettingKeySiteName:         "Sub2API",
+					service.SettingKeySiteLogo:         "",
+					service.SettingKeySiteSubtitle:     "Subtitle",
+					service.SettingKeyAPIBaseURL:       "https://api.example.com",
+					service.SettingKeyContactInfo:      "support",
+					service.SettingKeyContactQRCodeURL: "https://example.com/qq-group.png",
+					service.SettingKeyDocURL:           "https://docs.example.com",
 
 					service.SettingKeyDefaultConcurrency:   "5",
 					service.SettingKeyDefaultBalance:       "1.25",

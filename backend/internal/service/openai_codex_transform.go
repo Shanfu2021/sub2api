@@ -970,10 +970,7 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 // extract system messages into instructions, then ensure a non-empty
 // instructions string exists.
 func applyOpenAIResponsesInstructionsCompat(reqBody map[string]any) bool {
-	modified := false
-	if extractSystemMessagesFromInput(reqBody) {
-		modified = true
-	}
+	modified := extractSystemMessagesFromInput(reqBody)
 	if applyInstructions(reqBody, false) {
 		modified = true
 	}

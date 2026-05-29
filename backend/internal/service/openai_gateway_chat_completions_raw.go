@@ -322,7 +322,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				if sanitizedPayload, sanitized := sanitizeRawChatCompletionsErrorPayload(payload); sanitized {
 					line = "data: " + sanitizedPayload
 					payload = sanitizedPayload
-					trimmedPayload = strings.TrimSpace(payload)
 				}
 				usageOnlyChunk := isOpenAIChatUsageOnlyStreamChunk(payload)
 				if u := extractCCStreamUsage(payload); u != nil {

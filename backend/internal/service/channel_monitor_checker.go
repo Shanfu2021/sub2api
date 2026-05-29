@@ -561,19 +561,3 @@ func truncateMessage(msg string) string {
 	}
 	return msg[:cutoff] + ellipsis
 }
-
-// truncateForErrorBody 把上游错误响应 body 压到 monitorErrorBodySnippetMaxBytes 以内，
-// 并顺手把连续空白折成一个空格：上游 HTML 错误页常含大量缩进/换行，保留会浪费预算。
-// 被 truncateMessage 做最终总截断兜底，所以这里只负责 body 自身的精简。
-func truncateForErrorBody(body string) string {
-	body = strings.Join(strings.Fields(body), " ")
-	if len(body) <= monitorErrorBodySnippetMaxBytes {
-		return body
-	}
-	const ellipsis = "...(body truncated)"
-	cutoff := monitorErrorBodySnippetMaxBytes - len(ellipsis)
-	if cutoff < 0 {
-		cutoff = 0
-	}
-	return body[:cutoff] + ellipsis
-}

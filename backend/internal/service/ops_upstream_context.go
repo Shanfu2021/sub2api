@@ -55,15 +55,6 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 	c.Set(key, value)
 }
 
-func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {
-	if c == nil || len(body) == 0 {
-		return
-	}
-	// Keep the raw bytes only in request context for diagnostics. It is not
-	// persisted unless a caller explicitly reads and stores it elsewhere.
-	c.Set(OpsUpstreamRequestBodyKey, body)
-}
-
 func MarkOpsClientBusinessLimited(c *gin.Context, reason string) {
 	if c == nil {
 		return

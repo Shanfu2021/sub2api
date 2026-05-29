@@ -21,17 +21,17 @@ func NewEnterpriseHandler(enterpriseService *service.EnterpriseService) *Enterpr
 }
 
 type enterpriseCreateMemberRequest struct {
-	Email          string   `json:"email" binding:"required,email"`
-	Password       string   `json:"password" binding:"required,min=6"`
-	Username       string   `json:"username"`
-	Notes          string   `json:"notes"`
-	Concurrency    int      `json:"concurrency"`
-	RPMLimit       *int     `json:"rpm_limit"`
-	AllowedGroups  []int64  `json:"allowed_groups"`
-	MemberNote     string   `json:"member_note"`
-	PricingFactor  float64  `json:"pricing_factor"`
-	PricingScope   string   `json:"pricing_scope"`
-	InitialBalance float64  `json:"initial_balance"`
+	Email          string  `json:"email" binding:"required,email"`
+	Password       string  `json:"password" binding:"required,min=6"`
+	Username       string  `json:"username"`
+	Notes          string  `json:"notes"`
+	Concurrency    int     `json:"concurrency"`
+	RPMLimit       *int    `json:"rpm_limit"`
+	AllowedGroups  []int64 `json:"allowed_groups"`
+	MemberNote     string  `json:"member_note"`
+	PricingFactor  float64 `json:"pricing_factor"`
+	PricingScope   string  `json:"pricing_scope"`
+	InitialBalance float64 `json:"initial_balance"`
 }
 
 type enterpriseUpdateMemberRequest struct {
