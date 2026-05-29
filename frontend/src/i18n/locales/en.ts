@@ -6562,6 +6562,8 @@ export default {
     sourceModeHint: 'Source build, use git pull to update',
     updateNow: 'Update Now',
     updating: 'Updating...',
+    webUpdateDisabled: 'Web manual updates are disabled',
+    webUpdateDisabledHint: 'Use the code release workflow to avoid overwriting local customizations',
     updateComplete: 'Update Complete',
     updateFailed: 'Update Failed',
     restartRequired: 'Please restart the service to apply the update',

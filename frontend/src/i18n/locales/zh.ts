@@ -6717,6 +6717,8 @@ export default {
     sourceModeHint: '源码构建请使用 git pull 更新',
     updateNow: '立即更新',
     updating: '正在更新...',
+    webUpdateDisabled: '网页手动更新已禁用',
+    webUpdateDisabledHint: '为避免覆盖本地定制功能，请使用代码发布流程更新',
     updateComplete: '更新完成',
     updateFailed: '更新失败',
     restartRequired: '请重启服务以应用更新',
