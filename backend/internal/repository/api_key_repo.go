@@ -699,6 +699,9 @@ func hydrateAPIKeyUserPricingDiscount(ctx context.Context, client *dbent.Client,
 	if client == nil || user == nil || user.ID <= 0 {
 		return nil
 	}
+	if !isPostgresEntClient(client) {
+		return nil
+	}
 
 	user.PricingDiscountFactor = service.DefaultPricingDiscountFactor
 	user.PricingDiscountLabel = ""
@@ -741,6 +744,9 @@ LIMIT 1
 
 func hydrateAPIKeyUserEnterpriseContext(ctx context.Context, client *dbent.Client, user *service.User) error {
 	if client == nil || user == nil || user.ID <= 0 {
+		return nil
+	}
+	if !isPostgresEntClient(client) {
 		return nil
 	}
 

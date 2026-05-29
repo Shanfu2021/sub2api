@@ -37,7 +37,7 @@
             <div class="flex items-center justify-between">
               <p class="text-sm font-medium text-gray-500 dark:text-dark-400">{{ t('redeem.needToBuyTitle') }}</p>
               <span class="rounded-xl bg-emerald-100 p-2 dark:bg-emerald-900/30">
-                <Icon name="shoppingBag" size="md" class="text-emerald-600 dark:text-emerald-300" />
+                <Icon name="gift" size="md" class="text-emerald-600 dark:text-emerald-300" />
               </span>
             </div>
             <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">通用余额卡</p>
@@ -163,7 +163,7 @@
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30"
               >
-                <Icon name="shoppingBag" size="md" class="text-sky-600 dark:text-sky-400" />
+                <Icon name="gift" size="md" class="text-sky-600 dark:text-sky-400" />
               </div>
               <div>
                 <h2 class="text-lg font-semibold text-sky-900 dark:text-sky-100">

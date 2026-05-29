@@ -162,7 +162,7 @@ func (r *openAIPassthroughFailoverRepo) SetOverloaded(_ context.Context, _ int64
 	return nil
 }
 
-func (r *openAIPassthroughFailoverRepo) SetModelRateLimit(_ context.Context, _ int64, model string, _ time.Time) error {
+func (r *openAIPassthroughFailoverRepo) SetModelRateLimit(_ context.Context, _ int64, model string, _ time.Time, _ ...string) error {
 	r.modelRateLimitCalls = append(r.modelRateLimitCalls, model)
 	return nil
 }

@@ -343,7 +343,7 @@ func TestAuthService_Register_GmailBypassEnabledSkipsVerifyCode(t *testing.T) {
 		SettingKeyRegistrationEnabled:            "true",
 		SettingKeyEmailVerifyEnabled:             "true",
 		SettingKeyGmailVerificationBypassEnabled: "true",
-	}, nil)
+	}, nil, nil)
 
 	token, user, err := service.RegisterWithVerification(context.Background(), "user@gmail.com", "password", "", "", "", "", "", "")
 	require.NoError(t, err)
@@ -360,7 +360,7 @@ func TestAuthService_Register_GmailBypassEnabledDoesNotAffectOtherDomains(t *tes
 		SettingKeyRegistrationEnabled:            "true",
 		SettingKeyEmailVerifyEnabled:             "true",
 		SettingKeyGmailVerificationBypassEnabled: "true",
-	}, cache)
+	}, cache, nil)
 
 	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
@@ -503,7 +503,7 @@ func TestAuthService_Register_IPLimitRejectsDuplicateSignupIP(t *testing.T) {
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:        "true",
 		SettingKeyRegistrationIPLimitEnabled: "true",
-	}, nil)
+	}, nil, nil)
 
 	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "", "", "", "", "203.0.113.10")
 	require.ErrorIs(t, err, ErrRegistrationIPAlreadyUsed)
@@ -515,7 +515,7 @@ func TestAuthService_Register_IPLimitDisabledAllowsSignup(t *testing.T) {
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:        "true",
 		SettingKeyRegistrationIPLimitEnabled: "false",
-	}, nil)
+	}, nil, nil)
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "user2@test.com", "password", "", "", "", "", "", "203.0.113.10")
 	require.NoError(t, err)
@@ -529,7 +529,7 @@ func TestAuthService_Register_IPLimitEnabledPersistsSignupIP(t *testing.T) {
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:        "true",
 		SettingKeyRegistrationIPLimitEnabled: "true",
-	}, nil)
+	}, nil, nil)
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "user3@test.com", "password", "", "", "", "", "", "203.0.113.11")
 	require.NoError(t, err)

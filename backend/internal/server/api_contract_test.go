@@ -1274,10 +1274,10 @@ func newContractDeps(t *testing.T) *contractDeps {
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 
 	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil, nil)
-	redeemHandler := handler.NewRedeemHandler(redeemService, settingService, nil, nil)
 
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
+	redeemHandler := handler.NewRedeemHandler(redeemService, settingService, nil, nil)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)

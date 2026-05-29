@@ -1171,6 +1171,9 @@ func (r *userRepository) hydrateUserPricingDiscounts(ctx context.Context, users 
 	if len(users) == 0 || r.sql == nil {
 		return nil
 	}
+	if !isPostgresEntClient(r.client) {
+		return nil
+	}
 
 	ids := make([]int64, 0, len(users))
 	userMap := make(map[int64]*service.User, len(users))
@@ -1228,6 +1231,9 @@ WHERE upd.user_id = ANY($1)
 
 func (r *userRepository) hydrateUserEnterpriseContexts(ctx context.Context, users ...*service.User) error {
 	if len(users) == 0 {
+		return nil
+	}
+	if !isPostgresEntClient(r.client) {
 		return nil
 	}
 	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
