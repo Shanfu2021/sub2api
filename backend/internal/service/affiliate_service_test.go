@@ -13,10 +13,10 @@ import (
 )
 
 type affiliateRepoStub struct {
-	ensureUserAffiliateFn          func(ctx context.Context, userID int64) (*AffiliateSummary, error)
-	countEligibleBalanceCreditsFn  func(ctx context.Context, inviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error)
-	accrueQuotaFn                  func(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
-	getAccruedRebateFromInviteeFn  func(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
+	ensureUserAffiliateFn         func(ctx context.Context, userID int64) (*AffiliateSummary, error)
+	countEligibleBalanceCreditsFn func(ctx context.Context, inviteeUserID int64, excludeOrderID *int64, excludeRedeemCode string) (int, error)
+	accrueQuotaFn                 func(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
+	getAccruedRebateFromInviteeFn func(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
 }
 
 func (s *affiliateRepoStub) EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error) {
@@ -363,8 +363,8 @@ func TestAccrueInviteRebateForOrder_AppliesWithinFirstThreeEligibleBalanceOrders
 		},
 		settingService: &SettingService{settingRepo: &affiliateSettingRepoStub{
 			values: map[string]string{
-				SettingKeyAffiliateEnabled:          "true",
-				SettingKeyAffiliateRebateRate:       "10",
+				SettingKeyAffiliateEnabled:           "true",
+				SettingKeyAffiliateRebateRate:        "10",
 				SettingKeyAffiliateRebateFreezeHours: "24",
 			},
 		}},

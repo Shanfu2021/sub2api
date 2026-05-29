@@ -121,7 +121,7 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 			Type:     AccountTypeAPIKey,
 			Platform: PlatformOpenAI,
 			Extra: map[string]any{
-				openai_compat.ExtraKeyResponsesSupported:            true,
+				openai_compat.ExtraKeyResponsesSupported:          true,
 				openai_compat.ExtraKeyChatCompletionsRawPreferred: true,
 			},
 		}
@@ -136,7 +136,7 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Extra: map[string]any{
 				openai_compat.ExtraKeyResponsesSupported: true,
-				"openai_passthrough":                    true,
+				"openai_passthrough":                     true,
 			},
 		}
 
@@ -150,7 +150,7 @@ func TestShouldForwardChatCompletionsAsRaw(t *testing.T) {
 			Platform: PlatformOpenAI,
 			Extra: map[string]any{
 				openai_compat.ExtraKeyResponsesSupported: true,
-				"openai_passthrough":                    true,
+				"openai_passthrough":                     true,
 			},
 		}
 
