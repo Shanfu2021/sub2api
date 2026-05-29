@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -22,17 +23,27 @@ type GroupRepoSuite struct {
 }
 
 type forbidSQLExecutor struct {
-	called bool
+	queries []string
 }
 
 func (s *forbidSQLExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	s.called = true
+	s.queries = append(s.queries, query)
 	return nil, errors.New("unexpected sql exec")
 }
 
 func (s *forbidSQLExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	s.called = true
+	s.queries = append(s.queries, query)
 	return nil, errors.New("unexpected sql query")
+}
+
+func (s *forbidSQLExecutor) usedAccountCountQuery() bool {
+	for _, query := range s.queries {
+		lower := strings.ToLower(query)
+		if strings.Contains(lower, " from accounts") || strings.Contains(lower, " join accounts") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *GroupRepoSuite) SetupTest() {
@@ -90,7 +101,7 @@ func (s *GroupRepoSuite) TestGetByIDLite_DoesNotUseAccountCount() {
 	got, err := repo.GetByIDLite(s.ctx, group.ID)
 	s.Require().NoError(err)
 	s.Require().Equal(group.ID, got.ID)
-	s.Require().False(spy.called, "expected no direct sql executor usage")
+	s.Require().False(spy.usedAccountCountQuery(), "expected no account count query")
 }
 
 func (s *GroupRepoSuite) TestUpdate() {

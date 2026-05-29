@@ -144,11 +144,11 @@ func TestGatewayModels_OpenAIGroupHidesUnsupportedProAliases(t *testing.T) {
 						Platform: service.PlatformOpenAI,
 						Credentials: map[string]any{
 							"model_mapping": map[string]any{
-								"gpt-5.2-pro":             "gpt-5.2",
-								"gpt-5.4-pro":             "gpt-5.4",
-								"gpt-5.5":                 "gpt-5.5",
-								"gpt-5.5-pro":             "gpt-5.5",
-								"codex/GPT-5.5 pro":       "gpt-5.5",
+								"gpt-5.2-pro":            "gpt-5.2",
+								"gpt-5.4-pro":            "gpt-5.4",
+								"gpt-5.5":                "gpt-5.5",
+								"gpt-5.5-pro":            "gpt-5.5",
+								"codex/GPT-5.5 pro":      "gpt-5.5",
 								"gpt-5.2-pro-2025-12-11": "gpt-5.2",
 							},
 						},

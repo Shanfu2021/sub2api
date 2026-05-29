@@ -37,9 +37,9 @@ var (
 
 // RedeemHandler handles redeem code-related requests
 type RedeemHandler struct {
-	redeemService    *service.RedeemService
-	settingService   *service.SettingService
-	promoService     *service.PromoService
+	redeemService     *service.RedeemService
+	settingService    *service.SettingService
+	promoService      *service.PromoService
 	enterpriseService *service.EnterpriseService
 }
 
