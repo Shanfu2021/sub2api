@@ -1641,33 +1641,37 @@ func (s *OpenAIGatewayService) persistOpenAIQuotaAutoPause(ctx context.Context, 
 	if s.isOpenAIAccountRuntimeBlocked(account) {
 		return
 	}
-	until := decision.resetAt
-	if until == nil || until.IsZero() || !until.After(time.Now()) {
+	resetAt := decision.resetAt
+	if resetAt == nil || resetAt.IsZero() || !resetAt.After(time.Now()) {
 		return
 	}
+	pauseUntil := *resetAt
 	if decision.window == "7d" {
-		extendedUntil := until.Add(10 * time.Minute)
-		until = &extendedUntil
+		// Keep the DB pause slightly past the upstream reset so the scheduled probe can
+		// verify recovery before normal traffic is allowed back onto the OAuth account.
+		pauseUntil = resetAt.Add(10 * time.Minute)
 	}
-	s.BlockAccountScheduling(account, *until, "quota_auto_pause")
 	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) &&
-		account.TempUnschedulableUntil.After(*until) &&
+		account.TempUnschedulableUntil.After(pauseUntil) &&
 		!strings.Contains(account.TempUnschedulableReason, "openai quota auto-pause") {
 		return
 	}
 	existingWindow := strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_window"]))
 	existingReset := strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_reset_at"]))
-	resetAtText := until.UTC().Format(time.RFC3339)
+	resetAtText := resetAt.UTC().Format(time.RFC3339)
 	if existingWindow == decision.window && existingReset == resetAtText &&
 		account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
 		return
 	}
 
+	// Runtime block only needs to bridge to the real reset time. The DB temp pause
+	// carries the post-reset probe buffer and is cleared immediately after success.
+	s.BlockAccountScheduling(account, *resetAt, "quota_auto_pause")
 	reason := fmt.Sprintf("openai quota auto-pause: window=%s utilization=%.2f%% threshold=%.2f%% reset_at=%s",
 		decision.window, decision.utilization*100, decision.threshold*100, resetAtText)
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	if err := s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, *until, reason); err != nil {
+	if err := s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, pauseUntil, reason); err != nil {
 		slog.Warn("openai_quota_auto_pause_set_temp_failed", "account_id", account.ID, "window", decision.window, "error", err)
 		return
 	}
