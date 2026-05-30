@@ -313,6 +313,33 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 	return nil
 }
 
+func (s *AffiliateService) ValidateInviteCode(ctx context.Context, rawCode string) error {
+	code := strings.ToUpper(strings.TrimSpace(rawCode))
+	if code == "" {
+		return ErrAffiliateCodeInvalid
+	}
+	if s == nil || s.repo == nil {
+		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	if !s.IsEnabled(ctx) {
+		return ErrAffiliateCodeInvalid
+	}
+	if !isValidAffiliateCodeFormat(code) {
+		return ErrAffiliateCodeInvalid
+	}
+	inviterSummary, err := s.repo.GetAffiliateByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, ErrAffiliateProfileNotFound) {
+			return ErrAffiliateCodeInvalid
+		}
+		return err
+	}
+	if inviterSummary == nil || inviterSummary.UserID <= 0 {
+		return ErrAffiliateCodeInvalid
+	}
+	return nil
+}
+
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
 	return s.accrueInviteRebate(ctx, inviteeUserID, baseRechargeAmount, nil, "")
 }

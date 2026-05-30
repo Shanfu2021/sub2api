@@ -5632,6 +5632,8 @@ export default {
         promoCodeHint: '允许用户在注册时使用优惠码',
         invitationCode: '邀请码注册',
         invitationCodeHint: '开启后，用户注册时需要填写有效的邀请码',
+        userInviteRegistration: '允许用户邀请码注册',
+        userInviteRegistrationHint: '开启后，普通用户的邀请返利码也可以作为注册邀请码（需同时开启邀请返利）；关闭后只有管理员/企业邀请码可用于注册',
         passwordReset: '忘记密码',
         passwordResetHint: '允许用户通过邮箱重置密码',
         frontendUrl: '前端地址',

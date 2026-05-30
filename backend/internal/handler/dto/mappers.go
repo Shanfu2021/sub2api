@@ -56,6 +56,7 @@ func EnterpriseContextFromService(in *service.EnterpriseContext) *EnterpriseCont
 		PricingScope:        service.NormalizeEnterprisePricingScopeForRepo(in.PricingScope),
 		PricingFloorFactor:  service.NormalizePricingDiscountFactorForRepo(in.PricingFloorFactor),
 		AllowedGroupIDs:     append([]int64(nil), in.AllowedGroupIDs...),
+		GroupRates:          in.GroupRates,
 		SelfRechargeBlocked: in.SelfRechargeBlocked,
 		SelfRedeemBlocked:   in.SelfRedeemBlocked,
 	}

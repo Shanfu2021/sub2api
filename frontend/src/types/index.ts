@@ -77,6 +77,7 @@ export interface EnterpriseContext {
   pricing_scope: 'all' | 'balance' | 'subscription' | string
   pricing_floor_factor: number
   allowed_group_ids?: number[]
+  group_rates?: Record<number, number>
   self_recharge_blocked: boolean
   self_redeem_blocked: boolean
 }
@@ -146,7 +147,6 @@ export interface RegisterRequest {
   promo_code?: string
   invitation_code?: string
   aff_code?: string
-  enterprise_invite_code?: string
 }
 
 export interface AffiliateInvitee {
@@ -218,6 +218,7 @@ export interface PublicSettings {
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
+  user_invite_registration_enabled?: boolean
   login_agreement_enabled?: boolean
   login_agreement_mode?: 'modal' | 'checkbox' | string
   login_agreement_updated_at?: string
@@ -288,6 +289,7 @@ export interface EnterpriseTenant {
   balance_quota_total: number
   balance_quota_used: number
   allowed_group_ids?: number[]
+  group_rates?: Record<number, number>
   manager_count: number
   member_count: number
   created_at: string
@@ -310,6 +312,7 @@ export interface EnterpriseMembership {
   user_balance: number
   user_concurrency: number
   allowed_groups?: number[]
+  group_rates: Record<number, number>
   created_at: string
   updated_at: string
 }

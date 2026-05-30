@@ -154,22 +154,30 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 
 	// 检查是否需要邀请码
 	var invitationRedeemCode *RedeemCode
+	var detectedAffiliateInviteCode string
+	invitationCode = strings.TrimSpace(invitationCode)
+	enterpriseInviteCode = strings.TrimSpace(enterpriseInviteCode)
+	if invitationCode == "" && enterpriseInviteCode != "" {
+		invitationCode = enterpriseInviteCode
+	}
 	if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
-		if invitationCode == "" {
-			return "", nil, ErrInvitationCodeRequired
-		}
-		// 验证邀请码
-		redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
+		redeemCode, detectedEnterpriseInviteCode, affiliateInviteCode, err := s.resolveRegistrationInviteCode(ctx, invitationCode)
 		if err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
-			return "", nil, ErrInvitationCodeInvalid
-		}
-		// 检查类型和状态
-		if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
-			return "", nil, ErrInvitationCodeInvalid
+			return "", nil, err
 		}
 		invitationRedeemCode = redeemCode
+		if detectedEnterpriseInviteCode != "" {
+			enterpriseInviteCode = detectedEnterpriseInviteCode
+		}
+		if affiliateInviteCode != "" {
+			detectedAffiliateInviteCode = affiliateInviteCode
+		}
+	} else if invitationCode != "" && enterpriseInviteCode == "" {
+		enterpriseInviteCode = invitationCode
+	}
+	if detectedAffiliateInviteCode != "" {
+		affiliateCode = detectedAffiliateInviteCode
 	}
 
 	requiresEmailVerification := s.settingService != nil &&
@@ -681,18 +689,47 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 
 			// 检查是否需要邀请码
 			var invitationRedeemCode *RedeemCode
+			var enterpriseInviteCode string
+			var detectedAffiliateInviteCode string
+			invitationCode = strings.TrimSpace(invitationCode)
 			if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
-				if invitationCode == "" {
-					return nil, nil, ErrOAuthInvitationRequired
-				}
-				redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
+				redeemCode, detectedEnterpriseInviteCode, affiliateInviteCode, err := s.resolveRegistrationInviteCode(ctx, invitationCode)
 				if err != nil {
-					return nil, nil, ErrInvitationCodeInvalid
-				}
-				if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
+					if errors.Is(err, ErrInvitationCodeRequired) {
+						return nil, nil, ErrOAuthInvitationRequired
+					}
 					return nil, nil, ErrInvitationCodeInvalid
 				}
 				invitationRedeemCode = redeemCode
+				if detectedEnterpriseInviteCode != "" {
+					enterpriseInviteCode = detectedEnterpriseInviteCode
+				}
+				if affiliateInviteCode != "" {
+					detectedAffiliateInviteCode = affiliateInviteCode
+				}
+			} else if invitationCode != "" {
+				enterpriseInviteCode = invitationCode
+			}
+			if detectedAffiliateInviteCode != "" {
+				affiliateCode = detectedAffiliateInviteCode
+			}
+
+			bindEnterpriseInvite := func(bindCtx context.Context, createdUser *User) (*User, error) {
+				if enterpriseInviteCode == "" || s.enterpriseService == nil || createdUser == nil {
+					return createdUser, nil
+				}
+				if _, err := s.enterpriseService.BindUserByInviteCode(bindCtx, createdUser.ID, enterpriseInviteCode, "oauth_register"); err != nil {
+					if deleteErr := s.userRepo.Delete(ctx, createdUser.ID); deleteErr != nil {
+						logger.LegacyPrintf("service.auth", "[Auth] Failed to rollback oauth user after enterprise bind failure for user %d: %v", createdUser.ID, deleteErr)
+					}
+					return nil, err
+				}
+				updatedUser, err := s.userRepo.GetByID(ctx, createdUser.ID)
+				if err != nil {
+					logger.LegacyPrintf("service.auth", "[Auth] Failed to reload oauth user after enterprise bind for user %d: %v", createdUser.ID, err)
+					return createdUser, nil
+				}
+				return updatedUser, nil
 			}
 
 			randomPassword, err := randomHexString(32)
@@ -765,6 +802,11 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
 					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
+					if updatedUser, err := bindEnterpriseInvite(ctx, user); err != nil {
+						return nil, nil, err
+					} else {
+						user = updatedUser
+					}
 				}
 			} else {
 				if err := s.userRepo.Create(ctx, newUser); err != nil {
@@ -792,6 +834,11 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 							return nil, nil, ErrInvitationCodeInvalid
 						}
 					}
+					if updatedUser, err := bindEnterpriseInvite(ctx, user); err != nil {
+						return nil, nil, err
+					} else {
+						user = updatedUser
+					}
 				}
 			}
 		} else {
@@ -815,6 +862,47 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
 	}
 	return tokenPair, user, nil
+}
+
+func (s *AuthService) resolveRegistrationInviteCode(ctx context.Context, code string) (*RedeemCode, string, string, error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, "", "", ErrInvitationCodeRequired
+	}
+
+	if s.redeemRepo != nil {
+		redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
+		if err == nil && redeemCode != nil {
+			if redeemCode.Type == RedeemTypeInvitation && redeemCode.CanUse() {
+				return redeemCode, "", "", nil
+			}
+			return nil, "", "", ErrInvitationCodeInvalid
+		} else if err != nil && !errors.Is(err, ErrRedeemCodeNotFound) {
+			return nil, "", "", ErrInvitationCodeInvalid
+		}
+	}
+
+	if s.enterpriseService != nil {
+		if err := s.enterpriseService.ValidateInviteCode(ctx, code); err == nil {
+			return nil, code, "", nil
+		} else if !errors.Is(err, ErrEnterpriseInviteCodeNotFound) && !errors.Is(err, ErrEnterpriseInviteCodeInvalid) {
+			return nil, "", "", ErrInvitationCodeInvalid
+		}
+	}
+
+	if s.settingService != nil && s.settingService.IsUserInviteRegistrationEnabled(ctx) && s.affiliateService != nil {
+		affiliateCode := strings.ToUpper(code)
+		if err := s.affiliateService.ValidateInviteCode(ctx, affiliateCode); err == nil {
+			return nil, "", affiliateCode, nil
+		}
+	}
+
+	return nil, "", "", ErrInvitationCodeInvalid
+}
+
+func (s *AuthService) ValidateRegistrationInviteCode(ctx context.Context, code string) error {
+	_, _, _, err := s.resolveRegistrationInviteCode(ctx, code)
+	return err
 }
 
 func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, items []DefaultSubscriptionSetting, notes string) {

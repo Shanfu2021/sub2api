@@ -8126,6 +8126,20 @@ func effectiveUserPricingDiscountFactor(user *User, group *Group) float64 {
 	return DefaultPricingDiscountFactor
 }
 
+func enterpriseGroupDefaultRateMultiplier(user *User, group *Group) (float64, bool) {
+	if user == nil || group == nil || user.Enterprise == nil || user.Enterprise.TenantStatus != EnterpriseTenantStatusActive {
+		return 0, false
+	}
+	if user.Enterprise.GroupRates == nil {
+		return 0, false
+	}
+	rate, ok := user.Enterprise.GroupRates[group.ID]
+	if !ok {
+		return 0, false
+	}
+	return normalizeEnterprisePricingFactor(rate), true
+}
+
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
 	Result             *ForwardResult
@@ -8724,11 +8738,19 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
 	}
+	usesEnterpriseGroupDefault := false
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		groupDefault := apiKey.Group.RateMultiplier
+		if enterpriseDefault, ok := enterpriseGroupDefaultRateMultiplier(user, apiKey.Group); ok {
+			groupDefault = enterpriseDefault
+			usesEnterpriseGroupDefault = true
+		}
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
 	discountFactor := effectiveUserPricingDiscountFactor(user, apiKey.Group)
+	if usesEnterpriseGroupDefault {
+		discountFactor = DefaultPricingDiscountFactor
+	}
 	multiplier = applyPricingDiscountFactor(multiplier, discountFactor)
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier, discountFactor)
 

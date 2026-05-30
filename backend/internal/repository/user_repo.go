@@ -1313,9 +1313,10 @@ WHERE em.user_id = ANY($1)
 	}
 
 	allowedGroupsByTenant := make(map[int64][]int64)
+	groupRatesByTenant := make(map[int64]map[int64]float64)
 	if len(tenantIDs) > 0 {
 		groupRows, err := exec.QueryContext(ctx, `
-SELECT tenant_id, group_id
+SELECT tenant_id, group_id, pricing_floor_multiplier
 FROM enterprise_tenant_groups
 WHERE tenant_id = ANY($1)
 ORDER BY tenant_id, group_id
@@ -1326,10 +1327,17 @@ ORDER BY tenant_id, group_id
 		defer func() { _ = groupRows.Close() }()
 		for groupRows.Next() {
 			var tenantID, groupID int64
-			if err := groupRows.Scan(&tenantID, &groupID); err != nil {
+			var rate sql.NullFloat64
+			if err := groupRows.Scan(&tenantID, &groupID, &rate); err != nil {
 				return err
 			}
 			allowedGroupsByTenant[tenantID] = append(allowedGroupsByTenant[tenantID], groupID)
+			if rate.Valid {
+				if groupRatesByTenant[tenantID] == nil {
+					groupRatesByTenant[tenantID] = make(map[int64]float64)
+				}
+				groupRatesByTenant[tenantID][groupID] = service.NormalizePricingDiscountFactorForRepo(rate.Float64)
+			}
 		}
 		if err := groupRows.Err(); err != nil {
 			return err
@@ -1341,6 +1349,7 @@ ORDER BY tenant_id, group_id
 			continue
 		}
 		enterprise.AllowedGroupIDs = allowedGroupsByTenant[enterprise.TenantID]
+		enterprise.GroupRates = groupRatesByTenant[enterprise.TenantID]
 		if user := userMap[userID]; user != nil {
 			user.Enterprise = enterprise
 		}

@@ -46,6 +46,7 @@ export async function createMember(payload: {
   member_note?: string
   pricing_factor?: number
   pricing_scope?: string
+  group_rates?: Record<number, number | null>
   initial_balance?: number
 }): Promise<{ membership: EnterpriseMembership; user: User }> {
   const { data } = await apiClient.post<{ membership: EnterpriseMembership; user: User }>('/enterprise/members', payload)
@@ -54,7 +55,7 @@ export async function createMember(payload: {
 
 export async function updateMember(
   userId: number,
-  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; status?: string; allowed_groups?: number[] }
+  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; group_rates?: Record<number, number | null>; status?: string; allowed_groups?: number[] }
 ): Promise<EnterpriseMembership> {
   const { data } = await apiClient.put<EnterpriseMembership>(`/enterprise/members/${userId}`, payload)
   return data

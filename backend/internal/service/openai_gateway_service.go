@@ -5939,14 +5939,23 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
 	}
+	usesEnterpriseGroupDefault := false
 	if apiKey.GroupID != nil && apiKey.Group != nil {
+		groupDefault := apiKey.Group.RateMultiplier
+		if enterpriseDefault, ok := enterpriseGroupDefaultRateMultiplier(user, apiKey.Group); ok {
+			groupDefault = enterpriseDefault
+			usesEnterpriseGroupDefault = true
+		}
 		resolver := s.userGroupRateResolver
 		if resolver == nil {
 			resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
 		}
-		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
 	discountFactor := effectiveUserPricingDiscountFactor(user, apiKey.Group)
+	if usesEnterpriseGroupDefault {
+		discountFactor = DefaultPricingDiscountFactor
+	}
 	multiplier = applyPricingDiscountFactor(multiplier, discountFactor)
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier, discountFactor)
 

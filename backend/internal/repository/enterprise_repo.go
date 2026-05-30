@@ -143,6 +143,11 @@ LIMIT 1`
 		return nil, err
 	}
 	item.AllowedGroupIDs = groups[item.ID]
+	rates, err := r.GetTenantGroupRates(ctx, []int64{item.ID})
+	if err != nil {
+		return nil, err
+	}
+	item.GroupRates = rates[item.ID]
 	return &item, nil
 }
 
@@ -216,6 +221,11 @@ WHERE t.id = $1`
 		return nil, err
 	}
 	item.AllowedGroupIDs = groups[item.ID]
+	rates, err := r.GetTenantGroupRates(ctx, []int64{item.ID})
+	if err != nil {
+		return nil, err
+	}
+	item.GroupRates = rates[item.ID]
 	return &item, nil
 }
 
@@ -279,7 +289,7 @@ WHERE id = $1
 	return nil
 }
 
-func (r *enterpriseRepository) SetTenantAllowedGroups(ctx context.Context, tenantID int64, groupIDs []int64) error {
+func (r *enterpriseRepository) SetTenantAllowedGroups(ctx context.Context, tenantID int64, groupIDs []int64, groupRates map[int64]*float64) error {
 	exec := r.exec(ctx)
 	if _, err := exec.ExecContext(ctx, `DELETE FROM enterprise_tenant_groups WHERE tenant_id = $1`, tenantID); err != nil {
 		return err
@@ -288,13 +298,19 @@ func (r *enterpriseRepository) SetTenantAllowedGroups(ctx context.Context, tenan
 	if len(unique) == 0 {
 		return nil
 	}
-	if _, err := exec.ExecContext(ctx, `
-INSERT INTO enterprise_tenant_groups (tenant_id, group_id, created_at)
-SELECT $1::bigint, x.group_id, NOW()
-FROM unnest($2::bigint[]) AS x(group_id)
-ON CONFLICT (tenant_id, group_id) DO NOTHING
-`, tenantID, pq.Array(unique)); err != nil {
-		return err
+	for _, groupID := range unique {
+		var rate any
+		if groupRates != nil {
+			if v, ok := groupRates[groupID]; ok && v != nil {
+				rate = service.NormalizePricingDiscountFactorForRepo(*v)
+			}
+		}
+		if _, err := exec.ExecContext(ctx, `
+INSERT INTO enterprise_tenant_groups (tenant_id, group_id, pricing_floor_multiplier, created_at)
+VALUES ($1, $2, $3, NOW())
+`, tenantID, groupID, rate); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -321,6 +337,36 @@ ORDER BY tenant_id, group_id
 			return nil, err
 		}
 		out[tenantID] = append(out[tenantID], groupID)
+	}
+	return out, rows.Err()
+}
+
+func (r *enterpriseRepository) GetTenantGroupRates(ctx context.Context, tenantIDs []int64) (map[int64]map[int64]float64, error) {
+	out := make(map[int64]map[int64]float64, len(tenantIDs))
+	tenantIDs = uniquePositiveInt64s(tenantIDs)
+	if len(tenantIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.exec(ctx).QueryContext(ctx, `
+SELECT tenant_id, group_id, pricing_floor_multiplier
+FROM enterprise_tenant_groups
+WHERE tenant_id = ANY($1) AND pricing_floor_multiplier IS NOT NULL
+ORDER BY tenant_id, group_id
+`, pq.Array(tenantIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var tenantID, groupID int64
+		var rate float64
+		if err := rows.Scan(&tenantID, &groupID, &rate); err != nil {
+			return nil, err
+		}
+		if out[tenantID] == nil {
+			out[tenantID] = make(map[int64]float64)
+		}
+		out[tenantID][groupID] = service.NormalizePricingDiscountFactorForRepo(rate)
 	}
 	return out, rows.Err()
 }
@@ -392,6 +438,9 @@ LIMIT 1`
 	if err := r.hydrateMembershipAllowedGroups(ctx, items); err != nil {
 		return nil, err
 	}
+	if err := r.hydrateMembershipGroupRates(ctx, items); err != nil {
+		return nil, err
+	}
 	item = items[0]
 	return &item, nil
 }
@@ -430,6 +479,9 @@ OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
 		return nil, 0, err
 	}
 	if err := r.hydrateMembershipAllowedGroups(ctx, items); err != nil {
+		return nil, 0, err
+	}
+	if err := r.hydrateMembershipGroupRates(ctx, items); err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil
@@ -762,6 +814,11 @@ LIMIT 1`
 		return nil, err
 	}
 	out.AllowedGroupIDs = groups[out.TenantID]
+	rates, err := r.GetTenantGroupRates(ctx, []int64{out.TenantID})
+	if err != nil {
+		return nil, err
+	}
+	out.GroupRates = rates[out.TenantID]
 	out.SelfRechargeBlocked = true
 	out.SelfRedeemBlocked = true
 	return &out, nil
@@ -779,8 +836,13 @@ func (r *enterpriseRepository) hydrateTenantAllowedGroups(ctx context.Context, t
 	if err != nil {
 		return err
 	}
+	rates, err := r.GetTenantGroupRates(ctx, ids)
+	if err != nil {
+		return err
+	}
 	for i := range tenants {
 		tenants[i].AllowedGroupIDs = groups[tenants[i].ID]
+		tenants[i].GroupRates = rates[tenants[i].ID]
 	}
 	return nil
 }
@@ -816,6 +878,45 @@ ORDER BY user_id, group_id
 	}
 	for i := range memberships {
 		memberships[i].AllowedGroups = groupMap[memberships[i].UserID]
+	}
+	return nil
+}
+
+func (r *enterpriseRepository) hydrateMembershipGroupRates(ctx context.Context, memberships []service.EnterpriseMembership) error {
+	if len(memberships) == 0 {
+		return nil
+	}
+	userIDs := make([]int64, 0, len(memberships))
+	for i := range memberships {
+		userIDs = append(userIDs, memberships[i].UserID)
+	}
+	rows, err := r.exec(ctx).QueryContext(ctx, `
+SELECT user_id, group_id, rate_multiplier
+FROM user_group_rate_multipliers
+WHERE user_id = ANY($1) AND rate_multiplier IS NOT NULL
+ORDER BY user_id, group_id
+`, pq.Array(uniquePositiveInt64s(userIDs)))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	rateMap := make(map[int64]map[int64]float64)
+	for rows.Next() {
+		var userID, groupID int64
+		var rate float64
+		if err := rows.Scan(&userID, &groupID, &rate); err != nil {
+			return err
+		}
+		if rateMap[userID] == nil {
+			rateMap[userID] = make(map[int64]float64)
+		}
+		rateMap[userID][groupID] = rate
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range memberships {
+		memberships[i].GroupRates = rateMap[memberships[i].UserID]
 	}
 	return nil
 }

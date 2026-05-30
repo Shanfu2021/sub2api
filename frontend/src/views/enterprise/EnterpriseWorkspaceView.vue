@@ -35,9 +35,20 @@
             <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">{{ me.enterprise.member_note || '无成员备注' }}</div>
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-            <div class="text-xs text-gray-500 dark:text-dark-300">企业倍率</div>
-            <div class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">{{ me.enterprise.pricing_factor.toFixed(2) }}x</div>
-            <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">下限 {{ me.enterprise.pricing_floor_factor.toFixed(2) }}x</div>
+            <div class="text-xs text-gray-500 dark:text-dark-300">企业分组底价</div>
+            <div class="mt-2 flex flex-wrap gap-1">
+              <span
+                v-for="groupID in enterpriseGroupIDs"
+                :key="groupID"
+                class="rounded bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+              >
+                #{{ groupID }} {{ tenantGroupFloor(groupID).toFixed(3) }}x
+              </span>
+              <span v-if="!enterpriseGroupIDs.length" class="text-sm text-gray-500 dark:text-dark-300">
+                {{ me.enterprise.pricing_floor_factor.toFixed(2) }}x
+              </span>
+            </div>
+            <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">底价作为默认值；成员倍率可按活动需要单独上调或下调</div>
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
             <div class="text-xs text-gray-500 dark:text-dark-300">企业额度池</div>
@@ -68,9 +79,32 @@
                     <input v-model="memberForm.initial_balance" class="input" type="number" min="0" step="0.01" placeholder="初始额度" />
                   </div>
                   <div class="grid grid-cols-2 gap-2">
-                    <input v-model="memberForm.pricing_factor" class="input" type="number" min="0.01" step="0.01" placeholder="倍率" />
+                    <input
+                      v-model="memberForm.pricing_factor"
+                      class="input"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="兜底倍率"
+                    />
                     <div class="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-300">
                       成员自动继承企业可用分组
+                    </div>
+                  </div>
+                  <div v-if="enterpriseGroupIDs.length" class="rounded-lg border border-gray-100 p-2 dark:border-dark-700">
+                    <div class="mb-2 text-xs font-medium text-gray-600 dark:text-dark-200">成员分组倍率</div>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <label v-for="groupID in enterpriseGroupIDs" :key="groupID" class="text-xs text-gray-500 dark:text-dark-300">
+                        <span class="mb-1 block">#{{ groupID }}，底价 {{ tenantGroupFloor(groupID).toFixed(3) }}</span>
+                        <input
+                          v-model.number="memberForm.group_rates[groupID]"
+                          class="input h-9 text-xs"
+                          type="number"
+                          min="0.01"
+                          step="0.001"
+                          :placeholder="`默认 ${tenantGroupFloor(groupID).toFixed(3)}`"
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -100,7 +134,7 @@
                     <thead class="text-left text-gray-500 dark:text-dark-300">
                       <tr>
                         <th class="py-2">用户</th>
-                        <th class="py-2">倍率</th>
+                        <th class="py-2">分组倍率</th>
                         <th class="py-2">余额</th>
                         <th class="py-2">操作</th>
                       </tr>
@@ -116,7 +150,20 @@
                           />
                         </td>
                         <td class="py-2">
-                          <input v-model.number="member.pricing_factor" class="input h-9 w-24" type="number" min="0.01" step="0.01" />
+                          <div v-if="enterpriseGroupIDs.length" class="grid min-w-[220px] gap-1">
+                            <label v-for="groupID in enterpriseGroupIDs" :key="groupID" class="flex items-center gap-2 text-xs text-gray-500 dark:text-dark-300">
+                              <span class="w-14 shrink-0">#{{ groupID }}</span>
+                              <input
+                                v-model.number="member.group_rates[groupID]"
+                                class="input h-8 w-24 text-xs"
+                                type="number"
+                                min="0.01"
+                                step="0.001"
+                                :placeholder="tenantGroupFloor(groupID).toFixed(3)"
+                              />
+                            </label>
+                          </div>
+                          <input v-else v-model.number="member.pricing_factor" class="input h-9 w-24" type="number" min="0.01" step="0.01" />
                         </td>
                         <td class="py-2">{{ member.user_balance.toFixed(2) }}</td>
                         <td class="py-2">
@@ -179,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import enterpriseAPI, { type EnterpriseMeResponse } from '@/api/enterprise'
 import type { EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership } from '@/types'
@@ -209,6 +256,7 @@ const memberForm = reactive({
   concurrency: 0,
   initial_balance: 0,
   pricing_factor: 1,
+  group_rates: {} as Record<number, number | undefined>,
 })
 
 const inviteForm = reactive({
@@ -233,6 +281,38 @@ function formatDate(value?: string | null) {
   return new Date(value).toLocaleString()
 }
 
+const enterpriseGroupIDs = computed(() => {
+  const ids = new Set<number>()
+  for (const id of me.tenant?.allowed_group_ids || me.enterprise?.allowed_group_ids || []) {
+    if (Number(id) > 0) ids.add(Number(id))
+  }
+  for (const key of Object.keys(me.tenant?.group_rates || me.enterprise?.group_rates || {})) {
+    const id = Number(key)
+    if (id > 0) ids.add(id)
+  }
+  return [...ids].sort((a, b) => a - b)
+})
+
+function tenantGroupFloor(groupID: number): number {
+  const value = me.tenant?.group_rates?.[groupID] ?? me.enterprise?.group_rates?.[groupID]
+  if (Number.isFinite(Number(value)) && Number(value) > 0) {
+    return Number(value)
+  }
+  return Number(me.enterprise?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1)
+}
+
+function buildGroupRatesPayload(rates: Record<number, number | undefined>): Record<number, number | null> | undefined {
+  if (!enterpriseGroupIDs.value.length) {
+    return undefined
+  }
+  const payload: Record<number, number | null> = {}
+  for (const groupID of enterpriseGroupIDs.value) {
+    const value = Number(rates[groupID])
+    payload[groupID] = Number.isFinite(value) && value > 0 ? value : null
+  }
+  return payload
+}
+
 async function loadMe() {
   const data = await enterpriseAPI.getMe()
   me.enterprise = data.enterprise || null
@@ -242,7 +322,10 @@ async function loadMe() {
 async function loadMembers() {
   if (me.enterprise?.member_role !== 'manager') return
   const res = await enterpriseAPI.listMembers(1, 100, { search: memberSearch.value.trim() || undefined })
-  members.value = res.items
+  members.value = res.items.map((member) => ({
+    ...member,
+    group_rates: { ...(member.group_rates || {}) },
+  }))
 }
 
 async function loadInviteCodes() {
@@ -295,6 +378,7 @@ async function submitCreateMember() {
       member_note: memberForm.member_note.trim() || undefined,
       pricing_factor: Number(memberForm.pricing_factor) || 1,
       pricing_scope: 'balance',
+      group_rates: buildGroupRatesPayload(memberForm.group_rates),
       initial_balance: Number(memberForm.initial_balance) || 0,
     })
     showSuccess('企业成员已创建')
@@ -306,6 +390,7 @@ async function submitCreateMember() {
     memberForm.concurrency = 0
     memberForm.initial_balance = 0
     memberForm.pricing_factor = 1
+    memberForm.group_rates = {}
     await Promise.all([loadMembers(), loadLedger(), loadMe()])
   } catch (error) {
     showError(error)
@@ -343,6 +428,7 @@ async function saveMember(member: EnterpriseMembership) {
       member_note: member.member_note || undefined,
       pricing_factor: Number(member.pricing_factor) || 1,
       pricing_scope: 'balance',
+      group_rates: buildGroupRatesPayload(member.group_rates || {}),
     })
     showSuccess('成员信息已保存')
     await loadMembers()

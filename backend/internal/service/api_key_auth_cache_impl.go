@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 15 // v15: enterprise boundary checks + custom models_list_config
+const apiKeyAuthSnapshotVersion = 16 // v16: enterprise per-group pricing defaults
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

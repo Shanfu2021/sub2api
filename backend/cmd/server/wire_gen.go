@@ -74,7 +74,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	affiliateRepository := repository.NewAffiliateRepository(client, db)
 	affiliateService := service.NewAffiliateService(affiliateRepository, settingService, apiKeyAuthCacheInvalidator, billingCacheService)
 	enterpriseRepository := repository.NewEnterpriseRepository(client, db)
-	enterpriseService := service.NewEnterpriseService(enterpriseRepository, userRepository, apiKeyAuthCacheInvalidator, billingCacheService, client, settingService)
+	enterpriseService := service.NewEnterpriseService(enterpriseRepository, userRepository, userGroupRateRepository, apiKeyAuthCacheInvalidator, billingCacheService, client, settingService)
 	authService := service.NewAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService, subscriptionService, affiliateService, enterpriseService, serviceUserPlatformQuotaRepository)
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)
 	redeemCache := repository.NewRedeemCache(redisClient)

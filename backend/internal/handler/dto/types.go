@@ -53,9 +53,10 @@ type EnterpriseContext struct {
 	PricingFactor       float64 `json:"pricing_factor"`
 	PricingScope        string  `json:"pricing_scope"`
 	PricingFloorFactor  float64 `json:"pricing_floor_factor"`
-	AllowedGroupIDs     []int64 `json:"allowed_group_ids,omitempty"`
-	SelfRechargeBlocked bool    `json:"self_recharge_blocked"`
-	SelfRedeemBlocked   bool    `json:"self_redeem_blocked"`
+	AllowedGroupIDs     []int64           `json:"allowed_group_ids,omitempty"`
+	GroupRates          map[int64]float64 `json:"group_rates,omitempty"`
+	SelfRechargeBlocked bool              `json:"self_recharge_blocked"`
+	SelfRedeemBlocked   bool              `json:"self_redeem_blocked"`
 }
 
 // AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。

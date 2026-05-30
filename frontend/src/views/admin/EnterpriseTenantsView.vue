@@ -84,7 +84,14 @@
               <div class="grid gap-3 md:grid-cols-2">
                 <input v-model="tenantForm.name" class="input" placeholder="企业名称" />
                 <input v-model="tenantForm.code" class="input" placeholder="企业编码，留空自动生成" :disabled="!!selectedTenant?.id" />
-                <input v-model="tenantForm.pricing_floor_factor" class="input" type="number" min="0.01" step="0.01" placeholder="最低倍率" />
+                <input
+                  v-model="tenantForm.pricing_floor_factor"
+                  class="input"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="兜底底价，未配置分组底价时使用"
+                />
                 <select v-model="tenantForm.pricing_scope" class="input">
                   <option value="balance">仅余额</option>
                 </select>
@@ -113,6 +120,18 @@
                       </span>
                       <span class="mt-1 block text-gray-500 dark:text-dark-300">
                         {{ group.platform }} · {{ group.subscription_type === 'subscription' ? '订阅' : '余额' }} · {{ group.is_exclusive ? '专属' : '公开' }}
+                      </span>
+                      <span v-if="tenantForm.allowed_group_ids.includes(group.id)" class="mt-2 flex items-center gap-2">
+                        <span class="shrink-0 text-gray-500 dark:text-dark-300">企业底价</span>
+                        <input
+                          v-model.number="tenantForm.group_rates[group.id]"
+                          class="input h-8 min-w-0 flex-1 text-xs"
+                          type="number"
+                          min="0.01"
+                          step="0.001"
+                          :placeholder="`默认 ${tenantForm.pricing_floor_factor || 1}`"
+                          @click.stop
+                        />
                       </span>
                     </span>
                   </label>
@@ -189,7 +208,30 @@
                       <option value="member">成员</option>
                       <option value="manager">管理员</option>
                     </select>
-                    <input v-model="bindForm.pricing_factor" class="input" type="number" min="0.01" step="0.01" placeholder="倍率" />
+                    <input
+                      v-model="bindForm.pricing_factor"
+                      class="input"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="兜底倍率"
+                    />
+                  </div>
+                  <div v-if="selectedGroupLabels.length" class="rounded-lg border border-gray-100 p-2 dark:border-dark-700">
+                    <div class="mb-2 text-xs font-medium text-gray-600 dark:text-dark-200">成员分组倍率</div>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <label v-for="group in selectedGroupLabels" :key="group.id" class="text-xs text-gray-500 dark:text-dark-300">
+                        <span class="mb-1 block truncate">#{{ group.id }} {{ group.name }}，底价 {{ tenantGroupFloor(group.id).toFixed(3) }}</span>
+                        <input
+                          v-model.number="bindForm.group_rates[group.id]"
+                          class="input h-9 text-xs"
+                          type="number"
+                          min="0.01"
+                          step="0.001"
+                          :placeholder="`默认 ${tenantGroupFloor(group.id).toFixed(3)}`"
+                        />
+                      </label>
+                    </div>
                   </div>
                   <textarea v-model="bindForm.member_note" class="input min-h-[72px]" placeholder="成员备注"></textarea>
                 </div>
@@ -209,7 +251,7 @@
                       <tr>
                         <th class="py-2">用户</th>
                         <th class="py-2">角色</th>
-                        <th class="py-2">倍率</th>
+                        <th class="py-2">分组倍率</th>
                         <th class="py-2">余额</th>
                         <th class="py-2">操作</th>
                       </tr>
@@ -221,7 +263,18 @@
                           <div class="text-xs text-gray-500 dark:text-dark-300">{{ member.member_note || '-' }}</div>
                         </td>
                         <td class="py-2">{{ member.member_role }}</td>
-                        <td class="py-2">{{ member.pricing_factor.toFixed(2) }}x</td>
+                        <td class="py-2">
+                          <div v-if="member.group_rates && Object.keys(member.group_rates).length" class="flex flex-wrap gap-1">
+                            <span
+                              v-for="(rate, groupID) in member.group_rates"
+                              :key="groupID"
+                              class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-dark-200"
+                            >
+                              #{{ groupID }} {{ Number(rate).toFixed(3) }}x
+                            </span>
+                          </div>
+                          <span v-else class="text-xs text-gray-400">默认企业底价</span>
+                        </td>
                         <td class="py-2">{{ member.user_balance.toFixed(2) }}</td>
                         <td class="py-2">
                           <button class="btn btn-secondary btn-sm" @click="removeMember(member)">移除</button>
@@ -336,6 +389,7 @@ const tenantForm = reactive({
   pricing_floor_factor: 1,
   pricing_scope: 'balance',
   allowed_group_ids: [] as number[],
+  group_rates: {} as Record<number, number | undefined>,
 })
 
 const quotaForm = reactive({
@@ -349,6 +403,7 @@ const bindForm = reactive({
   member_role: 'member',
   member_note: '',
   pricing_factor: 1,
+  group_rates: {} as Record<number, number | undefined>,
 })
 
 const inviteForm = reactive({
@@ -409,6 +464,7 @@ function resetTenantForm() {
   tenantForm.pricing_floor_factor = 1
   tenantForm.pricing_scope = 'balance'
   tenantForm.allowed_group_ids = []
+  tenantForm.group_rates = {}
   selectedTenant.value = null
 }
 
@@ -421,6 +477,39 @@ function fillTenantForm(item: EnterpriseTenant) {
   tenantForm.pricing_floor_factor = item.pricing_floor_factor
   tenantForm.pricing_scope = item.pricing_scope || 'balance'
   tenantForm.allowed_group_ids = [...(item.allowed_group_ids || [])]
+  tenantForm.group_rates = { ...(item.group_rates || {}) }
+}
+
+function buildGroupRatesPayload(groupIDs: number[], rates: Record<number, number | undefined>): Record<number, number> {
+  const payload: Record<number, number> = {}
+  for (const groupID of groupIDs) {
+    const value = Number(rates[groupID])
+    if (Number.isFinite(value) && value > 0) {
+      payload[groupID] = value
+    }
+  }
+  return payload
+}
+
+function buildMemberGroupRatesPayload(groupIDs: number[], rates: Record<number, number | undefined>): Record<number, number | null> | undefined {
+  if (!groupIDs.length) {
+    return undefined
+  }
+  const payload: Record<number, number | null> = {}
+  for (const groupID of groupIDs) {
+    const value = Number(rates[groupID])
+    payload[groupID] = Number.isFinite(value) && value > 0 ? value : null
+  }
+  return payload
+}
+
+function tenantGroupFloor(groupID: number): number {
+  const selected = selectedTenant.value
+  const value = selected?.group_rates?.[groupID]
+  if (Number.isFinite(Number(value)) && Number(value) > 0) {
+    return Number(value)
+  }
+  return Number(selected?.pricing_floor_factor || tenantForm.pricing_floor_factor || 1)
 }
 
 function formatDate(value?: string | null) {
@@ -531,6 +620,7 @@ async function submitTenant() {
       pricing_floor_factor: number
       pricing_scope: string
       allowed_group_ids: number[]
+      group_rates: Record<number, number>
     } = {
       name: tenantForm.name.trim(),
       status: tenantForm.status,
@@ -539,6 +629,7 @@ async function submitTenant() {
       pricing_floor_factor: Number(tenantForm.pricing_floor_factor) || 1,
       pricing_scope: tenantForm.pricing_scope,
       allowed_group_ids: [...tenantForm.allowed_group_ids],
+      group_rates: buildGroupRatesPayload(tenantForm.allowed_group_ids, tenantForm.group_rates),
     }
     if (code) {
       payload.code = code
@@ -588,6 +679,7 @@ async function submitBindMember() {
       member_note: bindForm.member_note,
       pricing_factor: Number(bindForm.pricing_factor) || 1,
       pricing_scope: 'balance',
+      group_rates: buildMemberGroupRatesPayload(selectedTenant.value.allowed_group_ids || [], bindForm.group_rates),
       joined_via: 'manual_bind',
       joined_source: 'admin_bind',
     })
@@ -595,6 +687,7 @@ async function submitBindMember() {
     bindForm.user_id = 0
     bindForm.member_note = ''
     bindForm.pricing_factor = 1
+    bindForm.group_rates = {}
     await Promise.all([loadMembers(), loadTenants()])
   } catch (error) {
     showError(error)

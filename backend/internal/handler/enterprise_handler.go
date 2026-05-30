@@ -27,20 +27,22 @@ type enterpriseCreateMemberRequest struct {
 	Notes          string  `json:"notes"`
 	Concurrency    int     `json:"concurrency"`
 	RPMLimit       *int    `json:"rpm_limit"`
-	AllowedGroups  []int64 `json:"allowed_groups"`
-	MemberNote     string  `json:"member_note"`
-	PricingFactor  float64 `json:"pricing_factor"`
-	PricingScope   string  `json:"pricing_scope"`
-	InitialBalance float64 `json:"initial_balance"`
+	AllowedGroups  []int64            `json:"allowed_groups"`
+	MemberNote     string             `json:"member_note"`
+	PricingFactor  float64            `json:"pricing_factor"`
+	PricingScope   string             `json:"pricing_scope"`
+	GroupRates     map[int64]*float64 `json:"group_rates"`
+	InitialBalance float64            `json:"initial_balance"`
 }
 
 type enterpriseUpdateMemberRequest struct {
-	MemberRole    *string  `json:"member_role"`
-	MemberNote    *string  `json:"member_note"`
-	PricingFactor *float64 `json:"pricing_factor"`
-	PricingScope  *string  `json:"pricing_scope"`
-	Status        *string  `json:"status"`
-	AllowedGroups *[]int64 `json:"allowed_groups"`
+	MemberRole    *string            `json:"member_role"`
+	MemberNote    *string            `json:"member_note"`
+	PricingFactor *float64           `json:"pricing_factor"`
+	PricingScope  *string            `json:"pricing_scope"`
+	Status        *string            `json:"status"`
+	AllowedGroups *[]int64           `json:"allowed_groups"`
+	GroupRates    map[int64]*float64 `json:"group_rates"`
 }
 
 type enterpriseAdjustBalanceRequest struct {
@@ -153,6 +155,7 @@ func (h *EnterpriseHandler) CreateMember(c *gin.Context) {
 		MemberNote:     req.MemberNote,
 		PricingFactor:  req.PricingFactor,
 		PricingScope:   req.PricingScope,
+		GroupRates:     req.GroupRates,
 		InitialBalance: req.InitialBalance,
 	})
 	if err != nil {
@@ -187,6 +190,7 @@ func (h *EnterpriseHandler) UpdateMember(c *gin.Context) {
 		PricingScope:  req.PricingScope,
 		Status:        req.Status,
 		AllowedGroups: req.AllowedGroups,
+		GroupRates:    req.GroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

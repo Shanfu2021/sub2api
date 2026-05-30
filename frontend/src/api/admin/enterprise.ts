@@ -52,7 +52,7 @@ export async function listMembers(
 
 export async function bindMember(
   tenantId: number,
-  payload: { user_id: number; member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; joined_via?: string; joined_source?: string }
+  payload: { user_id: number; member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; group_rates?: Record<number, number | null>; joined_via?: string; joined_source?: string }
 ): Promise<EnterpriseMembership> {
   const { data } = await apiClient.post<EnterpriseMembership>(`/admin/enterprise/tenants/${tenantId}/members`, payload)
   return data
@@ -61,7 +61,7 @@ export async function bindMember(
 export async function updateMember(
   tenantId: number,
   userId: number,
-  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; status?: string; allowed_groups?: number[] }
+  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; group_rates?: Record<number, number | null>; status?: string; allowed_groups?: number[] }
 ): Promise<EnterpriseMembership> {
   const { data } = await apiClient.put<EnterpriseMembership>(`/admin/enterprise/tenants/${tenantId}/members/${userId}`, payload)
   return data

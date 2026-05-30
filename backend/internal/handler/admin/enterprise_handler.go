@@ -27,7 +27,8 @@ type createEnterpriseTenantRequest struct {
 	PortalHost         string  `json:"portal_host"`
 	PricingFloorFactor float64 `json:"pricing_floor_factor"`
 	PricingScope       string  `json:"pricing_scope"`
-	AllowedGroupIDs    []int64 `json:"allowed_group_ids"`
+	AllowedGroupIDs    []int64            `json:"allowed_group_ids"`
+	GroupRates         map[int64]*float64 `json:"group_rates"`
 }
 
 type updateEnterpriseTenantRequest struct {
@@ -37,7 +38,8 @@ type updateEnterpriseTenantRequest struct {
 	PortalHost         *string  `json:"portal_host"`
 	PricingFloorFactor *float64 `json:"pricing_floor_factor"`
 	PricingScope       *string  `json:"pricing_scope"`
-	AllowedGroupIDs    *[]int64 `json:"allowed_group_ids"`
+	AllowedGroupIDs    *[]int64           `json:"allowed_group_ids"`
+	GroupRates         map[int64]*float64 `json:"group_rates"`
 }
 
 type adjustEnterpriseQuotaRequest struct {
@@ -47,22 +49,24 @@ type adjustEnterpriseQuotaRequest struct {
 }
 
 type bindEnterpriseMemberRequest struct {
-	UserID        int64   `json:"user_id" binding:"required,gt=0"`
-	MemberRole    string  `json:"member_role"`
-	MemberNote    string  `json:"member_note"`
-	PricingFactor float64 `json:"pricing_factor"`
-	PricingScope  string  `json:"pricing_scope"`
-	JoinedVia     string  `json:"joined_via"`
-	JoinedSource  string  `json:"joined_source"`
+	UserID        int64              `json:"user_id" binding:"required,gt=0"`
+	MemberRole    string             `json:"member_role"`
+	MemberNote    string             `json:"member_note"`
+	PricingFactor float64            `json:"pricing_factor"`
+	PricingScope  string             `json:"pricing_scope"`
+	GroupRates    map[int64]*float64 `json:"group_rates"`
+	JoinedVia     string             `json:"joined_via"`
+	JoinedSource  string             `json:"joined_source"`
 }
 
 type updateEnterpriseMemberRequest struct {
-	MemberRole    *string  `json:"member_role"`
-	MemberNote    *string  `json:"member_note"`
-	PricingFactor *float64 `json:"pricing_factor"`
-	PricingScope  *string  `json:"pricing_scope"`
-	Status        *string  `json:"status"`
-	AllowedGroups *[]int64 `json:"allowed_groups"`
+	MemberRole    *string            `json:"member_role"`
+	MemberNote    *string            `json:"member_note"`
+	PricingFactor *float64           `json:"pricing_factor"`
+	PricingScope  *string            `json:"pricing_scope"`
+	Status        *string            `json:"status"`
+	AllowedGroups *[]int64           `json:"allowed_groups"`
+	GroupRates    map[int64]*float64 `json:"group_rates"`
 }
 
 type createEnterpriseInviteCodeRequest struct {
@@ -108,6 +112,7 @@ func (h *EnterpriseHandler) CreateTenant(c *gin.Context) {
 		PricingFloorFactor: req.PricingFloorFactor,
 		PricingScope:       req.PricingScope,
 		AllowedGroupIDs:    req.AllowedGroupIDs,
+		GroupRates:         req.GroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -148,6 +153,7 @@ func (h *EnterpriseHandler) UpdateTenant(c *gin.Context) {
 		PricingFloorFactor: req.PricingFloorFactor,
 		PricingScope:       req.PricingScope,
 		AllowedGroupIDs:    req.AllowedGroupIDs,
+		GroupRates:         req.GroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -214,6 +220,7 @@ func (h *EnterpriseHandler) BindMember(c *gin.Context) {
 		MemberNote:    req.MemberNote,
 		PricingFactor: req.PricingFactor,
 		PricingScope:  req.PricingScope,
+		GroupRates:    req.GroupRates,
 		JoinedVia:     req.JoinedVia,
 		JoinedSource:  req.JoinedSource,
 	})
@@ -246,6 +253,7 @@ func (h *EnterpriseHandler) UpdateMember(c *gin.Context) {
 		PricingScope:  req.PricingScope,
 		Status:        req.Status,
 		AllowedGroups: req.AllowedGroups,
+		GroupRates:    req.GroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

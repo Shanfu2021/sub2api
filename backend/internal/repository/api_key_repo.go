@@ -801,7 +801,7 @@ LIMIT 1
 	out.SelfRedeemBlocked = true
 
 	groupRows, err := client.QueryContext(ctx, `
-SELECT group_id
+SELECT group_id, pricing_floor_multiplier
 FROM enterprise_tenant_groups
 WHERE tenant_id = $1
 ORDER BY group_id
@@ -812,10 +812,17 @@ ORDER BY group_id
 	defer func() { _ = groupRows.Close() }()
 	for groupRows.Next() {
 		var groupID int64
-		if err := groupRows.Scan(&groupID); err != nil {
+		var rate sql.NullFloat64
+		if err := groupRows.Scan(&groupID, &rate); err != nil {
 			return err
 		}
 		out.AllowedGroupIDs = append(out.AllowedGroupIDs, groupID)
+		if rate.Valid {
+			if out.GroupRates == nil {
+				out.GroupRates = make(map[int64]float64)
+			}
+			out.GroupRates[groupID] = service.NormalizePricingDiscountFactorForRepo(rate.Float64)
+		}
 	}
 	if err := groupRows.Err(); err != nil {
 		return err

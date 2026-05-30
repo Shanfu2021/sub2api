@@ -5472,6 +5472,8 @@ export default {
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',
         invitationCodeHint: 'When enabled, users must enter a valid invitation code to register',
+        userInviteRegistration: 'Allow User Invite Codes',
+        userInviteRegistrationHint: 'When enabled, regular user referral codes can pass invitation-code registration (affiliate referrals must also be enabled); when disabled, only admin or enterprise invite codes can register',
         passwordReset: 'Password Reset',
         passwordResetHint: 'Allow users to reset their password via email',
         frontendUrl: 'Frontend URL',
