@@ -7,10 +7,14 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/robfig/cron/v3"
 )
 
 const scheduledTestDefaultMaxWorkers = 10
+const autoHealthProbeMaxWorkers = 1
+const autoHealthProbeMaxPerTick = 2
+const autoHealthScanPageSize = 100
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
@@ -23,6 +27,9 @@ type ScheduledTestRunnerService struct {
 	cron      *cron.Cron
 	startOnce sync.Once
 	stopOnce  sync.Once
+
+	autoHealthMu   sync.Mutex
+	autoHealthPage int
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -95,14 +102,15 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	plans, err := s.planRepo.ListDue(ctx, now)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] ListDue error: %v", err)
-		return
-	}
-	if len(plans) == 0 {
-		return
+	} else if len(plans) > 0 {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] found %d due plans", len(plans))
+		s.runScheduledPlans(ctx, plans)
 	}
 
-	logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] found %d due plans", len(plans))
+	s.runAutoHealthPolicies(ctx, now)
+}
 
+func (s *ScheduledTestRunnerService) runScheduledPlans(ctx context.Context, plans []*ScheduledTestPlan) {
 	sem := make(chan struct{}, scheduledTestDefaultMaxWorkers)
 	var wg sync.WaitGroup
 
@@ -117,6 +125,131 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	}
 
 	wg.Wait()
+}
+
+func (s *ScheduledTestRunnerService) runAutoHealthPolicies(ctx context.Context, now time.Time) {
+	if s == nil || s.rateLimitSvc == nil || s.rateLimitSvc.accountRepo == nil || s.accountTestSvc == nil {
+		return
+	}
+	page := s.nextAutoHealthScanPage()
+	accounts, result, err := s.rateLimitSvc.accountRepo.List(ctx, pagination.PaginationParams{
+		Page:      page,
+		PageSize:  autoHealthScanPageSize,
+		SortBy:    "id",
+		SortOrder: pagination.SortOrderAsc,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[AutoHealth] list accounts error: %v", err)
+		return
+	}
+	if result != nil && (result.Pages <= 0 || page >= result.Pages) {
+		s.resetAutoHealthScanPage()
+	}
+
+	candidates := make([]Account, 0, autoHealthProbeMaxPerTick)
+	for _, account := range accounts {
+		if len(candidates) >= autoHealthProbeMaxPerTick {
+			break
+		}
+		policy := account.AutoHealthPolicy()
+		if !autoHealthNeedsProbe(&account, policy, now) {
+			continue
+		}
+		candidates = append(candidates, account)
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, autoHealthProbeMaxWorkers)
+	var wg sync.WaitGroup
+	for i := range candidates {
+		account := candidates[i]
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			s.runOneAutoHealthProbe(ctx, &account, now)
+		}()
+	}
+	wg.Wait()
+}
+
+func (s *ScheduledTestRunnerService) nextAutoHealthScanPage() int {
+	s.autoHealthMu.Lock()
+	defer s.autoHealthMu.Unlock()
+	if s.autoHealthPage <= 0 {
+		s.autoHealthPage = 1
+	}
+	page := s.autoHealthPage
+	s.autoHealthPage++
+	return page
+}
+
+func (s *ScheduledTestRunnerService) resetAutoHealthScanPage() {
+	s.autoHealthMu.Lock()
+	defer s.autoHealthMu.Unlock()
+	s.autoHealthPage = 1
+}
+
+func autoHealthNeedsProbe(account *Account, policy AccountAutoHealthPolicy, now time.Time) bool {
+	if account == nil || !policy.Enabled {
+		return false
+	}
+	if policy.NextProbeAt != nil && now.Before(*policy.NextProbeAt) {
+		return false
+	}
+	if account.Status == StatusError {
+		return policy.RecoverStatusError
+	}
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		return true
+	}
+	return false
+}
+
+func (s *ScheduledTestRunnerService) runOneAutoHealthProbe(ctx context.Context, account *Account, now time.Time) {
+	if account == nil || s.rateLimitSvc == nil || s.accountTestSvc == nil {
+		return
+	}
+	policy := account.AutoHealthPolicy()
+	if !policy.Enabled {
+		return
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	result, err := s.accountTestSvc.RunTestBackground(probeCtx, account.ID, policy.ProbeModel)
+	nextProbe := now.Add(time.Duration(policy.ProbeIntervalMinutes) * time.Minute)
+	if err != nil {
+		s.rateLimitSvc.setAutoHealthTempUnschedulable(ctx, account, 0, "probe_error", []byte(err.Error()), policy.ErrorPauseMinutes, policy)
+		logger.LegacyPrintf("service.scheduled_test_runner", "[AutoHealth] account=%d probe failed: %v", account.ID, err)
+		return
+	}
+	if result == nil || result.Status != "success" {
+		status := "probe_failed"
+		message := ""
+		if result != nil {
+			message = result.ErrorMessage
+		}
+		s.rateLimitSvc.setAutoHealthTempUnschedulable(ctx, account, 0, status, []byte(message), policy.ErrorPauseMinutes, policy)
+		return
+	}
+	if policy.SlowFirstTokenMs > 0 && result.LatencyMs > int64(policy.SlowFirstTokenMs) {
+		message := "auto health probe is still slow"
+		s.rateLimitSvc.setAutoHealthTempUnschedulable(ctx, account, 0, "slow_probe", []byte(message), policy.SlowPauseMinutes, policy)
+		return
+	}
+	recovery, recoverErr := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, account.ID)
+	if recoverErr != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[AutoHealth] account=%d recovery failed: %v", account.ID, recoverErr)
+		s.rateLimitSvc.persistAutoHealthProbeState(ctx, account.ID, now, nextProbe, "recover_failed")
+		return
+	}
+	_ = recovery
+	s.rateLimitSvc.persistAutoHealthProbeState(ctx, account.ID, now, nextProbe, "success")
+	logger.LegacyPrintf("service.scheduled_test_runner", "[AutoHealth] account=%d recovered by successful probe", account.ID)
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {

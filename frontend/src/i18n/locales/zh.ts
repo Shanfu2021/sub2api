@@ -3361,6 +3361,24 @@ export default {
           unavailableDesc: '服务不可用 - 暂停 30 分钟'
         }
       },
+      autoHealth: {
+        title: '自动健康策略',
+        hint: '自动暂停异常或首 token 过慢的上游账号，并定时探测，恢复后再放回调度。',
+        notice: '默认关闭。开启后，可恢复的上游错误、连接错误和慢首 token 会复用“临时不可调度”状态暂停。',
+        probeModel: '探测模型',
+        probeModelPlaceholder: '留空使用默认测试模型',
+        probeModelHint: '建议填写该账号一定能调用、成本较低的模型。',
+        probeIntervalMinutes: '探测间隔（分钟）',
+        errorPauseMinutes: '错误暂停时间（分钟）',
+        slowFirstTokenMs: '慢首 token 阈值（毫秒）',
+        slowFirstTokenHint: '填 0 表示不因慢首 token 暂停。',
+        slowPauseMinutes: '慢速暂停时间（分钟）',
+        allErrorsTempUnsched: '将可恢复上游错误和请求连接错误视为临时暂停。',
+        recoverStatusError: '允许定时探测成功后恢复 error 状态账号。',
+        lastProbeStatus: '上次探测状态',
+        lastProbeAt: '上次探测时间',
+        nextProbeAt: '下次探测时间'
+      },
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',

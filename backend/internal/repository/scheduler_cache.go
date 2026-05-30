@@ -559,6 +559,14 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"auto_pause_7d_threshold",
 		"auto_pause_5h_disabled",
 		"auto_pause_7d_disabled",
+		"auto_health_enabled",
+		"auto_health_probe_model",
+		"auto_health_probe_interval_minutes",
+		"auto_health_error_pause_minutes",
+		"auto_health_slow_first_token_ms",
+		"auto_health_slow_pause_minutes",
+		"auto_health_recover_status_error",
+		"auto_health_all_errors_temp_unsched",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

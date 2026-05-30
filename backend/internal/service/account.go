@@ -82,6 +82,24 @@ type TempUnschedulableRule struct {
 	Description     string   `json:"description"`
 }
 
+type AccountAutoHealthPolicy struct {
+	Enabled                 bool
+	ProbeModel              string
+	ProbeIntervalMinutes    int
+	ErrorPauseMinutes       int
+	SlowFirstTokenMs        int
+	SlowPauseMinutes        int
+	RecoverStatusError      bool
+	AllErrorsTempUnsched    bool
+	NextProbeAt             *time.Time
+}
+
+const (
+	defaultAutoHealthProbeIntervalMinutes = 10
+	defaultAutoHealthErrorPauseMinutes    = 30
+	defaultAutoHealthSlowFirstTokenMs     = 20000
+)
+
 func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
 }
@@ -331,6 +349,82 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 	}
 
 	return rules
+}
+
+func (a *Account) AutoHealthPolicy() AccountAutoHealthPolicy {
+	policy := AccountAutoHealthPolicy{
+		ProbeIntervalMinutes: defaultAutoHealthProbeIntervalMinutes,
+		ErrorPauseMinutes:    defaultAutoHealthErrorPauseMinutes,
+		SlowFirstTokenMs:     defaultAutoHealthSlowFirstTokenMs,
+		SlowPauseMinutes:     defaultAutoHealthErrorPauseMinutes,
+		RecoverStatusError:   true,
+		AllErrorsTempUnsched: true,
+	}
+	if a == nil || a.Extra == nil {
+		return policy
+	}
+
+	policy.Enabled = parseExtraBool(a.Extra["auto_health_enabled"])
+	policy.ProbeModel = strings.TrimSpace(parseTempUnschedString(a.Extra["auto_health_probe_model"]))
+	if minutes := parseTempUnschedInt(a.Extra["auto_health_probe_interval_minutes"]); minutes > 0 {
+		policy.ProbeIntervalMinutes = minutes
+	}
+	if minutes := parseTempUnschedInt(a.Extra["auto_health_error_pause_minutes"]); minutes > 0 {
+		policy.ErrorPauseMinutes = minutes
+	}
+	if raw, ok := a.Extra["auto_health_slow_first_token_ms"]; ok {
+		if threshold := parseTempUnschedInt(raw); threshold >= 0 {
+			policy.SlowFirstTokenMs = threshold
+		}
+	}
+	if minutes := parseTempUnschedInt(a.Extra["auto_health_slow_pause_minutes"]); minutes > 0 {
+		policy.SlowPauseMinutes = minutes
+	} else {
+		policy.SlowPauseMinutes = policy.ErrorPauseMinutes
+	}
+	if raw, ok := a.Extra["auto_health_recover_status_error"]; ok {
+		policy.RecoverStatusError = parseExtraBool(raw)
+	}
+	if raw, ok := a.Extra["auto_health_all_errors_temp_unsched"]; ok {
+		policy.AllErrorsTempUnsched = parseExtraBool(raw)
+	}
+	if next := parseExtraTime(a.Extra["auto_health_next_probe_at"]); next != nil {
+		policy.NextProbeAt = next
+	}
+	return policy
+}
+
+func parseExtraBool(value any) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "true", "1", "yes", "on":
+			return true
+		}
+	case json.Number:
+		i, _ := v.Int64()
+		return i != 0
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	}
+	return false
+}
+
+func parseExtraTime(value any) *time.Time {
+	s := parseTempUnschedString(value)
+	if s == "" {
+		return nil
+	}
+	if ts, err := time.Parse(time.RFC3339, s); err == nil {
+		return &ts
+	}
+	return nil
 }
 
 func parseTempUnschedString(value any) string {

@@ -1168,6 +1168,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if s.MaybeTempUnscheduleOpenAIRequestError(ctx, account, safeErr) {
+			return nil, s.newOpenAIRequestErrorFailover(account)
+		}
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	if resp.StatusCode >= 400 {

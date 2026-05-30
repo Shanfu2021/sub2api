@@ -3232,6 +3232,24 @@ export default {
           unavailableDesc: 'Unavailable - pause 30 minutes'
         }
       },
+      autoHealth: {
+        title: 'Auto Health Policy',
+        hint: 'Automatically pause unhealthy or slow upstream accounts and probe them periodically before returning them to traffic.',
+        notice: 'Default is off. When enabled, recoverable upstream errors, request connection errors, and slow first-token responses are paused via the existing temp-unschedulable state.',
+        probeModel: 'Probe Model',
+        probeModelPlaceholder: 'Leave empty to use default test model',
+        probeModelHint: 'Use a cheap model that this account can actually call.',
+        probeIntervalMinutes: 'Probe Interval (minutes)',
+        errorPauseMinutes: 'Error Pause (minutes)',
+        slowFirstTokenMs: 'Slow First Token Threshold (ms)',
+        slowFirstTokenHint: 'Set 0 to disable slow first-token pause.',
+        slowPauseMinutes: 'Slow Pause (minutes)',
+        allErrorsTempUnsched: 'Treat recoverable upstream errors and request connection errors as temporary pauses.',
+        recoverStatusError: 'Allow successful probes to recover accounts in error status.',
+        lastProbeStatus: 'Last Probe Status',
+        lastProbeAt: 'Last Probe Time',
+        nextProbeAt: 'Next Probe Time'
+      },
       clearRateLimit: 'Clear Rate Limit',
       resetQuota: 'Reset Quota',
       quotaLimit: 'Quota Limit',

@@ -98,6 +98,9 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if s.MaybeTempUnscheduleOpenAIRequestError(ctx, account, safeErr) {
+			return nil, s.newOpenAIRequestErrorFailover(account)
+		}
 		writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}

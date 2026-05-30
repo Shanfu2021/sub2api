@@ -156,6 +156,10 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
+	if s.tryAutoHealthTempUnschedulable(ctx, account, statusCode, "upstream_error", responseBody) {
+		return true
+	}
+
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
@@ -1826,6 +1830,103 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 
 	slog.Info("account_temp_unschedulable", "account_id", account.ID, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
 	return true
+}
+
+func (s *RateLimitService) MaybeTempUnscheduleAutoHealthRequestError(ctx context.Context, account *Account, message string) bool {
+	return s.tryAutoHealthTempUnschedulable(ctx, account, 0, "request_error", []byte(message))
+}
+
+func (s *RateLimitService) MaybeTempUnscheduleSlowFirstToken(ctx context.Context, account *Account, firstTokenMs *int, model string) bool {
+	if s == nil || account == nil || firstTokenMs == nil {
+		return false
+	}
+	policy := account.AutoHealthPolicy()
+	if !policy.Enabled || policy.SlowFirstTokenMs <= 0 || *firstTokenMs <= policy.SlowFirstTokenMs {
+		return false
+	}
+	message := fmt.Sprintf("auto health slow first token: model=%s first_token_ms=%d threshold_ms=%d", strings.TrimSpace(model), *firstTokenMs, policy.SlowFirstTokenMs)
+	return s.setAutoHealthTempUnschedulable(ctx, account, 0, "slow_first_token", []byte(message), policy.SlowPauseMinutes, policy)
+}
+
+func (s *RateLimitService) tryAutoHealthTempUnschedulable(ctx context.Context, account *Account, statusCode int, kind string, responseBody []byte) bool {
+	if s == nil || account == nil {
+		return false
+	}
+	policy := account.AutoHealthPolicy()
+	if !policy.Enabled || !policy.AllErrorsTempUnsched {
+		return false
+	}
+	if !autoHealthShouldTempUnscheduleStatus(statusCode) {
+		return false
+	}
+	return s.setAutoHealthTempUnschedulable(ctx, account, statusCode, kind, responseBody, policy.ErrorPauseMinutes, policy)
+}
+
+func autoHealthShouldTempUnscheduleStatus(statusCode int) bool {
+	if statusCode == 0 {
+		return true
+	}
+	switch statusCode {
+	case http.StatusUnauthorized,
+		http.StatusPaymentRequired,
+		http.StatusForbidden,
+		http.StatusRequestTimeout,
+		http.StatusConflict,
+		http.StatusTooManyRequests,
+		529:
+		return true
+	default:
+		return statusCode >= 500
+	}
+}
+
+func (s *RateLimitService) setAutoHealthTempUnschedulable(ctx context.Context, account *Account, statusCode int, kind string, responseBody []byte, durationMinutes int, policy AccountAutoHealthPolicy) bool {
+	if s == nil || account == nil || durationMinutes <= 0 {
+		return false
+	}
+	now := time.Now()
+	until := now.Add(time.Duration(durationMinutes) * time.Minute)
+	state := &TempUnschedState{
+		UntilUnix:       until.Unix(),
+		TriggeredAtUnix: now.Unix(),
+		StatusCode:      statusCode,
+		MatchedKeyword:  "auto_health:" + strings.TrimSpace(kind),
+		RuleIndex:       -1,
+		ErrorMessage:    truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes),
+	}
+	reason := strings.TrimSpace(state.ErrorMessage)
+	if raw, err := json.Marshal(state); err == nil {
+		reason = string(raw)
+	}
+
+	s.notifyAccountSchedulingBlocked(account, until, "auto_health_"+strings.TrimSpace(kind))
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+		slog.Warn("auto_health_temp_unsched_set_failed", "account_id", account.ID, "kind", kind, "error", err)
+		return false
+	}
+
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			slog.Warn("auto_health_temp_unsched_cache_set_failed", "account_id", account.ID, "kind", kind, "error", err)
+		}
+	}
+	s.persistAutoHealthProbeState(ctx, account.ID, now, now.Add(time.Duration(policy.ProbeIntervalMinutes)*time.Minute), "paused")
+	slog.Info("account_auto_health_temp_unschedulable", "account_id", account.ID, "until", until, "kind", kind, "status_code", statusCode)
+	return true
+}
+
+func (s *RateLimitService) persistAutoHealthProbeState(ctx context.Context, accountID int64, lastProbeAt time.Time, nextProbeAt time.Time, status string) {
+	if s == nil || s.accountRepo == nil || accountID <= 0 {
+		return
+	}
+	updates := map[string]any{
+		"auto_health_last_probe_at":     lastProbeAt.UTC().Format(time.RFC3339),
+		"auto_health_next_probe_at":     nextProbeAt.UTC().Format(time.RFC3339),
+		"auto_health_last_probe_status": strings.TrimSpace(status),
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
+		slog.Warn("auto_health_probe_state_update_failed", "account_id", accountID, "error", err)
+	}
 }
 
 func truncateTempUnschedMessage(body []byte, maxBytes int) string {

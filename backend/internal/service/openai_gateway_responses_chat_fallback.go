@@ -152,6 +152,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if s.MaybeTempUnscheduleOpenAIRequestError(ctx, account, safeErr) {
+			return nil, s.newOpenAIRequestErrorFailover(account)
+		}
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
 				"type":    "upstream_error",

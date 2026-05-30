@@ -773,6 +773,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if s.MaybeTempUnscheduleOpenAIRequestError(ctx, account, safeErr) && !headerKeepaliveWrote {
+			return nil, s.newOpenAIRequestErrorFailover(account)
+		}
 		if headerKeepaliveWrote {
 			writeOpenAIImagesNonStreamFinalError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 		}

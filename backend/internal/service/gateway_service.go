@@ -678,6 +678,13 @@ func NewGatewayService(
 	return svc
 }
 
+func (s *GatewayService) maybeTempUnscheduleAutoHealthRequestError(ctx context.Context, account *Account, message string) bool {
+	if s == nil || s.rateLimitService == nil {
+		return false
+	}
+	return s.rateLimitService.MaybeTempUnscheduleAutoHealthRequestError(ctx, account, message)
+}
+
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
 func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 	if parsed == nil {
@@ -4576,6 +4583,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			s.maybeTempUnscheduleAutoHealthRequestError(ctx, account, safeErr)
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
@@ -5062,6 +5070,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				_ = resp.Body.Close()
 			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			s.maybeTempUnscheduleAutoHealthRequestError(ctx, account, safeErr)
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
@@ -5849,6 +5858,7 @@ func (s *GatewayService) executeBedrockUpstream(
 				_ = resp.Body.Close()
 			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			s.maybeTempUnscheduleAutoHealthRequestError(ctx, account, safeErr)
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
@@ -9277,7 +9287,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// 发送请求
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
-		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		s.maybeTempUnscheduleAutoHealthRequestError(ctx, account, safeErr)
+		setOpsUpstreamError(c, 0, safeErr, "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
@@ -9390,7 +9402,9 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
-		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		s.maybeTempUnscheduleAutoHealthRequestError(ctx, account, safeErr)
+		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,
@@ -9399,7 +9413,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 			Passthrough:        true,
 			Kind:               "request_error",
-			Message:            sanitizeUpstreamErrorMessage(err.Error()),
+			Message:            safeErr,
 		})
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)

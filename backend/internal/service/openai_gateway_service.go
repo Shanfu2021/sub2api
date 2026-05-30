@@ -3134,6 +3134,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
+			if s.MaybeTempUnscheduleOpenAIRequestError(ctx, account, safeErr) {
+				return nil, s.newOpenAIRequestErrorFailover(account)
+			}
 			c.JSON(http.StatusBadGateway, gin.H{
 				"error": gin.H{
 					"type":    "upstream_error",
@@ -3444,6 +3447,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if s.MaybeTempUnscheduleOpenAIRequestError(ctx, account, safeErr) {
+			return nil, s.newOpenAIRequestErrorFailover(account)
+		}
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
 				"type":    "upstream_error",

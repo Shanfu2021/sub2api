@@ -2050,6 +2050,79 @@
         </div>
       </div>
 
+      <!-- Auto Health Policy -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.autoHealth.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.autoHealth.hint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="autoHealthEnabled = !autoHealthEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              autoHealthEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                autoHealthEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <div v-if="autoHealthEnabled" class="space-y-3">
+          <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.autoHealth.notice') }}
+            </p>
+          </div>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.autoHealth.probeModel') }}</label>
+              <input
+                v-model="autoHealthProbeModel"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.autoHealth.probeModelPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.autoHealth.probeModelHint') }}</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.autoHealth.probeIntervalMinutes') }}</label>
+              <input v-model.number="autoHealthProbeIntervalMinutes" type="number" min="1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.autoHealth.errorPauseMinutes') }}</label>
+              <input v-model.number="autoHealthErrorPauseMinutes" type="number" min="1" class="input" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.autoHealth.slowFirstTokenMs') }}</label>
+              <input v-model.number="autoHealthSlowFirstTokenMs" type="number" min="0" class="input" />
+              <p class="input-hint">{{ t('admin.accounts.autoHealth.slowFirstTokenHint') }}</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.autoHealth.slowPauseMinutes') }}</label>
+              <input v-model.number="autoHealthSlowPauseMinutes" type="number" min="1" class="input" />
+            </div>
+          </div>
+          <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="autoHealthAllErrorsTempUnsched" type="checkbox" class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <span>{{ t('admin.accounts.autoHealth.allErrorsTempUnsched') }}</span>
+          </label>
+          <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="autoHealthRecoverStatusError" type="checkbox" class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <span>{{ t('admin.accounts.autoHealth.recoverStatusError') }}</span>
+          </label>
+        </div>
+      </div>
+
       <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
         v-if="form.platform === 'anthropic' || form.platform === 'antigravity'"
@@ -3413,6 +3486,17 @@ const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+const AUTO_HEALTH_DEFAULT_PROBE_INTERVAL_MINUTES = 10
+const AUTO_HEALTH_DEFAULT_ERROR_PAUSE_MINUTES = 30
+const AUTO_HEALTH_DEFAULT_SLOW_FIRST_TOKEN_MS = 20000
+const autoHealthEnabled = ref(false)
+const autoHealthProbeModel = ref('')
+const autoHealthProbeIntervalMinutes = ref(AUTO_HEALTH_DEFAULT_PROBE_INTERVAL_MINUTES)
+const autoHealthErrorPauseMinutes = ref(AUTO_HEALTH_DEFAULT_ERROR_PAUSE_MINUTES)
+const autoHealthSlowFirstTokenMs = ref(AUTO_HEALTH_DEFAULT_SLOW_FIRST_TOKEN_MS)
+const autoHealthSlowPauseMinutes = ref(AUTO_HEALTH_DEFAULT_ERROR_PAUSE_MINUTES)
+const autoHealthRecoverStatusError = ref(true)
+const autoHealthAllErrorsTempUnsched = ref(true)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
   state: quotaNotifyState,
@@ -4082,6 +4166,31 @@ const splitTempUnschedKeywords = (value: string) => {
     .split(/[,;]/)
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
+}
+
+function autoHealthNumber(value: unknown, fallback: number, min = 1) {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num < min) {
+    return fallback
+  }
+  return Math.trunc(num)
+}
+
+function applyAutoHealthConfig(extra: Record<string, unknown>) {
+  if (!autoHealthEnabled.value) {
+    return
+  }
+  extra.auto_health_enabled = true
+  const probeModel = autoHealthProbeModel.value.trim()
+  if (probeModel) {
+    extra.auto_health_probe_model = probeModel
+  }
+  extra.auto_health_probe_interval_minutes = autoHealthNumber(autoHealthProbeIntervalMinutes.value, AUTO_HEALTH_DEFAULT_PROBE_INTERVAL_MINUTES)
+  extra.auto_health_error_pause_minutes = autoHealthNumber(autoHealthErrorPauseMinutes.value, AUTO_HEALTH_DEFAULT_ERROR_PAUSE_MINUTES)
+  extra.auto_health_slow_first_token_ms = autoHealthNumber(autoHealthSlowFirstTokenMs.value, AUTO_HEALTH_DEFAULT_SLOW_FIRST_TOKEN_MS, 0)
+  extra.auto_health_slow_pause_minutes = autoHealthNumber(autoHealthSlowPauseMinutes.value, AUTO_HEALTH_DEFAULT_ERROR_PAUSE_MINUTES)
+  extra.auto_health_recover_status_error = autoHealthRecoverStatusError.value
+  extra.auto_health_all_errors_temp_unsched = autoHealthAllErrorsTempUnsched.value
 }
 
 const needsMixedChannelCheck = (platform: AccountPlatform) => platform === 'antigravity' || platform === 'anthropic'
@@ -4758,6 +4867,11 @@ const createAccountAndFinish = async (
       delete credentials.compact_model_mapping
     }
   }
+  {
+    const healthExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    applyAutoHealthConfig(healthExtra)
+    finalExtra = Object.keys(healthExtra).length > 0 ? healthExtra : undefined
+  }
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
@@ -4825,13 +4939,15 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
+      const finalExtra: Record<string, unknown> = { ...(extra || {}) }
+      applyAutoHealthConfig(finalExtra)
       await adminAPI.accounts.create({
         name: form.name,
         notes: form.notes,
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra,
+        extra: finalExtra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -5029,13 +5145,15 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
+          const finalExtra: Record<string, unknown> = { ...(extra || {}) }
+          applyAutoHealthConfig(finalExtra)
           await adminAPI.accounts.create({
             name: accountName,
             notes: form.notes,
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra,
+            extra: finalExtra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
@@ -5126,6 +5244,8 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
+        const extra: Record<string, unknown> = {}
+        applyAutoHealthConfig(extra)
         // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
         const createPayload = withAntigravityConfirmFlag({
           name: accountName,
@@ -5133,7 +5253,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: {},
+          extra: Object.keys(extra).length > 0 ? extra : undefined,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -5458,6 +5578,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           extra.custom_base_url_enabled = true
           extra.custom_base_url = customBaseUrl.value.trim()
         }
+        applyAutoHealthConfig(extra)
 
         const accountName = keys.length > 1 ? `${form.name} #${i + 1}` : form.name
 
