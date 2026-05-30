@@ -1373,6 +1373,9 @@ func isOpenAIAccountEligibleForRequest(ctx context.Context, account *Account, re
 			"threshold", reason.threshold,
 			"utilization", reason.utilization,
 		)
+		if svc := openAIQuotaAutoPauseServiceFromContext(ctx); svc != nil {
+			svc.persistOpenAIQuotaAutoPause(ctx, account, reason)
+		}
 		return false
 	}
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
@@ -1391,11 +1394,21 @@ type openAIQuotaAutoPauseDecision struct {
 	window      string
 	threshold   float64
 	utilization float64
+	resetAt     *time.Time
 }
 
 func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) (bool, openAIQuotaAutoPauseDecision) {
 	if account == nil || !account.IsOpenAI() {
 		return false, openAIQuotaAutoPauseDecision{}
+	}
+	now := time.Now()
+	if openAIQuotaAutoPauseAwaitingRecoveryProbe(account, now) {
+		threshold, _ := resolveAccountExtraNumber(account.Extra, "auto_pause_quota_threshold", "auto_pause_7d_threshold")
+		utilization, _ := resolveAccountExtraNumber(account.Extra, "auto_pause_quota_utilization", "codex_7d_used_percent")
+		if utilization > 1 {
+			utilization = utilization / 100
+		}
+		return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: clamp01(threshold), utilization: clamp01(utilization)}
 	}
 	// Per-account explicit-disable flags must take precedence over the global default.
 	// Without these, leaving the account threshold blank means "use global default",
@@ -1405,18 +1418,31 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 	disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
 	disabled7d := resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled")
 	threshold5h, threshold7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
-	now := time.Now()
 	if !disabled5h && threshold5h > 0 {
-		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h", now); ok && utilization >= threshold5h {
-			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, utilization: utilization}
+		if utilization, resetAt, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h", now); ok && utilization >= threshold5h {
+			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, utilization: utilization, resetAt: resetAt}
 		}
 	}
 	if !disabled7d && threshold7d > 0 {
-		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d", now); ok && utilization >= threshold7d {
-			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, utilization: utilization}
+		if utilization, resetAt, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d", now); ok && utilization >= threshold7d {
+			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, utilization: utilization, resetAt: resetAt}
 		}
 	}
 	return false, openAIQuotaAutoPauseDecision{}
+}
+
+func openAIQuotaAutoPauseAwaitingRecoveryProbe(account *Account, now time.Time) bool {
+	if account == nil || !account.IsOpenAIOAuth() || !resolveAccountExtraBool(account.Extra, "auto_pause_quota_active") {
+		return false
+	}
+	if strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_window"])) != "7d" {
+		return false
+	}
+	if strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_last_probe_status"])) == "success" {
+		return false
+	}
+	resetAt := openAIQuotaWindowResetAt(account.Extra, "7d", now)
+	return resetAt != nil && !now.Before(*resetAt)
 }
 
 // resolveAccountExtraBool reads a bool-like value from account extra, tolerating
@@ -1510,15 +1536,16 @@ func resolveAccountExtraNumber(extra map[string]any, keys ...string) (float64, b
 // receiving requests, so its snapshot is never refreshed from upstream headers —
 // without this check an old used_percent would keep the account paused forever even
 // after the real window reset.
-func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time.Time) (float64, bool) {
+func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time.Time) (float64, *time.Time, bool) {
 	usedPercent := readOpenAIQuotaUsedPercent(extra, window)
 	if usedPercent <= 0 {
-		return 0, false
+		return 0, nil, false
 	}
-	if openAIQuotaWindowReset(extra, window, now) {
-		return 0, false
+	resetAt := openAIQuotaWindowResetAt(extra, window, now)
+	if resetAt != nil && !now.Before(*resetAt) {
+		return 0, resetAt, false
 	}
-	return usedPercent / 100, true
+	return usedPercent / 100, resetAt, true
 }
 
 // openAIQuotaWindowReset reports whether the Codex usage window's reset time has
@@ -1526,17 +1553,22 @@ func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time
 // timestamp and falls back to codex_<window>_reset_after_seconds anchored at
 // codex_usage_updated_at, mirroring AccountUsageService's window-progress logic.
 func openAIQuotaWindowReset(extra map[string]any, window string, now time.Time) bool {
+	resetAt := openAIQuotaWindowResetAt(extra, window, now)
+	return resetAt != nil && !now.Before(*resetAt)
+}
+
+func openAIQuotaWindowResetAt(extra map[string]any, window string, now time.Time) *time.Time {
 	if len(extra) == 0 {
-		return false
+		return nil
 	}
 	if resetAtRaw, ok := extra["codex_"+window+"_reset_at"]; ok {
 		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
-			return !now.Before(resetAt)
+			return &resetAt
 		}
 	}
 	resetAfter := parseExtraInt(extra["codex_"+window+"_reset_after_seconds"])
 	if resetAfter <= 0 {
-		return false
+		return nil
 	}
 	base := now
 	if updatedRaw, ok := extra["codex_usage_updated_at"]; ok {
@@ -1545,7 +1577,7 @@ func openAIQuotaWindowReset(extra map[string]any, window string, now time.Time) 
 		}
 	}
 	resetAt := base.Add(time.Duration(resetAfter) * time.Second)
-	return !now.Before(resetAt)
+	return &resetAt
 }
 
 func readOpenAIQuotaUsedPercent(extra map[string]any, window string) float64 {
@@ -1559,12 +1591,20 @@ func readOpenAIQuotaUsedPercent(extra map[string]any, window string) float64 {
 }
 
 type openAIQuotaAutoPauseCtxKey struct{}
+type openAIQuotaAutoPauseServiceCtxKey struct{}
 
 func withOpenAIQuotaAutoPauseSettings(ctx context.Context, settings OpsOpenAIAccountQuotaAutoPauseSettings) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, openAIQuotaAutoPauseCtxKey{}, settings)
+}
+
+func withOpenAIQuotaAutoPauseService(ctx context.Context, svc *OpenAIGatewayService) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAIQuotaAutoPauseServiceCtxKey{}, svc)
 }
 
 func openAIQuotaAutoPauseSettingsFromContext(ctx context.Context) OpsOpenAIAccountQuotaAutoPauseSettings {
@@ -1575,11 +1615,73 @@ func openAIQuotaAutoPauseSettingsFromContext(ctx context.Context) OpsOpenAIAccou
 	return settings
 }
 
+func openAIQuotaAutoPauseServiceFromContext(ctx context.Context) *OpenAIGatewayService {
+	if ctx == nil {
+		return nil
+	}
+	svc, _ := ctx.Value(openAIQuotaAutoPauseServiceCtxKey{}).(*OpenAIGatewayService)
+	return svc
+}
+
 func (s *OpenAIGatewayService) withOpenAIQuotaAutoPauseContext(ctx context.Context) context.Context {
-	if s == nil || s.settingService == nil {
+	if s == nil {
+		return ctx
+	}
+	ctx = withOpenAIQuotaAutoPauseService(ctx, s)
+	if s.settingService == nil {
 		return ctx
 	}
 	return withOpenAIQuotaAutoPauseSettings(ctx, s.settingService.GetOpenAIQuotaAutoPauseSettings(ctx))
+}
+
+func (s *OpenAIGatewayService) persistOpenAIQuotaAutoPause(ctx context.Context, account *Account, decision openAIQuotaAutoPauseDecision) {
+	if s == nil || s.accountRepo == nil || account == nil || !account.IsOpenAIOAuth() || decision.window == "" {
+		return
+	}
+	if s.isOpenAIAccountRuntimeBlocked(account) {
+		return
+	}
+	until := decision.resetAt
+	if until == nil || until.IsZero() || !until.After(time.Now()) {
+		return
+	}
+	if decision.window == "7d" {
+		extendedUntil := until.Add(10 * time.Minute)
+		until = &extendedUntil
+	}
+	s.BlockAccountScheduling(account, *until, "quota_auto_pause")
+	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) &&
+		account.TempUnschedulableUntil.After(*until) &&
+		!strings.Contains(account.TempUnschedulableReason, "openai quota auto-pause") {
+		return
+	}
+	existingWindow := strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_window"]))
+	existingReset := strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_reset_at"]))
+	resetAtText := until.UTC().Format(time.RFC3339)
+	if existingWindow == decision.window && existingReset == resetAtText &&
+		account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
+		return
+	}
+
+	reason := fmt.Sprintf("openai quota auto-pause: window=%s utilization=%.2f%% threshold=%.2f%% reset_at=%s",
+		decision.window, decision.utilization*100, decision.threshold*100, resetAtText)
+	stateCtx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
+	if err := s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, *until, reason); err != nil {
+		slog.Warn("openai_quota_auto_pause_set_temp_failed", "account_id", account.ID, "window", decision.window, "error", err)
+		return
+	}
+	updates := map[string]any{
+		"auto_pause_quota_active":      true,
+		"auto_pause_quota_window":      decision.window,
+		"auto_pause_quota_threshold":   decision.threshold,
+		"auto_pause_quota_utilization": decision.utilization,
+		"auto_pause_quota_reset_at":    resetAtText,
+		"auto_pause_quota_paused_at":   time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := s.accountRepo.UpdateExtra(stateCtx, account.ID, updates); err != nil {
+		slog.Warn("openai_quota_auto_pause_extra_failed", "account_id", account.ID, "window", decision.window, "error", err)
+	}
 }
 
 // prioritizeOpenAICompactAccounts re-orders a slice so that accounts with known

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,9 @@ const scheduledTestDefaultMaxWorkers = 10
 const autoHealthProbeMaxWorkers = 1
 const autoHealthProbeMaxPerTick = 2
 const autoHealthScanPageSize = 100
+const openAIQuotaAutoPauseProbeMaxWorkers = 1
+const openAIQuotaAutoPauseProbeMaxPerTick = 2
+const openAIQuotaAutoPauseScanPageSize = 100
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
@@ -30,6 +35,9 @@ type ScheduledTestRunnerService struct {
 
 	autoHealthMu   sync.Mutex
 	autoHealthPage int
+
+	openAIQuotaAutoPauseMu   sync.Mutex
+	openAIQuotaAutoPausePage int
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -108,6 +116,7 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	}
 
 	s.runAutoHealthPolicies(ctx, now)
+	s.runOpenAIQuotaAutoPauseRecoveries(ctx, now)
 }
 
 func (s *ScheduledTestRunnerService) runScheduledPlans(ctx context.Context, plans []*ScheduledTestPlan) {
@@ -191,6 +200,167 @@ func (s *ScheduledTestRunnerService) resetAutoHealthScanPage() {
 	s.autoHealthMu.Lock()
 	defer s.autoHealthMu.Unlock()
 	s.autoHealthPage = 1
+}
+
+func (s *ScheduledTestRunnerService) runOpenAIQuotaAutoPauseRecoveries(ctx context.Context, now time.Time) {
+	if s == nil || s.rateLimitSvc == nil || s.rateLimitSvc.accountRepo == nil || s.accountTestSvc == nil {
+		return
+	}
+	page := s.nextOpenAIQuotaAutoPauseScanPage()
+	accounts, result, err := s.rateLimitSvc.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{
+		Page:      page,
+		PageSize:  openAIQuotaAutoPauseScanPageSize,
+		SortBy:    "id",
+		SortOrder: pagination.SortOrderAsc,
+	}, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "")
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] list accounts error: %v", err)
+		return
+	}
+	if result != nil && (result.Pages <= 0 || page >= result.Pages) {
+		s.resetOpenAIQuotaAutoPauseScanPage()
+	}
+
+	candidates := make([]Account, 0, openAIQuotaAutoPauseProbeMaxPerTick)
+	for _, account := range accounts {
+		if len(candidates) >= openAIQuotaAutoPauseProbeMaxPerTick {
+			break
+		}
+		if !openAIQuotaAutoPauseNeedsRecoveryProbe(&account, now) {
+			continue
+		}
+		candidates = append(candidates, account)
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, openAIQuotaAutoPauseProbeMaxWorkers)
+	var wg sync.WaitGroup
+	for i := range candidates {
+		account := candidates[i]
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			s.runOneOpenAIQuotaAutoPauseRecovery(ctx, &account, now)
+		}()
+	}
+	wg.Wait()
+}
+
+func (s *ScheduledTestRunnerService) nextOpenAIQuotaAutoPauseScanPage() int {
+	s.openAIQuotaAutoPauseMu.Lock()
+	defer s.openAIQuotaAutoPauseMu.Unlock()
+	if s.openAIQuotaAutoPausePage <= 0 {
+		s.openAIQuotaAutoPausePage = 1
+	}
+	page := s.openAIQuotaAutoPausePage
+	s.openAIQuotaAutoPausePage++
+	return page
+}
+
+func (s *ScheduledTestRunnerService) resetOpenAIQuotaAutoPauseScanPage() {
+	s.openAIQuotaAutoPauseMu.Lock()
+	defer s.openAIQuotaAutoPauseMu.Unlock()
+	s.openAIQuotaAutoPausePage = 1
+}
+
+func openAIQuotaAutoPauseNeedsRecoveryProbe(account *Account, now time.Time) bool {
+	if account == nil || !account.IsOpenAIOAuth() || !resolveAccountExtraBool(account.Extra, "auto_pause_quota_active") {
+		return false
+	}
+	if !account.IsActive() || !account.Schedulable {
+		return false
+	}
+	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		return false
+	}
+	if account.TempUnschedulableReason != "" && !strings.Contains(account.TempUnschedulableReason, "openai quota auto-pause") {
+		return false
+	}
+	if strings.TrimSpace(fmt.Sprint(account.Extra["auto_pause_quota_window"])) != "7d" {
+		return false
+	}
+	resetAt := openAIQuotaWindowResetAt(account.Extra, "7d", now)
+	if resetAt == nil || now.Before(*resetAt) {
+		return false
+	}
+	if nextProbe := parseExtraTime(account.Extra["auto_pause_quota_next_probe_at"]); nextProbe != nil && now.Before(*nextProbe) {
+		return false
+	}
+	return true
+}
+
+func (s *ScheduledTestRunnerService) runOneOpenAIQuotaAutoPauseRecovery(ctx context.Context, account *Account, now time.Time) {
+	if account == nil || s.rateLimitSvc == nil || s.accountTestSvc == nil {
+		return
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	result, err := s.accountTestSvc.RunTestBackgroundIgnoringTempUnschedulable(probeCtx, account.ID, "")
+	nextProbe := now.Add(10 * time.Minute)
+	if err != nil || result == nil || result.Status != "success" {
+		status := "probe_failed"
+		message := ""
+		if err != nil {
+			message = err.Error()
+		} else if result != nil {
+			message = result.ErrorMessage
+		}
+		updates := map[string]any{
+			"auto_pause_quota_last_probe_at":     now.UTC().Format(time.RFC3339),
+			"auto_pause_quota_last_probe_status": strings.TrimSpace(status),
+			"auto_pause_quota_last_probe_error":  strings.TrimSpace(message),
+			"auto_pause_quota_next_probe_at":     nextProbe.UTC().Format(time.RFC3339),
+		}
+		if updateErr := s.rateLimitSvc.accountRepo.UpdateExtra(ctx, account.ID, updates); updateErr != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d probe state update failed: %v", account.ID, updateErr)
+		}
+		logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d probe failed: %s", account.ID, message)
+		return
+	}
+
+	latest, latestErr := s.rateLimitSvc.accountRepo.GetByID(ctx, account.ID)
+	if latestErr != nil || latest == nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d reload after probe failed: %v", account.ID, latestErr)
+		return
+	}
+	threshold := 0.95
+	if configured, ok := resolveAccountExtraNumber(latest.Extra, "auto_pause_quota_threshold", "auto_pause_7d_threshold"); ok && configured > 0 {
+		threshold = clamp01(configured)
+	}
+	if utilization, _, ok := resolveOpenAIQuotaUtilization(latest.Extra, "7d", time.Now()); ok && threshold > 0 && utilization >= threshold {
+		updates := map[string]any{
+			"auto_pause_quota_last_probe_at":     now.UTC().Format(time.RFC3339),
+			"auto_pause_quota_last_probe_status": "still_paused",
+			"auto_pause_quota_last_probe_error":  "7d quota is still above threshold after probe",
+			"auto_pause_quota_next_probe_at":     nextProbe.UTC().Format(time.RFC3339),
+		}
+		if updateErr := s.rateLimitSvc.accountRepo.UpdateExtra(ctx, account.ID, updates); updateErr != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d still-paused state update failed: %v", account.ID, updateErr)
+		}
+		return
+	}
+
+	if err := s.rateLimitSvc.ClearTempUnschedulable(ctx, account.ID); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d clear temp unsched failed: %v", account.ID, err)
+		return
+	}
+	updates := map[string]any{
+		"auto_pause_quota_active":            false,
+		"auto_pause_quota_recovered_at":      time.Now().UTC().Format(time.RFC3339),
+		"auto_pause_quota_last_probe_at":     now.UTC().Format(time.RFC3339),
+		"auto_pause_quota_last_probe_status": "success",
+		"auto_pause_quota_next_probe_at":     "",
+		"auto_pause_quota_last_probe_error":  "",
+	}
+	if err := s.rateLimitSvc.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d recovery extra update failed: %v", account.ID, err)
+	}
+	logger.LegacyPrintf("service.scheduled_test_runner", "[OpenAIQuotaAutoPause] account=%d recovered after 7d reset probe", account.ID)
 }
 
 func autoHealthNeedsProbe(account *Account, policy AccountAutoHealthPolicy, now time.Time) bool {

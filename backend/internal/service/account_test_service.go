@@ -1683,11 +1683,23 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
 func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+	return s.runTestBackground(ctx, accountID, modelID, false)
+}
+
+func (s *AccountTestService) RunTestBackgroundIgnoringTempUnschedulable(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+	return s.runTestBackground(ctx, accountID, modelID, true)
+}
+
+func (s *AccountTestService) runTestBackground(ctx context.Context, accountID int64, modelID string, ignoreTempUnschedulable bool) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
 
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
-	ginCtx.Request = (&http.Request{}).WithContext(ctx)
+	req := (&http.Request{}).WithContext(ctx)
+	ginCtx.Request = req
+	if ignoreTempUnschedulable {
+		ginCtx.Set("ignore_temp_unschedulable", true)
+	}
 
 	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
 

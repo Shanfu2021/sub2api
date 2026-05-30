@@ -58,12 +58,14 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_7d_",
 	"passive_usage_",
 	"auto_health_last_",
+	"auto_pause_quota_last_",
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
-	"codex_usage_updated_at":     {},
-	"session_window_utilization": {},
-	"auto_health_next_probe_at":  {},
+	"codex_usage_updated_at":          {},
+	"session_window_utilization":      {},
+	"auto_health_next_probe_at":        {},
+	"auto_pause_quota_next_probe_at":   {},
 }
 
 // NewAccountRepository 创建账户仓储实例。
