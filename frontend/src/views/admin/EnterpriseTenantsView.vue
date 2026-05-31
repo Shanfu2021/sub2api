@@ -156,7 +156,7 @@
                           type="number"
                           min="0.01"
                           step="0.001"
-                          :placeholder="`默认 ${tenantForm.pricing_floor_factor || 1}`"
+                          :placeholder="`默认 ${group.rate_multiplier || 1}`"
                           @click.stop
                         />
                       </span>
@@ -596,6 +596,10 @@ function tenantGroupFloor(groupID: number): number {
   const value = selected?.group_rates?.[groupID]
   if (Number.isFinite(Number(value)) && Number(value) > 0) {
     return Number(value)
+  }
+  const group = groups.value.find((item) => item.id === groupID)
+  if (Number.isFinite(Number(group?.rate_multiplier)) && Number(group?.rate_multiplier) > 0) {
+    return Number(group?.rate_multiplier)
   }
   return Number(selected?.pricing_floor_factor || tenantForm.pricing_floor_factor || 1)
 }

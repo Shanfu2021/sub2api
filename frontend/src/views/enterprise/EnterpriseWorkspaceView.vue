@@ -345,6 +345,10 @@ function tenantGroupFloor(groupID: number): number {
   if (Number.isFinite(Number(value)) && Number(value) > 0) {
     return Number(value)
   }
+  const group = groups.value.find((item) => item.id === groupID)
+  if (Number.isFinite(Number(group?.rate_multiplier)) && Number(group?.rate_multiplier) > 0) {
+    return Number(group?.rate_multiplier)
+  }
   return Number(me.enterprise?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1)
 }
 

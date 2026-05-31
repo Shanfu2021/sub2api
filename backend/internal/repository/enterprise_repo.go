@@ -387,6 +387,7 @@ SELECT g.id,
        COALESCE(g.name, ''),
        COALESCE(g.platform, ''),
        COALESCE(g.subscription_type, ''),
+       COALESCE(g.rate_multiplier::double precision, 1.0),
        COALESCE(g.is_exclusive, false),
        COALESCE(g.status, '')
 FROM enterprise_tenant_groups etg
@@ -406,11 +407,13 @@ ORDER BY g.sort_order ASC, g.id ASC
 			&item.Name,
 			&item.Platform,
 			&item.SubscriptionType,
+			&item.RateMultiplier,
 			&item.IsExclusive,
 			&item.Status,
 		); err != nil {
 			return nil, err
 		}
+		item.RateMultiplier = service.NormalizePricingDiscountFactorForRepo(item.RateMultiplier)
 		items = append(items, item)
 	}
 	return items, rows.Err()

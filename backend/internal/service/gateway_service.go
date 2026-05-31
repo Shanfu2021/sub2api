@@ -8153,7 +8153,7 @@ func enterpriseGroupDefaultRateMultiplier(user *User, group *Group) (float64, bo
 			return normalizeEnterprisePricingFactor(rate), true
 		}
 	}
-	return normalizeEnterprisePricingFactor(user.Enterprise.PricingFloorFactor), true
+	return normalizeEnterprisePricingFactor(group.RateMultiplier), true
 }
 
 func enterprisePlatformRateMultiplier(user *User, group *Group) (float64, bool) {
@@ -8164,6 +8164,9 @@ func enterprisePlatformRateMultiplier(user *User, group *Group) (float64, bool) 
 		if rate, ok := user.Enterprise.GroupRates[group.ID]; ok {
 			return normalizeEnterprisePricingFactor(rate), true
 		}
+	}
+	if group != nil && group.RateMultiplier > 0 {
+		return normalizeEnterprisePricingFactor(group.RateMultiplier), true
 	}
 	return normalizeEnterprisePricingFactor(user.Enterprise.PricingFloorFactor), true
 }

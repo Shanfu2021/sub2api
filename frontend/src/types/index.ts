@@ -94,6 +94,7 @@ export interface EnterpriseGroupSummary {
   name: string
   platform: string
   subscription_type: string
+  rate_multiplier: number
   is_exclusive: boolean
   status: string
 }
