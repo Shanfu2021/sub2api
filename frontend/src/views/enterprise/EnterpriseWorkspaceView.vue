@@ -70,6 +70,50 @@
           <section class="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
             <div class="space-y-4">
               <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                <div class="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-medium text-gray-700 dark:text-dark-200">默认成员售价</div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-dark-300">
+                      这是企业管理员对成员的默认售价。留空或 0 表示按平台给企业配置的企业成本价兜底；单个成员仍可单独覆盖。
+                    </p>
+                  </div>
+                  <button class="btn btn-primary btn-sm" :disabled="submitting" @click="submitPricingDefaults">保存</button>
+                </div>
+                <div class="space-y-3">
+                  <label class="block text-xs text-gray-500 dark:text-dark-300">
+                    <span class="mb-1 block">通用默认倍率</span>
+                    <input
+                      v-model.number="pricingDefaultsForm.member_default_pricing_factor"
+                      class="input h-9 text-xs"
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      :placeholder="`未设置时 ${enterpriseBaseFloorRate.toFixed(3)}x`"
+                    />
+                  </label>
+                  <div v-if="enterpriseGroupIDs.length" class="rounded-lg border border-gray-100 p-2 dark:border-dark-700">
+                    <div class="mb-2 text-xs font-medium text-gray-600 dark:text-dark-200">分组默认售价</div>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <label v-for="groupID in enterpriseGroupIDs" :key="groupID" class="text-xs text-gray-500 dark:text-dark-300">
+                        <span class="mb-1 block truncate">{{ groupLabel(groupID) }}，企业成本 {{ tenantGroupFloor(groupID).toFixed(3) }}x</span>
+                        <input
+                          v-model.number="pricingDefaultsForm.member_group_rates[groupID]"
+                          class="input h-9 text-xs"
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          :placeholder="`默认 ${tenantMemberDefaultRate(groupID).toFixed(3)}x`"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div class="text-xs text-gray-500 dark:text-dark-300">
+                    当前生效：通用 {{ tenantDefaultMemberRate.toFixed(3) }}x
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="mb-3 text-sm font-medium text-gray-700 dark:text-dark-200">创建企业成员</div>
                 <div class="space-y-2">
                   <input v-model="memberForm.email" class="input" placeholder="邮箱" />
@@ -304,6 +348,11 @@ const memberForm = reactive({
   group_rates: {} as Record<number, number | undefined>,
 })
 
+const pricingDefaultsForm = reactive({
+  member_default_pricing_factor: 0,
+  member_group_rates: {} as Record<number, number | undefined>,
+})
+
 const inviteForm = reactive({
   code: '',
   max_uses: 0,
@@ -347,12 +396,13 @@ const enterpriseSpentBalance = computed(() => Number(me.tenant?.balance_quota_sp
 const enterpriseOverdraftLimit = computed(() => Number(me.tenant?.balance_overdraft_limit ?? me.enterprise?.balance_overdraft_limit ?? 0))
 const enterpriseAvailableBalance = computed(() => enterpriseTotalBalance.value + enterpriseOverdraftLimit.value - enterpriseSpentBalance.value)
 const memberPages = computed(() => Math.max(1, Math.ceil(memberTotal.value / memberPageSize)))
+const enterpriseBaseFloorRate = computed(() => Number(me.enterprise?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1))
 const tenantDefaultMemberRate = computed(() => {
   const value = Number(me.tenant?.member_default_pricing_factor ?? me.enterprise?.member_default_pricing_factor ?? 0)
   if (Number.isFinite(value) && value > 0) {
     return value
   }
-  return Number(me.enterprise?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1)
+  return enterpriseBaseFloorRate.value
 })
 
 function groupLabel(groupID: number): string {
@@ -392,10 +442,16 @@ function buildGroupRatesPayload(rates: Record<number, number | undefined>): Reco
   return payload
 }
 
+function syncPricingDefaultsForm() {
+  pricingDefaultsForm.member_default_pricing_factor = Number(me.tenant?.member_default_pricing_factor ?? me.enterprise?.member_default_pricing_factor ?? 0) || 0
+  pricingDefaultsForm.member_group_rates = { ...(me.tenant?.member_group_rates || me.enterprise?.member_group_rates || {}) }
+}
+
 async function loadMe() {
   const data = await enterpriseAPI.getMe()
   me.enterprise = data.enterprise || null
   me.tenant = data.tenant || null
+  syncPricingDefaultsForm()
 }
 
 async function loadMembers() {
@@ -509,6 +565,22 @@ async function submitCreateInvite() {
     inviteForm.notes = ''
     showSuccess('邀请码已创建')
     await loadInviteCodes()
+  } catch (error) {
+    showError(error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submitPricingDefaults() {
+  submitting.value = true
+  try {
+    await enterpriseAPI.updatePricingDefaults({
+      member_default_pricing_factor: Math.max(0, Number(pricingDefaultsForm.member_default_pricing_factor) || 0),
+      member_group_rates: buildGroupRatesPayload(pricingDefaultsForm.member_group_rates),
+    })
+    showSuccess('默认成员售价已保存')
+    await loadMe()
   } catch (error) {
     showError(error)
   } finally {

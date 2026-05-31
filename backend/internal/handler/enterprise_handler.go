@@ -46,6 +46,11 @@ type enterpriseUpdateMemberRequest struct {
 	GroupRates    map[int64]*float64 `json:"group_rates"`
 }
 
+type enterpriseUpdatePricingDefaultsRequest struct {
+	MemberDefaultPricingFactor *float64           `json:"member_default_pricing_factor"`
+	MemberGroupRates           map[int64]*float64 `json:"member_group_rates"`
+}
+
 type enterpriseAdjustBalanceRequest struct {
 	Amount    float64 `json:"amount" binding:"required,gt=0"`
 	Operation string  `json:"operation"`
@@ -213,6 +218,28 @@ func (h *EnterpriseHandler) UpdateMember(c *gin.Context) {
 		return
 	}
 	response.Success(c, item)
+}
+
+func (h *EnterpriseHandler) UpdatePricingDefaults(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req enterpriseUpdatePricingDefaultsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	tenant, err := h.enterpriseService.UpdateMyPricingDefaults(c.Request.Context(), subject.UserID, service.UpdateEnterpriseManagerPricingDefaultsInput{
+		MemberDefaultPricingFactor: req.MemberDefaultPricingFactor,
+		MemberGroupRates:           req.MemberGroupRates,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, tenant)
 }
 
 func (h *EnterpriseHandler) AdjustMemberBalance(c *gin.Context) {

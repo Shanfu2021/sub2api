@@ -131,6 +131,7 @@ func RegisterUserRoutes(
 			enterprise.GET("/members", h.Enterprise.ListMembers)
 			enterprise.POST("/members", h.Enterprise.CreateMember)
 			enterprise.PUT("/members/:user_id", h.Enterprise.UpdateMember)
+			enterprise.PUT("/pricing-defaults", h.Enterprise.UpdatePricingDefaults)
 			enterprise.POST("/members/:user_id/balance", h.Enterprise.AdjustMemberBalance)
 			enterprise.GET("/invite-codes", h.Enterprise.ListInviteCodes)
 			enterprise.POST("/invite-codes", h.Enterprise.CreateInviteCode)

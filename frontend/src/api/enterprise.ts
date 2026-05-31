@@ -67,6 +67,14 @@ export async function updateMember(
   return data
 }
 
+export async function updatePricingDefaults(payload: {
+  member_default_pricing_factor?: number
+  member_group_rates?: Record<number, number | null>
+}): Promise<EnterpriseTenant> {
+  const { data } = await apiClient.put<EnterpriseTenant>('/enterprise/pricing-defaults', payload)
+  return data
+}
+
 export async function adjustMemberBalance(
   userId: number,
   payload: { amount: number; operation?: string; notes?: string }
@@ -114,6 +122,7 @@ export default {
   listMembers,
   createMember,
   updateMember,
+  updatePricingDefaults,
   adjustMemberBalance,
   listInviteCodes,
   createInviteCode,

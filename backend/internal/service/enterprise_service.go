@@ -344,6 +344,11 @@ type UpdateEnterpriseMemberInput struct {
 	GroupRates    map[int64]*float64
 }
 
+type UpdateEnterpriseManagerPricingDefaultsInput struct {
+	MemberDefaultPricingFactor *float64
+	MemberGroupRates           map[int64]*float64
+}
+
 type CreateEnterpriseMemberUserInput struct {
 	Email          string
 	Password       string
@@ -1131,6 +1136,65 @@ func (s *EnterpriseService) UpdateMemberByManager(ctx context.Context, managerUs
 		return nil, ErrEnterpriseForbidden
 	}
 	return s.UpdateTenantMember(ctx, managerUserID, managerCtx.TenantID, memberUserID, input)
+}
+
+func (s *EnterpriseService) UpdateMyPricingDefaults(ctx context.Context, managerUserID int64, input UpdateEnterpriseManagerPricingDefaultsInput) (*EnterpriseTenant, error) {
+	managerCtx, err := s.GetManagerTenant(ctx, managerUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	tenant, err := s.repo.LockTenantByID(txCtx, managerCtx.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	if tenant.Status != EnterpriseTenantStatusActive {
+		return nil, ErrEnterpriseTenantDisabled
+	}
+	if input.MemberDefaultPricingFactor != nil {
+		tenant.MemberDefaultPricingFactor = normalizeEnterpriseMemberDefaultPricingFactor(*input.MemberDefaultPricingFactor)
+	}
+	updatedBy := managerUserID
+	tenant.UpdatedBy = &updatedBy
+	if err := s.repo.UpdateTenant(txCtx, tenant); err != nil {
+		return nil, err
+	}
+	if input.MemberGroupRates != nil {
+		if err := validateEnterpriseTenantGroupRates(input.MemberGroupRates, tenant.AllowedGroupIDs); err != nil {
+			return nil, err
+		}
+		groupRates := floatRateMapToPointers(tenant.GroupRates)
+		memberGroupRates := floatRateMapToPointers(tenant.MemberGroupRates)
+		if memberGroupRates == nil {
+			memberGroupRates = make(map[int64]*float64, len(input.MemberGroupRates))
+		}
+		for groupID, rate := range input.MemberGroupRates {
+			if groupID <= 0 {
+				continue
+			}
+			if rate == nil {
+				memberGroupRates[groupID] = nil
+				continue
+			}
+			v := normalizeEnterprisePricingFactor(*rate)
+			memberGroupRates[groupID] = &v
+		}
+		if err := s.repo.SetTenantAllowedGroups(txCtx, tenant.ID, tenant.AllowedGroupIDs, groupRates, memberGroupRates); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+	s.invalidateEnterpriseTenantCaches(ctx, managerCtx.TenantID)
+	return s.repo.GetTenantByID(ctx, managerCtx.TenantID)
 }
 
 func (s *EnterpriseService) AdjustMemberBalanceByManager(ctx context.Context, managerUserID, memberUserID int64, input AdjustEnterpriseMemberBalanceInput) (*EnterpriseMembership, *User, error) {
