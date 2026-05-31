@@ -16,7 +16,7 @@
       />
 
       <div
-        v-if="contactInfo"
+        v-if="contactInfo && !hideContactInfo"
         class="card border-primary-200 bg-primary-50 p-6 dark:bg-primary-900/20"
       >
         <div class="flex items-center gap-4">
@@ -65,6 +65,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
+const hideContactInfo = computed(() => appStore.enterprisePortalEnabled || !!user.value?.enterprise)
 
 const contactInfo = ref('')
 const balanceLowNotifyEnabled = ref(false)

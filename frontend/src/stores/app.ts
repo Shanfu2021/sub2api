@@ -51,7 +51,10 @@ export const useAppStore = defineStore('app', () => {
   const hasActiveToasts = computed(() => toasts.value.length > 0)
   const backendModeEnabled = computed(() => cachedPublicSettings.value?.backend_mode_enabled ?? false)
   const portalMode = computed(() => cachedPublicSettings.value?.portal_mode || 'standard')
-  const enterprisePortalEnabled = computed(() => portalMode.value === 'enterprise')
+  const enterprisePortalEnabled = computed(() => {
+    const host = typeof window === 'undefined' ? '' : window.location.hostname.toLowerCase()
+    return portalMode.value === 'enterprise' || host === 'pro.ise.it.com'
+  })
 
   const loadingCount = ref<number>(0)
 

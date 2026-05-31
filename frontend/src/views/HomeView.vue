@@ -53,7 +53,7 @@
 
           <!-- Doc Link -->
           <a
-            v-if="docUrl"
+            v-if="docUrl && !hidePortalExtras"
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
@@ -127,6 +127,7 @@
             </p>
 
             <div
+              v-if="supportContactInfo && !hidePortalExtras"
               class="mb-8 inline-flex flex-wrap items-center gap-3 rounded-2xl border border-primary-200/70 bg-white/85 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-primary-800/40 dark:bg-dark-900/60"
             >
               <span
@@ -139,7 +140,7 @@
                   客服支持
                 </p>
                 <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                  客服 QQ：1198716953
+                  {{ supportContactInfo }}
                 </p>
               </div>
             </div>
@@ -400,7 +401,7 @@
         </p>
         <div class="flex items-center gap-4">
           <a
-            v-if="docUrl"
+            v-if="docUrl && !hidePortalExtras"
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
@@ -440,6 +441,8 @@ const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appS
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || '一群程序员共建的高质量 AI API 拼车站')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '/docs/')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const hidePortalExtras = computed(() => appStore.enterprisePortalEnabled)
+const supportContactInfo = computed(() => appStore.cachedPublicSettings?.contact_info || appStore.contactInfo || '')
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {

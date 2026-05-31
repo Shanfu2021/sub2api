@@ -41,6 +41,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	hideContactInfo := isEnterprisePortalHost(c.Request.Host)
 
 	response.Success(c, dto.PublicSettings{
 		RegistrationEnabled:              settings.RegistrationEnabled,
@@ -65,9 +66,9 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		SiteLogo:                         settings.SiteLogo,
 		SiteSubtitle:                     settings.SiteSubtitle,
 		APIBaseURL:                       settings.APIBaseURL,
-		ContactInfo:                      settings.ContactInfo,
-		ContactQRCodeURL:                 settings.ContactQRCodeURL,
-		DocURL:                           settings.DocURL,
+		ContactInfo:                      publicSettingString(settings.ContactInfo, hideContactInfo),
+		ContactQRCodeURL:                 publicSettingString(settings.ContactQRCodeURL, hideContactInfo),
+		DocURL:                           publicSettingString(settings.DocURL, hideContactInfo),
 		HomeContent:                      settings.HomeContent,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
@@ -104,6 +105,21 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		RiskControlEnabled: settings.RiskControlEnabled,
 	})
+}
+
+func publicSettingString(value string, hide bool) string {
+	if hide {
+		return ""
+	}
+	return value
+}
+
+func isEnterprisePortalHost(rawHost string) bool {
+	host := strings.ToLower(strings.TrimSpace(rawHost))
+	if idx := strings.Index(host, ":"); idx >= 0 {
+		host = host[:idx]
+	}
+	return host == "pro.ise.it.com"
 }
 
 // UnsubscribeNotificationEmail handles optional notification email opt-outs.

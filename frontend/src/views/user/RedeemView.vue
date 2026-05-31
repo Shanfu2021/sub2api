@@ -45,6 +45,7 @@
           </div>
 
           <div
+            v-if="contactInfo && !hideContactInfo"
             class="rounded-3xl border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-900/40 dark:bg-dark-900"
           >
             <div class="flex items-center justify-between">
@@ -54,7 +55,7 @@
               </span>
             </div>
             <p class="mt-3 text-base font-semibold text-gray-900 dark:text-white">
-              {{ contactInfo || '客服 QQ：1198716953' }}
+              {{ contactInfo }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">兑换异常或购买问题请直接联系客服处理</p>
           </div>
@@ -391,7 +392,7 @@
                   <div class="rounded-2xl bg-white/70 p-3 text-sm text-primary-800 dark:bg-dark-900/40 dark:text-primary-100">
                     {{ t('redeem.codeRule3') }}
                     <span
-                      v-if="contactInfo"
+                      v-if="contactInfo && !hideContactInfo"
                       class="mt-2 inline-flex items-center rounded-md bg-primary-200/60 px-2 py-0.5 text-xs font-medium text-primary-900 dark:bg-primary-800/40 dark:text-primary-100"
                     >
                       {{ contactInfo }}
@@ -563,6 +564,7 @@ const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
+const hideContactInfo = computed(() => appStore.enterprisePortalEnabled || !!user.value?.enterprise)
 
 const smartCode = ref('')
 const submitting = ref(false)

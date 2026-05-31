@@ -148,7 +148,7 @@
 
               <!-- Contact Support (only show if configured) -->
               <div
-                v-if="contactInfo"
+                v-if="contactInfo && !hidePortalExtras"
                 class="border-t border-gray-100 px-4 py-2.5 dark:border-dark-700"
               >
                 <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
