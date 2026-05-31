@@ -91,6 +91,17 @@
                       :placeholder="`未设置时 ${enterpriseBaseFloorRate.toFixed(3)}x`"
                     />
                   </label>
+                  <label class="block text-xs text-gray-500 dark:text-dark-300">
+                    <span class="mb-1 block">成员默认并发</span>
+                    <input
+                      v-model.number="pricingDefaultsForm.member_default_concurrency"
+                      class="input h-9 text-xs"
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="0 表示沿用主站注册默认并发"
+                    />
+                  </label>
                   <div v-if="enterpriseGroupIDs.length" class="rounded-lg border border-gray-100 p-2 dark:border-dark-700">
                     <div class="mb-2 text-xs font-medium text-gray-600 dark:text-dark-200">分组默认售价</div>
                     <div class="grid gap-2 sm:grid-cols-2">
@@ -122,7 +133,7 @@
                   <input v-model="memberForm.notes" class="input" placeholder="用户备注（平台用户备注）" />
                   <input v-model="memberForm.member_note" class="input" placeholder="企业成员备注" />
                   <div class="grid grid-cols-2 gap-2">
-                    <input v-model="memberForm.concurrency" class="input" type="number" min="0" placeholder="并发" />
+                    <input v-model="memberForm.concurrency" class="input" type="number" min="0" :placeholder="`并发，0 使用企业默认 ${tenantDefaultMemberConcurrency || '主站默认'}`" />
                     <input v-model="memberForm.initial_balance" class="input" type="number" min="0" step="0.01" placeholder="初始额度" />
                   </div>
                   <div class="grid grid-cols-2 gap-2">
@@ -350,6 +361,7 @@ const memberForm = reactive({
 
 const pricingDefaultsForm = reactive({
   member_default_pricing_factor: 0,
+  member_default_concurrency: 0,
   member_group_rates: {} as Record<number, number | undefined>,
 })
 
@@ -404,6 +416,7 @@ const tenantDefaultMemberRate = computed(() => {
   }
   return enterpriseBaseFloorRate.value
 })
+const tenantDefaultMemberConcurrency = computed(() => Number(me.tenant?.member_default_concurrency ?? me.enterprise?.member_default_concurrency ?? 0) || 0)
 
 function groupLabel(groupID: number): string {
   const group = groups.value.find((item) => item.id === groupID)
@@ -444,6 +457,7 @@ function buildGroupRatesPayload(rates: Record<number, number | undefined>): Reco
 
 function syncPricingDefaultsForm() {
   pricingDefaultsForm.member_default_pricing_factor = Number(me.tenant?.member_default_pricing_factor ?? me.enterprise?.member_default_pricing_factor ?? 0) || 0
+  pricingDefaultsForm.member_default_concurrency = tenantDefaultMemberConcurrency.value
   pricingDefaultsForm.member_group_rates = { ...(me.tenant?.member_group_rates || me.enterprise?.member_group_rates || {}) }
 }
 
@@ -577,6 +591,7 @@ async function submitPricingDefaults() {
   try {
     await enterpriseAPI.updatePricingDefaults({
       member_default_pricing_factor: Math.max(0, Number(pricingDefaultsForm.member_default_pricing_factor) || 0),
+      member_default_concurrency: Math.max(0, Number(pricingDefaultsForm.member_default_concurrency) || 0),
       member_group_rates: buildGroupRatesPayload(pricingDefaultsForm.member_group_rates),
     })
     showSuccess('默认成员售价已保存')

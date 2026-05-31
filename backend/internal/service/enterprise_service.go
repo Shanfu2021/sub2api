@@ -66,6 +66,7 @@ type EnterpriseTenant struct {
 	MemberDefaultPricingFactor float64           `json:"member_default_pricing_factor"`
 	PricingScope               string            `json:"pricing_scope"`
 	Concurrency                int               `json:"concurrency"`
+	MemberDefaultConcurrency   int               `json:"member_default_concurrency"`
 	BalanceQuotaTotal          float64           `json:"balance_quota_total"`
 	BalanceQuotaUsed           float64           `json:"balance_quota_used"`
 	BalanceQuotaSpent          float64           `json:"balance_quota_spent"`
@@ -186,15 +187,16 @@ type EnterpriseContext struct {
 	MemberNote            string  `json:"member_note,omitempty"`
 	JoinedVia             string  `json:"joined_via,omitempty"`
 	JoinedSource          string  `json:"joined_source,omitempty"`
-	PricingFactor               float64 `json:"pricing_factor"`
-	PricingScope                string  `json:"pricing_scope"`
-	PricingFloorFactor          float64 `json:"pricing_floor_factor"`
+	PricingFactor              float64 `json:"pricing_factor"`
+	PricingScope               string  `json:"pricing_scope"`
+	PricingFloorFactor         float64 `json:"pricing_floor_factor"`
 	MemberDefaultPricingFactor float64 `json:"member_default_pricing_factor"`
-	Concurrency                 int     `json:"concurrency"`
-	BalanceQuotaTotal           float64 `json:"balance_quota_total"`
-	BalanceQuotaUsed            float64 `json:"balance_quota_used"`
-	BalanceQuotaSpent           float64 `json:"balance_quota_spent"`
-	BalanceOverdraftLimit       float64 `json:"balance_overdraft_limit"`
+	Concurrency                int     `json:"concurrency"`
+	MemberDefaultConcurrency   int     `json:"member_default_concurrency"`
+	BalanceQuotaTotal          float64 `json:"balance_quota_total"`
+	BalanceQuotaUsed           float64 `json:"balance_quota_used"`
+	BalanceQuotaSpent          float64 `json:"balance_quota_spent"`
+	BalanceOverdraftLimit      float64 `json:"balance_overdraft_limit"`
 	AllowedGroupIDs       []int64           `json:"allowed_group_ids,omitempty"`
 	GroupRates            map[int64]float64 `json:"group_rates,omitempty"`
 	MemberGroupRates      map[int64]float64 `json:"member_group_rates,omitempty"`
@@ -281,10 +283,11 @@ type CreateEnterpriseTenantInput struct {
 	MemberDefaultPricingFactor float64
 	PricingScope               string
 	Concurrency                int
-	BalanceOverdraftLimit float64
-	AllowedGroupIDs       []int64
-	GroupRates            map[int64]*float64
-	MemberGroupRates      map[int64]*float64
+	MemberDefaultConcurrency   int
+	BalanceOverdraftLimit      float64
+	AllowedGroupIDs            []int64
+	GroupRates                 map[int64]*float64
+	MemberGroupRates           map[int64]*float64
 }
 
 type UpdateEnterpriseTenantInput struct {
@@ -296,10 +299,11 @@ type UpdateEnterpriseTenantInput struct {
 	MemberDefaultPricingFactor *float64
 	PricingScope               *string
 	Concurrency                *int
-	BalanceOverdraftLimit *float64
-	AllowedGroupIDs       *[]int64
-	GroupRates            map[int64]*float64
-	MemberGroupRates      map[int64]*float64
+	MemberDefaultConcurrency   *int
+	BalanceOverdraftLimit      *float64
+	AllowedGroupIDs            *[]int64
+	GroupRates                 map[int64]*float64
+	MemberGroupRates           map[int64]*float64
 }
 
 type AdjustEnterpriseQuotaInput struct {
@@ -346,6 +350,7 @@ type UpdateEnterpriseMemberInput struct {
 
 type UpdateEnterpriseManagerPricingDefaultsInput struct {
 	MemberDefaultPricingFactor *float64
+	MemberDefaultConcurrency   *int
 	MemberGroupRates           map[int64]*float64
 }
 
@@ -505,7 +510,8 @@ func (s *EnterpriseService) CreateTenant(ctx context.Context, actorUserID int64,
 		MemberDefaultPricingFactor: normalizeEnterpriseMemberDefaultPricingFactor(input.MemberDefaultPricingFactor),
 		PricingScope:               normalizeEnterprisePricingScope(input.PricingScope),
 		Concurrency:                normalizeEnterpriseConcurrency(input.Concurrency),
-		BalanceOverdraftLimit: input.BalanceOverdraftLimit,
+		MemberDefaultConcurrency:   normalizeEnterpriseConcurrency(input.MemberDefaultConcurrency),
+		BalanceOverdraftLimit:      input.BalanceOverdraftLimit,
 	}
 	if tenant.Name == "" {
 		return nil, errors.BadRequest("ENTERPRISE_TENANT_INVALID", "tenant name is required")
@@ -589,6 +595,9 @@ func (s *EnterpriseService) UpdateTenant(ctx context.Context, actorUserID, tenan
 	}
 	if input.Concurrency != nil {
 		tenant.Concurrency = normalizeEnterpriseConcurrency(*input.Concurrency)
+	}
+	if input.MemberDefaultConcurrency != nil {
+		tenant.MemberDefaultConcurrency = normalizeEnterpriseConcurrency(*input.MemberDefaultConcurrency)
 	}
 	if input.BalanceOverdraftLimit != nil {
 		if *input.BalanceOverdraftLimit < 0 {
@@ -974,6 +983,16 @@ func (s *EnterpriseService) BindUserByInviteCode(ctx context.Context, userID int
 	if tenant.Status != EnterpriseTenantStatusActive {
 		return nil, ErrEnterpriseTenantDisabled
 	}
+	if tenant.MemberDefaultConcurrency > 0 {
+		user, err := s.userRepo.GetByID(txCtx, userID)
+		if err != nil {
+			return nil, err
+		}
+		user.Concurrency = normalizeEnterpriseConcurrency(tenant.MemberDefaultConcurrency)
+		if err := s.userRepo.Update(txCtx, user); err != nil {
+			return nil, err
+		}
+	}
 	membership := &EnterpriseMembership{
 		TenantID:      invite.TenantID,
 		UserID:        userID,
@@ -1069,6 +1088,12 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 	} else if s.settingService != nil {
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(txCtx)
 	}
+	memberConcurrency := normalizeEnterpriseConcurrency(input.Concurrency)
+	if memberConcurrency <= 0 && managerCtx.MemberDefaultConcurrency > 0 {
+		memberConcurrency = managerCtx.MemberDefaultConcurrency
+	} else if memberConcurrency <= 0 && s.settingService != nil {
+		memberConcurrency = s.settingService.GetDefaultConcurrency(txCtx)
+	}
 	user := &User{
 		Email:        strings.TrimSpace(input.Email),
 		PasswordHash: passwordHash,
@@ -1076,7 +1101,7 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 		Notes:        strings.TrimSpace(input.Notes),
 		Role:         RoleUser,
 		Balance:      0,
-		Concurrency:  input.Concurrency,
+		Concurrency:  memberConcurrency,
 		Status:       StatusActive,
 		RPMLimit:     defaultRPMLimit,
 	}
@@ -1160,6 +1185,9 @@ func (s *EnterpriseService) UpdateMyPricingDefaults(ctx context.Context, manager
 	}
 	if input.MemberDefaultPricingFactor != nil {
 		tenant.MemberDefaultPricingFactor = normalizeEnterpriseMemberDefaultPricingFactor(*input.MemberDefaultPricingFactor)
+	}
+	if input.MemberDefaultConcurrency != nil {
+		tenant.MemberDefaultConcurrency = normalizeEnterpriseConcurrency(*input.MemberDefaultConcurrency)
 	}
 	updatedBy := managerUserID
 	tenant.UpdatedBy = &updatedBy

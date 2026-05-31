@@ -69,6 +69,7 @@ export async function updateMember(
 
 export async function updatePricingDefaults(payload: {
   member_default_pricing_factor?: number
+  member_default_concurrency?: number
   member_group_rates?: Record<number, number | null>
 }): Promise<EnterpriseTenant> {
   const { data } = await apiClient.put<EnterpriseTenant>('/enterprise/pricing-defaults', payload)

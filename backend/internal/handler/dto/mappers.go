@@ -57,6 +57,7 @@ func EnterpriseContextFromService(in *service.EnterpriseContext) *EnterpriseCont
 		PricingFloorFactor:         service.NormalizePricingDiscountFactorForRepo(in.PricingFloorFactor),
 		MemberDefaultPricingFactor: service.NormalizeEnterpriseMemberDefaultPricingFactor(in.MemberDefaultPricingFactor),
 		Concurrency:                in.Concurrency,
+		MemberDefaultConcurrency:   in.MemberDefaultConcurrency,
 		BalanceQuotaTotal:          in.BalanceQuotaTotal,
 		BalanceQuotaUsed:           in.BalanceQuotaUsed,
 		BalanceQuotaSpent:          in.BalanceQuotaSpent,

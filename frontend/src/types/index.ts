@@ -78,6 +78,7 @@ export interface EnterpriseContext {
   pricing_floor_factor: number
   member_default_pricing_factor: number
   concurrency: number
+  member_default_concurrency: number
   balance_quota_total: number
   balance_quota_used: number
   balance_quota_spent: number
@@ -305,6 +306,7 @@ export interface EnterpriseTenant {
   member_default_pricing_factor: number
   pricing_scope: string
   concurrency: number
+  member_default_concurrency: number
   balance_quota_total: number
   balance_quota_used: number
   balance_quota_spent: number

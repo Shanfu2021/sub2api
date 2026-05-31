@@ -29,6 +29,7 @@ type createEnterpriseTenantRequest struct {
 	MemberDefaultPricingFactor float64 `json:"member_default_pricing_factor"`
 	PricingScope               string  `json:"pricing_scope"`
 	Concurrency                int     `json:"concurrency"`
+	MemberDefaultConcurrency   int     `json:"member_default_concurrency"`
 	BalanceOverdraftLimit      float64 `json:"balance_overdraft_limit"`
 	AllowedGroupIDs            []int64            `json:"allowed_group_ids"`
 	GroupRates                 map[int64]*float64 `json:"group_rates"`
@@ -44,6 +45,7 @@ type updateEnterpriseTenantRequest struct {
 	MemberDefaultPricingFactor *float64 `json:"member_default_pricing_factor"`
 	PricingScope               *string  `json:"pricing_scope"`
 	Concurrency                *int     `json:"concurrency"`
+	MemberDefaultConcurrency   *int     `json:"member_default_concurrency"`
 	BalanceOverdraftLimit      *float64 `json:"balance_overdraft_limit"`
 	AllowedGroupIDs            *[]int64           `json:"allowed_group_ids"`
 	GroupRates                 map[int64]*float64 `json:"group_rates"`
@@ -122,6 +124,7 @@ func (h *EnterpriseHandler) CreateTenant(c *gin.Context) {
 		MemberDefaultPricingFactor: req.MemberDefaultPricingFactor,
 		PricingScope:               req.PricingScope,
 		Concurrency:                req.Concurrency,
+		MemberDefaultConcurrency:   req.MemberDefaultConcurrency,
 		BalanceOverdraftLimit:      req.BalanceOverdraftLimit,
 		AllowedGroupIDs:            req.AllowedGroupIDs,
 		GroupRates:                 req.GroupRates,
@@ -167,6 +170,7 @@ func (h *EnterpriseHandler) UpdateTenant(c *gin.Context) {
 		MemberDefaultPricingFactor: req.MemberDefaultPricingFactor,
 		PricingScope:               req.PricingScope,
 		Concurrency:                req.Concurrency,
+		MemberDefaultConcurrency:   req.MemberDefaultConcurrency,
 		BalanceOverdraftLimit:      req.BalanceOverdraftLimit,
 		AllowedGroupIDs:            req.AllowedGroupIDs,
 		GroupRates:                 req.GroupRates,

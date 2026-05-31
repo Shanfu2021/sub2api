@@ -48,6 +48,7 @@ type enterpriseUpdateMemberRequest struct {
 
 type enterpriseUpdatePricingDefaultsRequest struct {
 	MemberDefaultPricingFactor *float64           `json:"member_default_pricing_factor"`
+	MemberDefaultConcurrency   *int               `json:"member_default_concurrency"`
 	MemberGroupRates           map[int64]*float64 `json:"member_group_rates"`
 }
 
@@ -233,6 +234,7 @@ func (h *EnterpriseHandler) UpdatePricingDefaults(c *gin.Context) {
 	}
 	tenant, err := h.enterpriseService.UpdateMyPricingDefaults(c.Request.Context(), subject.UserID, service.UpdateEnterpriseManagerPricingDefaultsInput{
 		MemberDefaultPricingFactor: req.MemberDefaultPricingFactor,
+		MemberDefaultConcurrency:   req.MemberDefaultConcurrency,
 		MemberGroupRates:           req.MemberGroupRates,
 	})
 	if err != nil {

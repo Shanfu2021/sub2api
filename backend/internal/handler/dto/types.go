@@ -55,6 +55,7 @@ type EnterpriseContext struct {
 	PricingFloorFactor         float64 `json:"pricing_floor_factor"`
 	MemberDefaultPricingFactor float64 `json:"member_default_pricing_factor"`
 	Concurrency                int     `json:"concurrency"`
+	MemberDefaultConcurrency   int     `json:"member_default_concurrency"`
 	BalanceQuotaTotal          float64 `json:"balance_quota_total"`
 	BalanceQuotaUsed           float64 `json:"balance_quota_used"`
 	BalanceQuotaSpent          float64 `json:"balance_quota_spent"`

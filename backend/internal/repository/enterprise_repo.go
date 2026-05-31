@@ -51,6 +51,7 @@ SELECT t.id,
        COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.pricing_scope, 'balance'),
        COALESCE(t.concurrency, 0),
+       COALESCE(t.member_default_concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
        COALESCE(t.balance_quota_spent::double precision, 0),
@@ -113,6 +114,7 @@ SELECT t.id,
        COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.pricing_scope, 'balance'),
        COALESCE(t.concurrency, 0),
+       COALESCE(t.member_default_concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
        COALESCE(t.balance_quota_spent::double precision, 0),
@@ -198,6 +200,7 @@ SELECT t.id,
        COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.pricing_scope, 'balance'),
        COALESCE(t.concurrency, 0),
+       COALESCE(t.member_default_concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
        COALESCE(t.balance_quota_spent::double precision, 0),
@@ -256,10 +259,10 @@ func (r *enterpriseRepository) CreateTenant(ctx context.Context, tenant *service
 	query := `
 INSERT INTO enterprise_tenants (
     name, code, status, notes, portal_host, pricing_floor_factor, pricing_scope,
-    member_default_pricing_factor, concurrency, balance_quota_total, balance_quota_used,
+    member_default_pricing_factor, concurrency, member_default_concurrency, balance_quota_total, balance_quota_used,
     balance_quota_spent, balance_overdraft_limit, created_by, updated_by, created_at, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
 RETURNING id, created_at, updated_at`
 	var createdAt, updatedAt time.Time
 	if err := scanSingleRow(ctx, exec, query, []any{
@@ -272,6 +275,7 @@ RETURNING id, created_at, updated_at`
 		service.NormalizeEnterprisePricingScopeForRepo(tenant.PricingScope),
 		tenant.MemberDefaultPricingFactor,
 		tenant.Concurrency,
+		tenant.MemberDefaultConcurrency,
 		tenant.BalanceQuotaTotal,
 		tenant.BalanceQuotaUsed,
 		tenant.BalanceQuotaSpent,
@@ -299,14 +303,15 @@ SET name = $2,
     pricing_scope = $8,
     member_default_pricing_factor = $9,
     concurrency = $10,
-    balance_quota_total = $11,
-    balance_quota_used = $12,
-    balance_quota_spent = $13,
-    balance_overdraft_limit = $14,
-    updated_by = $15,
+    member_default_concurrency = $11,
+    balance_quota_total = $12,
+    balance_quota_used = $13,
+    balance_quota_spent = $14,
+    balance_overdraft_limit = $15,
+    updated_by = $16,
     updated_at = NOW()
 WHERE id = $1
-	`, tenant.ID, tenant.Name, tenant.Code, tenant.Status, tenant.Notes, tenant.PortalHost, service.NormalizePricingDiscountFactorForRepo(tenant.PricingFloorFactor), service.NormalizeEnterprisePricingScopeForRepo(tenant.PricingScope), tenant.MemberDefaultPricingFactor, tenant.Concurrency, tenant.BalanceQuotaTotal, tenant.BalanceQuotaUsed, tenant.BalanceQuotaSpent, tenant.BalanceOverdraftLimit, tenant.UpdatedBy)
+	`, tenant.ID, tenant.Name, tenant.Code, tenant.Status, tenant.Notes, tenant.PortalHost, service.NormalizePricingDiscountFactorForRepo(tenant.PricingFloorFactor), service.NormalizeEnterprisePricingScopeForRepo(tenant.PricingScope), tenant.MemberDefaultPricingFactor, tenant.Concurrency, tenant.MemberDefaultConcurrency, tenant.BalanceQuotaTotal, tenant.BalanceQuotaUsed, tenant.BalanceQuotaSpent, tenant.BalanceOverdraftLimit, tenant.UpdatedBy)
 	if err != nil {
 		return err
 	}
@@ -879,6 +884,7 @@ SELECT em.tenant_id,
        COALESCE(t.pricing_floor_factor::double precision, 1.0),
        COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.concurrency, 0),
+       COALESCE(t.member_default_concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
        COALESCE(t.balance_quota_spent::double precision, 0),
@@ -915,6 +921,7 @@ LIMIT 1`
 		&out.PricingFloorFactor,
 		&out.MemberDefaultPricingFactor,
 		&out.Concurrency,
+		&out.MemberDefaultConcurrency,
 		&out.BalanceQuotaTotal,
 		&out.BalanceQuotaUsed,
 		&out.BalanceQuotaSpent,
@@ -1220,6 +1227,7 @@ func scanEnterpriseTenant(rows *sql.Rows) (service.EnterpriseTenant, error) {
 		&item.MemberDefaultPricingFactor,
 		&item.PricingScope,
 		&item.Concurrency,
+		&item.MemberDefaultConcurrency,
 		&item.BalanceQuotaTotal,
 		&item.BalanceQuotaUsed,
 		&item.BalanceQuotaSpent,

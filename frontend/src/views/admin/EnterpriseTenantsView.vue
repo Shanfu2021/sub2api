@@ -124,6 +124,17 @@
                   />
                 </label>
                 <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">成员默认并发</span>
+                  <input
+                    v-model="tenantForm.member_default_concurrency"
+                    class="input"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0 表示沿用主站默认"
+                  />
+                </label>
+                <label class="space-y-1">
                   <span class="text-xs font-medium text-gray-600 dark:text-dark-200">计费范围</span>
                   <select v-model="tenantForm.pricing_scope" class="input">
                     <option value="balance">仅余额</option>
@@ -256,6 +267,7 @@
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="text-xs text-gray-500 dark:text-dark-300">企业总并发</div>
                 <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.concurrency || '不限' }}</div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">成员默认并发 {{ selectedTenant.member_default_concurrency || '主站默认' }}</div>
               </div>
             </div>
 
@@ -541,6 +553,7 @@ const tenantForm = reactive({
   member_default_pricing_factor: 0,
   pricing_scope: 'balance',
   concurrency: 0,
+  member_default_concurrency: 0,
   balance_overdraft_limit: 0,
   allowed_group_ids: [] as number[],
   group_rates: {} as Record<number, number | undefined>,
@@ -634,6 +647,7 @@ function resetTenantForm() {
   tenantForm.member_default_pricing_factor = 0
   tenantForm.pricing_scope = 'balance'
   tenantForm.concurrency = 0
+  tenantForm.member_default_concurrency = 0
   tenantForm.balance_overdraft_limit = 0
   tenantForm.allowed_group_ids = []
   tenantForm.group_rates = {}
@@ -651,6 +665,7 @@ function fillTenantForm(item: EnterpriseTenant) {
   tenantForm.member_default_pricing_factor = item.member_default_pricing_factor || 0
   tenantForm.pricing_scope = item.pricing_scope || 'balance'
   tenantForm.concurrency = item.concurrency || 0
+  tenantForm.member_default_concurrency = item.member_default_concurrency || 0
   tenantForm.balance_overdraft_limit = item.balance_overdraft_limit || 0
   tenantForm.allowed_group_ids = [...(item.allowed_group_ids || [])]
   tenantForm.group_rates = { ...(item.group_rates || {}) }
@@ -880,6 +895,7 @@ async function submitTenant() {
       member_default_pricing_factor: number
       pricing_scope: string
       concurrency: number
+      member_default_concurrency: number
       balance_overdraft_limit: number
       allowed_group_ids: number[]
       group_rates: Record<number, number>
@@ -893,6 +909,7 @@ async function submitTenant() {
       member_default_pricing_factor: Math.max(0, Number(tenantForm.member_default_pricing_factor) || 0),
       pricing_scope: tenantForm.pricing_scope,
       concurrency: Math.max(0, Number(tenantForm.concurrency) || 0),
+      member_default_concurrency: Math.max(0, Number(tenantForm.member_default_concurrency) || 0),
       balance_overdraft_limit: Math.max(0, Number(tenantForm.balance_overdraft_limit) || 0),
       allowed_group_ids: [...tenantForm.allowed_group_ids],
       group_rates: buildGroupRatesPayload(tenantForm.allowed_group_ids, tenantForm.group_rates),
