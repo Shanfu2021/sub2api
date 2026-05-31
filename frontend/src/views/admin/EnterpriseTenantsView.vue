@@ -82,48 +82,75 @@
                 <button v-if="selectedTenant" class="btn btn-secondary btn-sm" @click="resetTenantForm">切换到新建</button>
               </div>
               <div class="grid gap-3 md:grid-cols-2">
-                <input v-model="tenantForm.name" class="input" placeholder="企业名称" />
-                <input v-model="tenantForm.code" class="input" placeholder="企业编码，留空自动生成" :disabled="!!selectedTenant?.id" />
-                <input
-                  v-model="tenantForm.pricing_floor_factor"
-                  class="input"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  placeholder="企业兜底底价，未配置分组底价时使用"
-                />
-                <input
-                  v-model="tenantForm.member_default_pricing_factor"
-                  class="input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="成员默认售价，0 表示沿用企业底价"
-                />
-                <input
-                  v-model="tenantForm.concurrency"
-                  class="input"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="企业总并发，0 不限制"
-                />
-                <select v-model="tenantForm.pricing_scope" class="input">
-                  <option value="balance">仅余额</option>
-                </select>
-                <input
-                  v-model="tenantForm.balance_overdraft_limit"
-                  class="input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="企业授信额度，例如 10 / 50 / 100"
-                />
-                <input v-model="tenantForm.portal_host" class="input" placeholder="门户域名，可留空" />
-                <select v-model="tenantForm.status" class="input">
-                  <option value="active">启用</option>
-                  <option value="disabled">停用</option>
-                </select>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">企业名称</span>
+                  <input v-model="tenantForm.name" class="input" placeholder="企业名称" />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">企业编码</span>
+                  <input v-model="tenantForm.code" class="input" placeholder="留空自动生成" :disabled="!!selectedTenant?.id" />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">企业兜底底价</span>
+                  <input
+                    v-model="tenantForm.pricing_floor_factor"
+                    class="input"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="未配置分组底价时使用"
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">成员默认售价</span>
+                  <input
+                    v-model="tenantForm.member_default_pricing_factor"
+                    class="input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0 表示沿用企业底价"
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">企业总并发</span>
+                  <input
+                    v-model="tenantForm.concurrency"
+                    class="input"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0 不限制"
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">计费范围</span>
+                  <select v-model="tenantForm.pricing_scope" class="input">
+                    <option value="balance">仅余额</option>
+                  </select>
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">企业授信额度</span>
+                  <input
+                    v-model="tenantForm.balance_overdraft_limit"
+                    class="input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="例如 10 / 50 / 100"
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">门户域名</span>
+                  <input v-model="tenantForm.portal_host" class="input" placeholder="可留空" />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-medium text-gray-600 dark:text-dark-200">企业状态</span>
+                  <select v-model="tenantForm.status" class="input">
+                    <option value="active">启用</option>
+                    <option value="disabled">停用</option>
+                  </select>
+                </label>
               </div>
               <textarea v-model="tenantForm.notes" class="input mt-3 min-h-[76px]" placeholder="备注"></textarea>
               <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
@@ -249,7 +276,44 @@
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="mb-3 text-sm font-medium text-gray-700 dark:text-dark-200">绑定现有用户到企业</div>
                 <div class="space-y-2">
-                  <input v-model="bindForm.user_id" class="input" type="number" min="1" placeholder="用户 ID" />
+                  <label class="block space-y-1">
+                    <span class="text-xs font-medium text-gray-600 dark:text-dark-200">查找用户</span>
+                    <div class="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        v-model="bindUserSearch"
+                        class="input"
+                        placeholder="输入邮箱 / 用户名搜索"
+                        @keyup.enter="searchBindUsers"
+                      />
+                      <button class="btn btn-secondary" type="button" :disabled="bindUserSearching" @click="searchBindUsers">
+                        查询
+                      </button>
+                    </div>
+                  </label>
+                  <div
+                    v-if="selectedBindUser"
+                    class="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs text-primary-800 dark:border-primary-800/50 dark:bg-primary-900/20 dark:text-primary-100"
+                  >
+                    已选：#{{ selectedBindUser.id }} {{ selectedBindUser.email }}
+                    <span v-if="selectedBindUser.username"> / {{ selectedBindUser.username }}</span>
+                  </div>
+                  <div v-if="bindUserResults.length" class="max-h-52 overflow-y-auto rounded-lg border border-gray-100 dark:border-dark-700">
+                    <button
+                      v-for="user in bindUserResults"
+                      :key="user.id"
+                      type="button"
+                      class="w-full border-b border-gray-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/40"
+                      :class="bindForm.user_id === user.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''"
+                      @click="selectBindUser(user)"
+                    >
+                      <div class="font-medium text-gray-900 dark:text-white">#{{ user.id }} {{ user.email }}</div>
+                      <div class="mt-1 text-gray-500 dark:text-dark-300">
+                        用户名：{{ user.username || '-' }}
+                        <span v-if="user.enterprise"> · 当前企业：{{ user.enterprise.tenant_name }}</span>
+                      </div>
+                    </button>
+                  </div>
+                  <p v-else-if="bindUserSearched" class="text-xs text-gray-500 dark:text-dark-300">没有找到匹配用户</p>
                   <div class="grid grid-cols-2 gap-2">
                     <select v-model="bindForm.member_role" class="input">
                       <option value="member">成员</option>
@@ -288,9 +352,18 @@
 
             <div class="grid gap-4 xl:grid-cols-2">
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="mb-3 flex items-center justify-between">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div class="text-sm font-medium text-gray-700 dark:text-dark-200">成员列表</div>
-                  <button class="btn btn-secondary btn-sm" @click="loadMembers">刷新</button>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <input
+                      v-model="memberSearch"
+                      class="input h-9 w-full text-xs sm:w-56"
+                      placeholder="搜索邮箱 / 用户名 / 备注"
+                      @keyup.enter="applyMemberFilters"
+                    />
+                    <button class="btn btn-secondary btn-sm" @click="applyMemberFilters">查询</button>
+                    <button class="btn btn-secondary btn-sm" @click="loadMembers">刷新</button>
+                  </div>
                 </div>
                 <div class="overflow-x-auto">
                   <table class="min-w-full text-sm">
@@ -306,10 +379,17 @@
                       </tr>
                     </thead>
                     <tbody>
+                      <tr v-if="!members.length">
+                        <td colspan="7" class="border-t border-gray-100 py-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                          没有找到成员
+                        </td>
+                      </tr>
                       <tr v-for="member in members" :key="member.id" class="border-t border-gray-100 dark:border-dark-700">
                         <td class="py-2">
                           <div class="font-medium text-gray-900 dark:text-white">{{ member.user_email }}</div>
-                          <div class="text-xs text-gray-500 dark:text-dark-300">{{ member.member_note || '-' }}</div>
+                          <div class="text-xs text-gray-500 dark:text-dark-300">
+                            {{ member.user_username || '-' }} · {{ member.member_note || '-' }}
+                          </div>
                         </td>
                         <td class="py-2">{{ member.member_role }}</td>
                         <td class="py-2">
@@ -336,6 +416,13 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+                <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                  <span>共 {{ memberTotal }} 个成员，第 {{ memberPage }} / {{ memberPages }} 页</span>
+                  <div class="flex items-center gap-2">
+                    <button class="btn btn-secondary btn-sm" :disabled="memberPage <= 1" @click="changeMemberPage(memberPage - 1)">上一页</button>
+                    <button class="btn btn-secondary btn-sm" :disabled="memberPage >= memberPages" @click="changeMemberPage(memberPage + 1)">下一页</button>
+                  </div>
                 </div>
               </div>
 
@@ -415,7 +502,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import enterpriseAdminAPI from '@/api/admin/enterprise'
 import groupsAPI from '@/api/admin/groups'
-import type { AdminGroup, EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership, EnterpriseTenant } from '@/types'
+import usersAPI from '@/api/admin/users'
+import type { AdminGroup, AdminUser, EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership, EnterpriseTenant } from '@/types'
 import { useAppStore } from '@/stores'
 
 const appStore = useAppStore()
@@ -430,9 +518,18 @@ const tenantTotal = ref(0)
 const tenants = ref<EnterpriseTenant[]>([])
 const selectedTenant = ref<EnterpriseTenant | null>(null)
 const members = ref<EnterpriseMembership[]>([])
+const memberSearch = ref('')
+const memberPage = ref(1)
+const memberPageSize = 20
+const memberTotal = ref(0)
 const inviteCodes = ref<EnterpriseInviteCode[]>([])
 const ledger = ref<EnterpriseLedgerEntry[]>([])
 const groups = ref<AdminGroup[]>([])
+const bindUserSearch = ref('')
+const bindUserSearching = ref(false)
+const bindUserSearched = ref(false)
+const bindUserResults = ref<AdminUser[]>([])
+const selectedBindUser = ref<AdminUser | null>(null)
 
 const tenantForm = reactive({
   name: '',
@@ -512,6 +609,7 @@ const missingGroupIDs = computed(() => {
 })
 
 const tenantPages = computed(() => Math.max(1, Math.ceil(tenantTotal.value / tenantPageSize)))
+const memberPages = computed(() => Math.max(1, Math.ceil(memberTotal.value / memberPageSize)))
 
 function tenantNetBalance(item: EnterpriseTenant): number {
   return Number(item.balance_quota_total || 0) - Number(item.balance_quota_spent || 0)
@@ -679,17 +777,73 @@ async function loadGroups() {
 async function selectTenant(item: EnterpriseTenant) {
   selectedTenant.value = item
   fillTenantForm(item)
+  memberPage.value = 1
+  memberSearch.value = ''
+  resetBindMemberForm()
   await Promise.all([loadMembers(), loadInviteCodes(), loadLedger()])
 }
 
 async function loadMembers() {
   if (!selectedTenant.value) return
   try {
-    const res = await enterpriseAdminAPI.listMembers(selectedTenant.value.id, 1, 100)
+    const res = await enterpriseAdminAPI.listMembers(selectedTenant.value.id, memberPage.value, memberPageSize, {
+      search: memberSearch.value.trim() || undefined,
+    })
     members.value = res.items
+    memberTotal.value = res.total
   } catch (error) {
     showError(error)
   }
+}
+
+async function applyMemberFilters() {
+  memberPage.value = 1
+  await loadMembers()
+}
+
+async function changeMemberPage(page: number) {
+  memberPage.value = Math.min(Math.max(1, page), memberPages.value)
+  await loadMembers()
+}
+
+async function searchBindUsers() {
+  const keyword = bindUserSearch.value.trim()
+  bindUserSearched.value = true
+  if (!keyword) {
+    bindUserResults.value = []
+    return
+  }
+  bindUserSearching.value = true
+  try {
+    const res = await usersAPI.list(1, 20, {
+      search: keyword,
+      sort_by: 'email',
+      sort_order: 'asc',
+      include_subscriptions: false,
+    })
+    bindUserResults.value = res.items
+  } catch (error) {
+    showError(error)
+  } finally {
+    bindUserSearching.value = false
+  }
+}
+
+function selectBindUser(user: AdminUser) {
+  selectedBindUser.value = user
+  bindForm.user_id = user.id
+}
+
+function resetBindMemberForm() {
+  bindForm.user_id = 0
+  bindForm.member_role = 'member'
+  bindForm.member_note = ''
+  bindForm.pricing_factor = 0
+  bindForm.group_rates = {}
+  bindUserSearch.value = ''
+  bindUserResults.value = []
+  bindUserSearched.value = false
+  selectedBindUser.value = null
 }
 
 async function loadInviteCodes() {
@@ -784,6 +938,10 @@ async function submitQuota() {
 
 async function submitBindMember() {
   if (!selectedTenant.value) return
+  if (!bindForm.user_id) {
+    showError(new Error('请先搜索并选择要绑定的用户'))
+    return
+  }
   submitting.value = true
   try {
     await enterpriseAdminAPI.bindMember(selectedTenant.value.id, {
@@ -797,10 +955,7 @@ async function submitBindMember() {
       joined_source: 'admin_bind',
     })
     showSuccess('成员已绑定')
-    bindForm.user_id = 0
-    bindForm.member_note = ''
-    bindForm.pricing_factor = 0
-    bindForm.group_rates = {}
+    resetBindMemberForm()
     await Promise.all([loadMembers(), loadTenants()])
   } catch (error) {
     showError(error)

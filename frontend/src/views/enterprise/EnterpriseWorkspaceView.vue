@@ -130,7 +130,10 @@
               <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div class="text-sm font-medium text-gray-700 dark:text-dark-200">企业成员</div>
-                  <input v-model="memberSearch" class="input w-full sm:w-60" placeholder="搜索邮箱 / 用户名 / 备注" @keyup.enter="loadMembers" />
+                  <div class="flex flex-wrap items-center gap-2">
+                    <input v-model="memberSearch" class="input w-full sm:w-60" placeholder="搜索邮箱 / 用户名 / 备注" @keyup.enter="applyMemberFilters" />
+                    <button class="btn btn-secondary btn-sm" @click="applyMemberFilters">查询</button>
+                  </div>
                 </div>
                 <div class="overflow-x-auto">
                   <table class="min-w-full text-sm">
@@ -145,9 +148,15 @@
                       </tr>
                     </thead>
                     <tbody>
+                      <tr v-if="!members.length">
+                        <td colspan="6" class="border-t border-gray-100 py-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                          没有找到成员
+                        </td>
+                      </tr>
                       <tr v-for="member in members" :key="member.id" class="border-t border-gray-100 dark:border-dark-700">
                         <td class="py-2">
                           <div class="font-medium text-gray-900 dark:text-white">{{ member.user_email }}</div>
+                          <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">用户名：{{ member.user_username || '-' }}</div>
                           <input
                             v-model="member.member_note"
                             class="input mt-1 h-9 w-full min-w-[180px] text-xs"
@@ -202,6 +211,13 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+                <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                  <span>共 {{ memberTotal }} 个成员，第 {{ memberPage }} / {{ memberPages }} 页</span>
+                  <div class="flex items-center gap-2">
+                    <button class="btn btn-secondary btn-sm" :disabled="memberPage <= 1" @click="changeMemberPage(memberPage - 1)">上一页</button>
+                    <button class="btn btn-secondary btn-sm" :disabled="memberPage >= memberPages" @click="changeMemberPage(memberPage + 1)">下一页</button>
+                  </div>
                 </div>
               </div>
 
@@ -262,6 +278,9 @@ const loading = ref(false)
 const submitting = ref(false)
 const bindCode = ref('')
 const memberSearch = ref('')
+const memberPage = ref(1)
+const memberPageSize = 20
+const memberTotal = ref(0)
 
 const me = reactive<EnterpriseMeResponse>({
   enterprise: null,
@@ -327,6 +346,7 @@ const enterpriseTotalBalance = computed(() => Number(me.tenant?.balance_quota_to
 const enterpriseSpentBalance = computed(() => Number(me.tenant?.balance_quota_spent ?? me.enterprise?.balance_quota_spent ?? 0))
 const enterpriseOverdraftLimit = computed(() => Number(me.tenant?.balance_overdraft_limit ?? me.enterprise?.balance_overdraft_limit ?? 0))
 const enterpriseAvailableBalance = computed(() => enterpriseTotalBalance.value + enterpriseOverdraftLimit.value - enterpriseSpentBalance.value)
+const memberPages = computed(() => Math.max(1, Math.ceil(memberTotal.value / memberPageSize)))
 const tenantDefaultMemberRate = computed(() => {
   const value = Number(me.tenant?.member_default_pricing_factor ?? me.enterprise?.member_default_pricing_factor ?? 0)
   if (Number.isFinite(value) && value > 0) {
@@ -380,11 +400,22 @@ async function loadMe() {
 
 async function loadMembers() {
   if (me.enterprise?.member_role !== 'manager') return
-  const res = await enterpriseAPI.listMembers(1, 100, { search: memberSearch.value.trim() || undefined })
+  const res = await enterpriseAPI.listMembers(memberPage.value, memberPageSize, { search: memberSearch.value.trim() || undefined })
   members.value = res.items.map((member) => ({
     ...member,
     group_rates: { ...(member.group_rates || {}) },
   }))
+  memberTotal.value = res.total
+}
+
+async function applyMemberFilters() {
+  memberPage.value = 1
+  await loadMembers()
+}
+
+async function changeMemberPage(page: number) {
+  memberPage.value = Math.min(Math.max(1, page), memberPages.value)
+  await loadMembers()
 }
 
 async function loadInviteCodes() {
