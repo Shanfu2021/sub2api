@@ -40,6 +40,7 @@ type enterpriseUpdateMemberRequest struct {
 	MemberNote    *string            `json:"member_note"`
 	PricingFactor *float64           `json:"pricing_factor"`
 	PricingScope  *string            `json:"pricing_scope"`
+	Concurrency   *int               `json:"concurrency"`
 	Status        *string            `json:"status"`
 	AllowedGroups *[]int64           `json:"allowed_groups"`
 	GroupRates    map[int64]*float64 `json:"group_rates"`
@@ -133,6 +134,20 @@ func (h *EnterpriseHandler) ListMembers(c *gin.Context) {
 	response.Paginated(c, items, total, page, pageSize)
 }
 
+func (h *EnterpriseHandler) ListGroups(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	items, _, err := h.enterpriseService.ListMyGroupSummaries(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
 func (h *EnterpriseHandler) CreateMember(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -188,6 +203,7 @@ func (h *EnterpriseHandler) UpdateMember(c *gin.Context) {
 		MemberNote:    req.MemberNote,
 		PricingFactor: req.PricingFactor,
 		PricingScope:  req.PricingScope,
+		Concurrency:   req.Concurrency,
 		Status:        req.Status,
 		AllowedGroups: req.AllowedGroups,
 		GroupRates:    req.GroupRates,

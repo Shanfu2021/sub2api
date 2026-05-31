@@ -76,10 +76,26 @@ export interface EnterpriseContext {
   pricing_factor: number
   pricing_scope: 'all' | 'balance' | 'subscription' | string
   pricing_floor_factor: number
+  member_default_pricing_factor: number
+  concurrency: number
+  balance_quota_total: number
+  balance_quota_used: number
+  balance_quota_spent: number
+  balance_overdraft_limit: number
   allowed_group_ids?: number[]
   group_rates?: Record<number, number>
+  member_group_rates?: Record<number, number>
   self_recharge_blocked: boolean
   self_redeem_blocked: boolean
+}
+
+export interface EnterpriseGroupSummary {
+  id: number
+  name: string
+  platform: string
+  subscription_type: string
+  is_exclusive: boolean
+  status: string
 }
 
 export interface User {
@@ -285,11 +301,16 @@ export interface EnterpriseTenant {
   notes: string
   portal_host?: string | null
   pricing_floor_factor: number
+  member_default_pricing_factor: number
   pricing_scope: string
+  concurrency: number
   balance_quota_total: number
   balance_quota_used: number
+  balance_quota_spent: number
+  balance_overdraft_limit: number
   allowed_group_ids?: number[]
   group_rates?: Record<number, number>
+  member_group_rates?: Record<number, number>
   manager_count: number
   member_count: number
   created_at: string

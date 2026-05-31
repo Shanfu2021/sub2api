@@ -56,31 +56,43 @@ var (
 )
 
 type EnterpriseTenant struct {
-	ID                 int64     `json:"id"`
-	Name               string    `json:"name"`
-	Code               string    `json:"code"`
-	Status             string            `json:"status"`
-	Notes              string            `json:"notes"`
-	PortalHost         string            `json:"portal_host,omitempty"`
-	PricingFloorFactor float64           `json:"pricing_floor_factor"`
-	PricingScope       string            `json:"pricing_scope"`
-	BalanceQuotaTotal  float64           `json:"balance_quota_total"`
-	BalanceQuotaUsed   float64           `json:"balance_quota_used"`
-	AllowedGroupIDs    []int64           `json:"allowed_group_ids,omitempty"`
-	GroupRates         map[int64]float64 `json:"group_rates,omitempty"`
-	ManagerCount       int64             `json:"manager_count"`
-	MemberCount        int64             `json:"member_count"`
-	CreatedBy          *int64            `json:"created_by,omitempty"`
-	UpdatedBy          *int64            `json:"updated_by,omitempty"`
-	CreatedAt          time.Time         `json:"created_at"`
-	UpdatedAt          time.Time         `json:"updated_at"`
+	ID                    int64             `json:"id"`
+	Name                       string            `json:"name"`
+	Code                       string            `json:"code"`
+	Status                     string            `json:"status"`
+	Notes                      string            `json:"notes"`
+	PortalHost                 string            `json:"portal_host,omitempty"`
+	PricingFloorFactor         float64           `json:"pricing_floor_factor"`
+	MemberDefaultPricingFactor float64           `json:"member_default_pricing_factor"`
+	PricingScope               string            `json:"pricing_scope"`
+	Concurrency                int               `json:"concurrency"`
+	BalanceQuotaTotal          float64           `json:"balance_quota_total"`
+	BalanceQuotaUsed           float64           `json:"balance_quota_used"`
+	BalanceQuotaSpent          float64           `json:"balance_quota_spent"`
+	BalanceOverdraftLimit      float64           `json:"balance_overdraft_limit"`
+	AllowedGroupIDs            []int64           `json:"allowed_group_ids,omitempty"`
+	GroupRates                 map[int64]float64 `json:"group_rates,omitempty"`
+	MemberGroupRates           map[int64]float64 `json:"member_group_rates,omitempty"`
+	ManagerCount               int64             `json:"manager_count"`
+	MemberCount                int64             `json:"member_count"`
+	CreatedBy                  *int64            `json:"created_by,omitempty"`
+	UpdatedBy                  *int64            `json:"updated_by,omitempty"`
+	CreatedAt                  time.Time         `json:"created_at"`
+	UpdatedAt                  time.Time         `json:"updated_at"`
 }
 
 func (t *EnterpriseTenant) AvailableBalanceQuota() float64 {
 	if t == nil {
 		return 0
 	}
-	return t.BalanceQuotaTotal - t.BalanceQuotaUsed
+	return t.BalanceQuotaTotal + t.BalanceOverdraftLimit - t.BalanceQuotaSpent
+}
+
+func (t *EnterpriseTenant) NetBalanceQuota() float64 {
+	if t == nil {
+		return 0
+	}
+	return t.BalanceQuotaTotal - t.BalanceQuotaSpent
 }
 
 type EnterpriseMembership struct {
@@ -104,6 +116,15 @@ type EnterpriseMembership struct {
 	UserConcurrency int               `json:"user_concurrency"`
 	AllowedGroups   []int64           `json:"allowed_groups,omitempty"`
 	GroupRates      map[int64]float64 `json:"group_rates,omitempty"`
+}
+
+type EnterpriseGroupSummary struct {
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	Platform         string `json:"platform"`
+	SubscriptionType string `json:"subscription_type"`
+	IsExclusive      bool   `json:"is_exclusive"`
+	Status           string `json:"status"`
 }
 
 type EnterpriseInviteCode struct {
@@ -155,26 +176,40 @@ type EnterpriseWalletLedgerEntry struct {
 }
 
 type EnterpriseContext struct {
-	TenantID            int64   `json:"tenant_id"`
-	TenantName          string  `json:"tenant_name"`
-	TenantCode          string  `json:"tenant_code"`
-	TenantStatus        string  `json:"tenant_status"`
-	PortalHost          string  `json:"portal_host,omitempty"`
-	MemberRole          string  `json:"member_role"`
-	MemberNote          string  `json:"member_note,omitempty"`
-	JoinedVia           string  `json:"joined_via,omitempty"`
-	JoinedSource        string  `json:"joined_source,omitempty"`
-	PricingFactor       float64 `json:"pricing_factor"`
-	PricingScope        string  `json:"pricing_scope"`
-	PricingFloorFactor  float64 `json:"pricing_floor_factor"`
-	AllowedGroupIDs     []int64           `json:"allowed_group_ids,omitempty"`
-	GroupRates          map[int64]float64 `json:"group_rates,omitempty"`
-	SelfRechargeBlocked bool              `json:"self_recharge_blocked"`
-	SelfRedeemBlocked   bool              `json:"self_redeem_blocked"`
+	TenantID              int64   `json:"tenant_id"`
+	TenantName            string  `json:"tenant_name"`
+	TenantCode            string  `json:"tenant_code"`
+	TenantStatus          string  `json:"tenant_status"`
+	PortalHost            string  `json:"portal_host,omitempty"`
+	MemberRole            string  `json:"member_role"`
+	MemberNote            string  `json:"member_note,omitempty"`
+	JoinedVia             string  `json:"joined_via,omitempty"`
+	JoinedSource          string  `json:"joined_source,omitempty"`
+	PricingFactor               float64 `json:"pricing_factor"`
+	PricingScope                string  `json:"pricing_scope"`
+	PricingFloorFactor          float64 `json:"pricing_floor_factor"`
+	MemberDefaultPricingFactor float64 `json:"member_default_pricing_factor"`
+	Concurrency                 int     `json:"concurrency"`
+	BalanceQuotaTotal           float64 `json:"balance_quota_total"`
+	BalanceQuotaUsed            float64 `json:"balance_quota_used"`
+	BalanceQuotaSpent           float64 `json:"balance_quota_spent"`
+	BalanceOverdraftLimit       float64 `json:"balance_overdraft_limit"`
+	AllowedGroupIDs       []int64           `json:"allowed_group_ids,omitempty"`
+	GroupRates            map[int64]float64 `json:"group_rates,omitempty"`
+	MemberGroupRates      map[int64]float64 `json:"member_group_rates,omitempty"`
+	SelfRechargeBlocked   bool              `json:"self_recharge_blocked"`
+	SelfRedeemBlocked     bool              `json:"self_redeem_blocked"`
 }
 
 func (c *EnterpriseContext) IsManager() bool {
 	return c != nil && c.MemberRole == EnterpriseMemberRoleManager
+}
+
+func (c *EnterpriseContext) AvailableBalanceQuota() float64 {
+	if c == nil {
+		return 0
+	}
+	return c.BalanceQuotaTotal + c.BalanceOverdraftLimit - c.BalanceQuotaSpent
 }
 
 func (c *EnterpriseContext) IsMember() bool {
@@ -205,9 +240,11 @@ type EnterpriseTenantRepository interface {
 	LockTenantByID(ctx context.Context, tenantID int64) (*EnterpriseTenant, error)
 	CreateTenant(ctx context.Context, tenant *EnterpriseTenant) error
 	UpdateTenant(ctx context.Context, tenant *EnterpriseTenant) error
-	SetTenantAllowedGroups(ctx context.Context, tenantID int64, groupIDs []int64, groupRates map[int64]*float64) error
+	SetTenantAllowedGroups(ctx context.Context, tenantID int64, groupIDs []int64, groupRates map[int64]*float64, memberGroupRates map[int64]*float64) error
 	GetTenantAllowedGroups(ctx context.Context, tenantIDs []int64) (map[int64][]int64, error)
+	ListTenantGroupSummaries(ctx context.Context, tenantID int64) ([]EnterpriseGroupSummary, error)
 	GetTenantGroupRates(ctx context.Context, tenantIDs []int64) (map[int64]map[int64]float64, error)
+	GetTenantMemberGroupRates(ctx context.Context, tenantIDs []int64) (map[int64]map[int64]float64, error)
 	GetMembershipByUserID(ctx context.Context, userID int64) (*EnterpriseMembership, error)
 	GetMembershipByTenantAndUserID(ctx context.Context, tenantID, userID int64) (*EnterpriseMembership, error)
 	GetMembershipByTenantAndUserIDForUpdate(ctx context.Context, tenantID, userID int64) (*EnterpriseMembership, error)
@@ -237,23 +274,31 @@ type CreateEnterpriseTenantInput struct {
 	Name               string
 	Code               string
 	Status             string
-	Notes              string
-	PortalHost         string
-	PricingFloorFactor float64
-	PricingScope       string
-	AllowedGroupIDs    []int64
-	GroupRates         map[int64]*float64
+	Notes                      string
+	PortalHost                 string
+	PricingFloorFactor         float64
+	MemberDefaultPricingFactor float64
+	PricingScope               string
+	Concurrency                int
+	BalanceOverdraftLimit float64
+	AllowedGroupIDs       []int64
+	GroupRates            map[int64]*float64
+	MemberGroupRates      map[int64]*float64
 }
 
 type UpdateEnterpriseTenantInput struct {
-	Name               *string
-	Status             *string
-	Notes              *string
-	PortalHost         *string
-	PricingFloorFactor *float64
-	PricingScope       *string
-	AllowedGroupIDs    *[]int64
-	GroupRates         map[int64]*float64
+	Name                       *string
+	Status                     *string
+	Notes                      *string
+	PortalHost                 *string
+	PricingFloorFactor         *float64
+	MemberDefaultPricingFactor *float64
+	PricingScope               *string
+	Concurrency                *int
+	BalanceOverdraftLimit *float64
+	AllowedGroupIDs       *[]int64
+	GroupRates            map[int64]*float64
+	MemberGroupRates      map[int64]*float64
 }
 
 type AdjustEnterpriseQuotaInput struct {
@@ -292,6 +337,7 @@ type UpdateEnterpriseMemberInput struct {
 	MemberNote    *string
 	PricingFactor *float64
 	PricingScope  *string
+	Concurrency   *int
 	Status        *string
 	AllowedGroups *[]int64
 	GroupRates    map[int64]*float64
@@ -399,6 +445,35 @@ func normalizeEnterprisePricingFactor(v float64) float64 {
 	return NormalizePricingDiscountFactorForRepo(v)
 }
 
+func normalizeEnterpriseMemberPricingFactor(v float64) float64 {
+	return NormalizeEnterpriseMemberPricingFactorForRepo(v)
+}
+
+func NormalizeEnterpriseMemberPricingFactorForRepo(v float64) float64 {
+	if v <= 0 {
+		return 0
+	}
+	return NormalizePricingDiscountFactorForRepo(v)
+}
+
+func NormalizeEnterpriseMemberDefaultPricingFactor(v float64) float64 {
+	if v <= 0 {
+		return 0
+	}
+	return NormalizePricingDiscountFactorForRepo(v)
+}
+
+func normalizeEnterpriseMemberDefaultPricingFactor(v float64) float64 {
+	return NormalizeEnterpriseMemberDefaultPricingFactor(v)
+}
+
+func normalizeEnterpriseConcurrency(v int) int {
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
 func (s *EnterpriseService) ListTenants(ctx context.Context, page, pageSize int, filters EnterpriseTenantListFilters, sortBy, sortOrder string) ([]EnterpriseTenant, int64, error) {
 	params := pagination.PaginationParams{
 		Page:      page,
@@ -415,16 +490,22 @@ func (s *EnterpriseService) GetTenant(ctx context.Context, tenantID int64) (*Ent
 
 func (s *EnterpriseService) CreateTenant(ctx context.Context, actorUserID int64, input CreateEnterpriseTenantInput) (*EnterpriseTenant, error) {
 	tenant := &EnterpriseTenant{
-		Name:               strings.TrimSpace(input.Name),
-		Code:               strings.ToUpper(strings.TrimSpace(input.Code)),
-		Status:             normalizeEnterpriseTenantStatus(input.Status),
-		Notes:              strings.TrimSpace(input.Notes),
-		PortalHost:         strings.TrimSpace(input.PortalHost),
-		PricingFloorFactor: normalizeEnterprisePricingFactor(input.PricingFloorFactor),
-		PricingScope:       normalizeEnterprisePricingScope(input.PricingScope),
+		Name:                       strings.TrimSpace(input.Name),
+		Code:                       strings.ToUpper(strings.TrimSpace(input.Code)),
+		Status:                     normalizeEnterpriseTenantStatus(input.Status),
+		Notes:                      strings.TrimSpace(input.Notes),
+		PortalHost:                 strings.TrimSpace(input.PortalHost),
+		PricingFloorFactor:         normalizeEnterprisePricingFactor(input.PricingFloorFactor),
+		MemberDefaultPricingFactor: normalizeEnterpriseMemberDefaultPricingFactor(input.MemberDefaultPricingFactor),
+		PricingScope:               normalizeEnterprisePricingScope(input.PricingScope),
+		Concurrency:                normalizeEnterpriseConcurrency(input.Concurrency),
+		BalanceOverdraftLimit: input.BalanceOverdraftLimit,
 	}
 	if tenant.Name == "" {
 		return nil, errors.BadRequest("ENTERPRISE_TENANT_INVALID", "tenant name is required")
+	}
+	if tenant.BalanceOverdraftLimit < 0 {
+		return nil, errors.BadRequest("ENTERPRISE_OVERDRAFT_LIMIT_INVALID", "enterprise overdraft limit cannot be negative")
 	}
 	if tenant.PricingScope != PromoDiscountScopeBalance && tenant.PricingScope != PromoDiscountScopeAll && tenant.PricingScope != PromoDiscountScopeSubscription {
 		return nil, ErrEnterpriseScopeNotSupported
@@ -454,7 +535,10 @@ func (s *EnterpriseService) CreateTenant(ctx context.Context, actorUserID int64,
 	if err := validateEnterpriseTenantGroupRates(input.GroupRates, input.AllowedGroupIDs); err != nil {
 		return nil, err
 	}
-	if err := s.repo.SetTenantAllowedGroups(txCtx, tenant.ID, input.AllowedGroupIDs, input.GroupRates); err != nil {
+	if err := validateEnterpriseTenantGroupRates(input.MemberGroupRates, input.AllowedGroupIDs); err != nil {
+		return nil, err
+	}
+	if err := s.repo.SetTenantAllowedGroups(txCtx, tenant.ID, input.AllowedGroupIDs, input.GroupRates, input.MemberGroupRates); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -491,8 +575,20 @@ func (s *EnterpriseService) UpdateTenant(ctx context.Context, actorUserID, tenan
 	if input.PricingFloorFactor != nil {
 		tenant.PricingFloorFactor = normalizeEnterprisePricingFactor(*input.PricingFloorFactor)
 	}
+	if input.MemberDefaultPricingFactor != nil {
+		tenant.MemberDefaultPricingFactor = normalizeEnterpriseMemberDefaultPricingFactor(*input.MemberDefaultPricingFactor)
+	}
 	if input.PricingScope != nil {
 		tenant.PricingScope = normalizeEnterprisePricingScope(*input.PricingScope)
+	}
+	if input.Concurrency != nil {
+		tenant.Concurrency = normalizeEnterpriseConcurrency(*input.Concurrency)
+	}
+	if input.BalanceOverdraftLimit != nil {
+		if *input.BalanceOverdraftLimit < 0 {
+			return nil, errors.BadRequest("ENTERPRISE_OVERDRAFT_LIMIT_INVALID", "enterprise overdraft limit cannot be negative")
+		}
+		tenant.BalanceOverdraftLimit = *input.BalanceOverdraftLimit
 	}
 	if tenant.Name == "" {
 		return nil, errors.BadRequest("ENTERPRISE_TENANT_INVALID", "tenant name is required")
@@ -503,7 +599,7 @@ func (s *EnterpriseService) UpdateTenant(ctx context.Context, actorUserID, tenan
 	if err := s.repo.UpdateTenant(txCtx, tenant); err != nil {
 		return nil, err
 	}
-	if input.AllowedGroupIDs != nil || input.GroupRates != nil {
+	if input.AllowedGroupIDs != nil || input.GroupRates != nil || input.MemberGroupRates != nil {
 		allowedGroupIDs := tenant.AllowedGroupIDs
 		if input.AllowedGroupIDs != nil {
 			allowedGroupIDs = *input.AllowedGroupIDs
@@ -511,7 +607,18 @@ func (s *EnterpriseService) UpdateTenant(ctx context.Context, actorUserID, tenan
 		if err := validateEnterpriseTenantGroupRates(input.GroupRates, allowedGroupIDs); err != nil {
 			return nil, err
 		}
-		if err := s.repo.SetTenantAllowedGroups(txCtx, tenantID, allowedGroupIDs, input.GroupRates); err != nil {
+		if err := validateEnterpriseTenantGroupRates(input.MemberGroupRates, allowedGroupIDs); err != nil {
+			return nil, err
+		}
+		groupRates := tenant.GroupRates
+		if input.GroupRates != nil {
+			groupRates = normalizeFloatRateMapPointers(input.GroupRates)
+		}
+		memberGroupRates := tenant.MemberGroupRates
+		if input.MemberGroupRates != nil {
+			memberGroupRates = normalizeFloatRateMapPointers(input.MemberGroupRates)
+		}
+		if err := s.repo.SetTenantAllowedGroups(txCtx, tenantID, allowedGroupIDs, floatRateMapToPointers(groupRates), floatRateMapToPointers(memberGroupRates)); err != nil {
 			return nil, err
 		}
 	}
@@ -544,14 +651,14 @@ func (s *EnterpriseService) AdjustTenantQuota(ctx context.Context, actorUserID, 
 	case EnterpriseLedgerDirectionPlatformGrant:
 		tenant.BalanceQuotaTotal += amount
 	case EnterpriseLedgerDirectionPlatformReclaim:
-		if tenant.AvailableBalanceQuota() < amount {
+		if tenant.BalanceQuotaTotal < amount || tenant.AvailableBalanceQuota() < amount {
 			return nil, ErrEnterpriseQuotaExceeded
 		}
 		tenant.BalanceQuotaTotal -= amount
 	default:
 		return nil, errors.BadRequest("ENTERPRISE_QUOTA_DIRECTION_INVALID", "invalid quota direction")
 	}
-	if tenant.BalanceQuotaTotal < tenant.BalanceQuotaUsed {
+	if tenant.AvailableBalanceQuota() < 0 {
 		return nil, ErrEnterpriseQuotaExceeded
 	}
 	if actorUserID > 0 {
@@ -578,6 +685,7 @@ func (s *EnterpriseService) AdjustTenantQuota(ctx context.Context, actorUserID, 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
+	s.invalidateEnterpriseTenantCaches(ctx, tenantID)
 	return s.repo.GetTenantByID(ctx, tenantID)
 }
 
@@ -589,6 +697,21 @@ func (s *EnterpriseService) ListTenantMembers(ctx context.Context, tenantID int6
 		SortOrder: sortOrder,
 	}
 	return s.repo.ListMemberships(ctx, tenantID, params, filters)
+}
+
+func (s *EnterpriseService) ListMyGroupSummaries(ctx context.Context, managerUserID int64) ([]EnterpriseGroupSummary, *EnterpriseContext, error) {
+	enterprise, err := s.GetUserEnterpriseContext(ctx, managerUserID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if enterprise == nil || enterprise.TenantID <= 0 {
+		return nil, nil, ErrEnterpriseForbidden
+	}
+	if enterprise.TenantStatus != EnterpriseTenantStatusActive {
+		return nil, nil, ErrEnterpriseTenantDisabled
+	}
+	items, err := s.repo.ListTenantGroupSummaries(ctx, enterprise.TenantID)
+	return items, enterprise, err
 }
 
 func (s *EnterpriseService) BindUserToTenant(ctx context.Context, actorUserID, tenantID int64, input BindEnterpriseMemberInput) (*EnterpriseMembership, error) {
@@ -622,7 +745,7 @@ func (s *EnterpriseService) BindUserToTenant(ctx context.Context, actorUserID, t
 		MemberNote:    strings.TrimSpace(input.MemberNote),
 		JoinedVia:     firstNonEmptyString(strings.TrimSpace(input.JoinedVia), EnterpriseJoinViaManualBind),
 		JoinedSource:  strings.TrimSpace(input.JoinedSource),
-		PricingFactor: normalizeEnterprisePricingFactor(input.PricingFactor),
+		PricingFactor: normalizeEnterpriseMemberPricingFactor(input.PricingFactor),
 		PricingScope:  normalizeEnterprisePricingScope(input.PricingScope),
 	}
 	if err := validateEnterpriseMemberGroupRates(input.GroupRates, tenant.AllowedGroupIDs); err != nil {
@@ -675,7 +798,7 @@ func (s *EnterpriseService) UpdateTenantMember(ctx context.Context, actorUserID,
 		membership.MemberNote = strings.TrimSpace(*input.MemberNote)
 	}
 	if input.PricingFactor != nil {
-		next := normalizeEnterprisePricingFactor(*input.PricingFactor)
+		next := normalizeEnterpriseMemberPricingFactor(*input.PricingFactor)
 		membership.PricingFactor = next
 	}
 	if input.PricingScope != nil {
@@ -696,6 +819,12 @@ func (s *EnterpriseService) UpdateTenantMember(ctx context.Context, actorUserID,
 			return nil, ErrEnterpriseLastManagerRequired
 		}
 		user.Status = nextStatus
+		if err := s.userRepo.Update(txCtx, user); err != nil {
+			return nil, err
+		}
+	}
+	if input.Concurrency != nil {
+		user.Concurrency = normalizeEnterpriseConcurrency(*input.Concurrency)
 		if err := s.userRepo.Update(txCtx, user); err != nil {
 			return nil, err
 		}
@@ -845,7 +974,7 @@ func (s *EnterpriseService) BindUserByInviteCode(ctx context.Context, userID int
 		MemberRole:    EnterpriseMemberRoleMember,
 		JoinedVia:     EnterpriseJoinViaInviteCode,
 		JoinedSource:  strings.TrimSpace(joinedSource),
-		PricingFactor: normalizeEnterprisePricingFactor(tenant.PricingFloorFactor),
+		PricingFactor: 0,
 		PricingScope:  normalizeEnterprisePricingScope(tenant.PricingScope),
 	}
 	if err := s.repo.CreateMembership(txCtx, membership); err != nil {
@@ -955,7 +1084,7 @@ func (s *EnterpriseService) CreateMemberByManager(ctx context.Context, managerUs
 		MemberNote:    strings.TrimSpace(input.MemberNote),
 		JoinedVia:     EnterpriseJoinViaAdminCreate,
 		JoinedSource:  "manager_create",
-		PricingFactor: normalizeEnterprisePricingFactor(input.PricingFactor),
+		PricingFactor: normalizeEnterpriseMemberPricingFactor(input.PricingFactor),
 		PricingScope:  normalizeEnterprisePricingScope(input.PricingScope),
 	}
 	if err := validateEnterpriseMemberGroupRates(input.GroupRates, managerCtx.AllowedGroupIDs); err != nil {
@@ -1053,9 +1182,6 @@ func (s *EnterpriseService) adjustMemberBalanceTx(ctx context.Context, managerCt
 	beforeQuota := tenant.BalanceQuotaUsed
 	switch direction {
 	case EnterpriseLedgerDirectionManagerGrant:
-		if tenant.AvailableBalanceQuota() < amount {
-			return nil, ErrEnterpriseQuotaExceeded
-		}
 		tenant.BalanceQuotaUsed += amount
 		if err := s.userRepo.UpdateBalance(ctx, user.ID, amount); err != nil {
 			return nil, err
@@ -1317,6 +1443,55 @@ func normalizeEnterpriseMemberGroupRatesForRepo(rates map[int64]*float64) map[in
 			continue
 		}
 		v := normalizeEnterprisePricingFactor(*rate)
+		out[groupID] = &v
+	}
+	return out
+}
+
+func normalizeFloatRateMapPointers(rates map[int64]*float64) map[int64]float64 {
+	if rates == nil {
+		return nil
+	}
+	out := make(map[int64]float64, len(rates))
+	for groupID, rate := range rates {
+		if groupID <= 0 || rate == nil {
+			continue
+		}
+		out[groupID] = normalizeEnterprisePricingFactor(*rate)
+	}
+	return out
+}
+
+func defaultEnterpriseMemberPricingFactor(tenant *EnterpriseTenant) float64 {
+	if tenant == nil {
+		return DefaultPricingDiscountFactor
+	}
+	if tenant.MemberDefaultPricingFactor > 0 {
+		return normalizeEnterprisePricingFactor(tenant.MemberDefaultPricingFactor)
+	}
+	return normalizeEnterprisePricingFactor(tenant.PricingFloorFactor)
+}
+
+func defaultEnterpriseContextMemberPricingFactor(ctx *EnterpriseContext) float64 {
+	if ctx == nil {
+		return DefaultPricingDiscountFactor
+	}
+	if ctx.MemberDefaultPricingFactor > 0 {
+		return normalizeEnterprisePricingFactor(ctx.MemberDefaultPricingFactor)
+	}
+	return normalizeEnterprisePricingFactor(ctx.PricingFloorFactor)
+}
+
+func floatRateMapToPointers(rates map[int64]float64) map[int64]*float64 {
+	if rates == nil {
+		return nil
+	}
+	out := make(map[int64]*float64, len(rates))
+	for groupID, rate := range rates {
+		if groupID <= 0 {
+			continue
+		}
+		v := normalizeEnterprisePricingFactor(rate)
 		out[groupID] = &v
 	}
 	return out

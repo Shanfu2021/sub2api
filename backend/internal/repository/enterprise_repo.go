@@ -48,9 +48,13 @@ SELECT t.id,
        COALESCE(t.notes, ''),
        COALESCE(t.portal_host, ''),
        COALESCE(t.pricing_floor_factor::double precision, 1.0),
+       COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.pricing_scope, 'balance'),
+       COALESCE(t.concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
+       COALESCE(t.balance_quota_spent::double precision, 0),
+       COALESCE(t.balance_overdraft_limit::double precision, 0),
        t.created_by,
        t.updated_by,
        t.created_at,
@@ -106,9 +110,13 @@ SELECT t.id,
        COALESCE(t.notes, ''),
        COALESCE(t.portal_host, ''),
        COALESCE(t.pricing_floor_factor::double precision, 1.0),
+       COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.pricing_scope, 'balance'),
+       COALESCE(t.concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
+       COALESCE(t.balance_quota_spent::double precision, 0),
+       COALESCE(t.balance_overdraft_limit::double precision, 0),
        t.created_by,
        t.updated_by,
        t.created_at,
@@ -148,6 +156,11 @@ LIMIT 1`
 		return nil, err
 	}
 	item.GroupRates = rates[item.ID]
+	memberRates, err := r.GetTenantMemberGroupRates(ctx, []int64{item.ID})
+	if err != nil {
+		return nil, err
+	}
+	item.MemberGroupRates = memberRates[item.ID]
 	return &item, nil
 }
 
@@ -182,9 +195,13 @@ SELECT t.id,
        COALESCE(t.notes, ''),
        COALESCE(t.portal_host, ''),
        COALESCE(t.pricing_floor_factor::double precision, 1.0),
+       COALESCE(t.member_default_pricing_factor::double precision, 0),
        COALESCE(t.pricing_scope, 'balance'),
+       COALESCE(t.concurrency, 0),
        COALESCE(t.balance_quota_total::double precision, 0),
        COALESCE(t.balance_quota_used::double precision, 0),
+       COALESCE(t.balance_quota_spent::double precision, 0),
+       COALESCE(t.balance_overdraft_limit::double precision, 0),
        t.created_by,
        t.updated_by,
        t.created_at,
@@ -226,6 +243,11 @@ WHERE t.id = $1`
 		return nil, err
 	}
 	item.GroupRates = rates[item.ID]
+	memberRates, err := r.GetTenantMemberGroupRates(ctx, []int64{item.ID})
+	if err != nil {
+		return nil, err
+	}
+	item.MemberGroupRates = memberRates[item.ID]
 	return &item, nil
 }
 
@@ -234,9 +256,10 @@ func (r *enterpriseRepository) CreateTenant(ctx context.Context, tenant *service
 	query := `
 INSERT INTO enterprise_tenants (
     name, code, status, notes, portal_host, pricing_floor_factor, pricing_scope,
-    balance_quota_total, balance_quota_used, created_by, updated_by, created_at, updated_at
+    member_default_pricing_factor, concurrency, balance_quota_total, balance_quota_used,
+    balance_quota_spent, balance_overdraft_limit, created_by, updated_by, created_at, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
 RETURNING id, created_at, updated_at`
 	var createdAt, updatedAt time.Time
 	if err := scanSingleRow(ctx, exec, query, []any{
@@ -247,8 +270,12 @@ RETURNING id, created_at, updated_at`
 		tenant.PortalHost,
 		service.NormalizePricingDiscountFactorForRepo(tenant.PricingFloorFactor),
 		service.NormalizeEnterprisePricingScopeForRepo(tenant.PricingScope),
+		tenant.MemberDefaultPricingFactor,
+		tenant.Concurrency,
 		tenant.BalanceQuotaTotal,
 		tenant.BalanceQuotaUsed,
+		tenant.BalanceQuotaSpent,
+		tenant.BalanceOverdraftLimit,
 		tenant.CreatedBy,
 		tenant.UpdatedBy,
 	}, &tenant.ID, &createdAt, &updatedAt); err != nil {
@@ -270,12 +297,16 @@ SET name = $2,
     portal_host = $6,
     pricing_floor_factor = $7,
     pricing_scope = $8,
-    balance_quota_total = $9,
-    balance_quota_used = $10,
-    updated_by = $11,
+    member_default_pricing_factor = $9,
+    concurrency = $10,
+    balance_quota_total = $11,
+    balance_quota_used = $12,
+    balance_quota_spent = $13,
+    balance_overdraft_limit = $14,
+    updated_by = $15,
     updated_at = NOW()
 WHERE id = $1
-	`, tenant.ID, tenant.Name, tenant.Code, tenant.Status, tenant.Notes, tenant.PortalHost, service.NormalizePricingDiscountFactorForRepo(tenant.PricingFloorFactor), service.NormalizeEnterprisePricingScopeForRepo(tenant.PricingScope), tenant.BalanceQuotaTotal, tenant.BalanceQuotaUsed, tenant.UpdatedBy)
+	`, tenant.ID, tenant.Name, tenant.Code, tenant.Status, tenant.Notes, tenant.PortalHost, service.NormalizePricingDiscountFactorForRepo(tenant.PricingFloorFactor), service.NormalizeEnterprisePricingScopeForRepo(tenant.PricingScope), tenant.MemberDefaultPricingFactor, tenant.Concurrency, tenant.BalanceQuotaTotal, tenant.BalanceQuotaUsed, tenant.BalanceQuotaSpent, tenant.BalanceOverdraftLimit, tenant.UpdatedBy)
 	if err != nil {
 		return err
 	}
@@ -289,7 +320,7 @@ WHERE id = $1
 	return nil
 }
 
-func (r *enterpriseRepository) SetTenantAllowedGroups(ctx context.Context, tenantID int64, groupIDs []int64, groupRates map[int64]*float64) error {
+func (r *enterpriseRepository) SetTenantAllowedGroups(ctx context.Context, tenantID int64, groupIDs []int64, groupRates map[int64]*float64, memberGroupRates map[int64]*float64) error {
 	exec := r.exec(ctx)
 	if _, err := exec.ExecContext(ctx, `DELETE FROM enterprise_tenant_groups WHERE tenant_id = $1`, tenantID); err != nil {
 		return err
@@ -305,10 +336,16 @@ func (r *enterpriseRepository) SetTenantAllowedGroups(ctx context.Context, tenan
 				rate = service.NormalizePricingDiscountFactorForRepo(*v)
 			}
 		}
+		var memberRate any
+		if memberGroupRates != nil {
+			if v, ok := memberGroupRates[groupID]; ok && v != nil {
+				memberRate = service.NormalizePricingDiscountFactorForRepo(*v)
+			}
+		}
 		if _, err := exec.ExecContext(ctx, `
-INSERT INTO enterprise_tenant_groups (tenant_id, group_id, pricing_floor_multiplier, created_at)
-VALUES ($1, $2, $3, NOW())
-`, tenantID, groupID, rate); err != nil {
+INSERT INTO enterprise_tenant_groups (tenant_id, group_id, pricing_floor_multiplier, member_default_multiplier, created_at)
+VALUES ($1, $2, $3, $4, NOW())
+`, tenantID, groupID, rate, memberRate); err != nil {
 			return err
 		}
 	}
@@ -341,6 +378,44 @@ ORDER BY tenant_id, group_id
 	return out, rows.Err()
 }
 
+func (r *enterpriseRepository) ListTenantGroupSummaries(ctx context.Context, tenantID int64) ([]service.EnterpriseGroupSummary, error) {
+	if tenantID <= 0 {
+		return []service.EnterpriseGroupSummary{}, nil
+	}
+	rows, err := r.exec(ctx).QueryContext(ctx, `
+SELECT g.id,
+       COALESCE(g.name, ''),
+       COALESCE(g.platform, ''),
+       COALESCE(g.subscription_type, ''),
+       COALESCE(g.is_exclusive, false),
+       COALESCE(g.status, '')
+FROM enterprise_tenant_groups etg
+JOIN groups g ON g.id = etg.group_id AND g.deleted_at IS NULL
+WHERE etg.tenant_id = $1
+ORDER BY g.sort_order ASC, g.id ASC
+`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]service.EnterpriseGroupSummary, 0)
+	for rows.Next() {
+		var item service.EnterpriseGroupSummary
+		if err := rows.Scan(
+			&item.ID,
+			&item.Name,
+			&item.Platform,
+			&item.SubscriptionType,
+			&item.IsExclusive,
+			&item.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *enterpriseRepository) GetTenantGroupRates(ctx context.Context, tenantIDs []int64) (map[int64]map[int64]float64, error) {
 	out := make(map[int64]map[int64]float64, len(tenantIDs))
 	tenantIDs = uniquePositiveInt64s(tenantIDs)
@@ -351,6 +426,36 @@ func (r *enterpriseRepository) GetTenantGroupRates(ctx context.Context, tenantID
 SELECT tenant_id, group_id, pricing_floor_multiplier
 FROM enterprise_tenant_groups
 WHERE tenant_id = ANY($1) AND pricing_floor_multiplier IS NOT NULL
+ORDER BY tenant_id, group_id
+`, pq.Array(tenantIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var tenantID, groupID int64
+		var rate float64
+		if err := rows.Scan(&tenantID, &groupID, &rate); err != nil {
+			return nil, err
+		}
+		if out[tenantID] == nil {
+			out[tenantID] = make(map[int64]float64)
+		}
+		out[tenantID][groupID] = service.NormalizePricingDiscountFactorForRepo(rate)
+	}
+	return out, rows.Err()
+}
+
+func (r *enterpriseRepository) GetTenantMemberGroupRates(ctx context.Context, tenantIDs []int64) (map[int64]map[int64]float64, error) {
+	out := make(map[int64]map[int64]float64, len(tenantIDs))
+	tenantIDs = uniquePositiveInt64s(tenantIDs)
+	if len(tenantIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.exec(ctx).QueryContext(ctx, `
+SELECT tenant_id, group_id, member_default_multiplier
+FROM enterprise_tenant_groups
+WHERE tenant_id = ANY($1) AND member_default_multiplier IS NOT NULL
 ORDER BY tenant_id, group_id
 `, pq.Array(tenantIDs))
 	if err != nil {
@@ -503,7 +608,7 @@ RETURNING id, created_at, updated_at`
 		membership.MemberNote,
 		membership.JoinedVia,
 		membership.JoinedSource,
-		service.NormalizePricingDiscountFactorForRepo(membership.PricingFactor),
+		service.NormalizeEnterpriseMemberPricingFactorForRepo(membership.PricingFactor),
 		service.NormalizeEnterprisePricingScopeForRepo(membership.PricingScope),
 		membership.CreatedBy,
 	}, &membership.ID, &membership.CreatedAt, &membership.UpdatedAt); err != nil {
@@ -523,7 +628,7 @@ SET member_role = $2,
     pricing_scope = $7,
     updated_at = NOW()
 WHERE id = $1
-	`, membership.ID, membership.MemberRole, membership.MemberNote, membership.JoinedVia, membership.JoinedSource, service.NormalizePricingDiscountFactorForRepo(membership.PricingFactor), service.NormalizeEnterprisePricingScopeForRepo(membership.PricingScope))
+	`, membership.ID, membership.MemberRole, membership.MemberNote, membership.JoinedVia, membership.JoinedSource, service.NormalizeEnterpriseMemberPricingFactorForRepo(membership.PricingFactor), service.NormalizeEnterprisePricingScopeForRepo(membership.PricingScope))
 	if err != nil {
 		return err
 	}
@@ -766,9 +871,15 @@ SELECT em.tenant_id,
        COALESCE(em.member_note, ''),
        COALESCE(em.joined_via, ''),
        COALESCE(em.joined_source, ''),
-       COALESCE(em.pricing_factor::double precision, 1.0),
+       COALESCE(em.pricing_factor::double precision, 0),
        COALESCE(em.pricing_scope, 'balance'),
-       COALESCE(t.pricing_floor_factor::double precision, 1.0)
+       COALESCE(t.pricing_floor_factor::double precision, 1.0),
+       COALESCE(t.member_default_pricing_factor::double precision, 0),
+       COALESCE(t.concurrency, 0),
+       COALESCE(t.balance_quota_total::double precision, 0),
+       COALESCE(t.balance_quota_used::double precision, 0),
+       COALESCE(t.balance_quota_spent::double precision, 0),
+       COALESCE(t.balance_overdraft_limit::double precision, 0)
 FROM enterprise_memberships em
 JOIN enterprise_tenants t ON t.id = em.tenant_id
 WHERE em.user_id = $1
@@ -799,12 +910,20 @@ LIMIT 1`
 		&out.PricingFactor,
 		&out.PricingScope,
 		&out.PricingFloorFactor,
+		&out.MemberDefaultPricingFactor,
+		&out.Concurrency,
+		&out.BalanceQuotaTotal,
+		&out.BalanceQuotaUsed,
+		&out.BalanceQuotaSpent,
+		&out.BalanceOverdraftLimit,
 	); err != nil {
 		_ = rows.Close()
 		return nil, err
 	}
-	out.PricingFactor = service.NormalizePricingDiscountFactorForRepo(out.PricingFactor)
+	out.PricingFactor = service.NormalizeEnterpriseMemberPricingFactorForRepo(out.PricingFactor)
 	out.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(out.PricingScope)
+	out.PricingFloorFactor = service.NormalizePricingDiscountFactorForRepo(out.PricingFloorFactor)
+	out.MemberDefaultPricingFactor = service.NormalizeEnterpriseMemberDefaultPricingFactor(out.MemberDefaultPricingFactor)
 	out.AllowedGroupIDs = nil
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -819,6 +938,11 @@ LIMIT 1`
 		return nil, err
 	}
 	out.GroupRates = rates[out.TenantID]
+	memberRates, err := r.GetTenantMemberGroupRates(ctx, []int64{out.TenantID})
+	if err != nil {
+		return nil, err
+	}
+	out.MemberGroupRates = memberRates[out.TenantID]
 	out.SelfRechargeBlocked = true
 	out.SelfRedeemBlocked = true
 	return &out, nil
@@ -840,9 +964,14 @@ func (r *enterpriseRepository) hydrateTenantAllowedGroups(ctx context.Context, t
 	if err != nil {
 		return err
 	}
+	memberRates, err := r.GetTenantMemberGroupRates(ctx, ids)
+	if err != nil {
+		return err
+	}
 	for i := range tenants {
 		tenants[i].AllowedGroupIDs = groups[tenants[i].ID]
 		tenants[i].GroupRates = rates[tenants[i].ID]
+		tenants[i].MemberGroupRates = memberRates[tenants[i].ID]
 	}
 	return nil
 }
@@ -987,6 +1116,10 @@ func enterpriseTenantOrderBy(params pagination.PaginationParams) string {
 		field = "t.balance_quota_total"
 	case "balance_quota_used":
 		field = "t.balance_quota_used"
+	case "balance_quota_spent":
+		field = "t.balance_quota_spent"
+	case "balance_overdraft_limit":
+		field = "t.balance_overdraft_limit"
 	}
 	return field + " " + sortOrder + ", t.id DESC"
 }
@@ -1055,7 +1188,7 @@ SELECT em.id,
        COALESCE(em.member_note, ''),
        COALESCE(em.joined_via, ''),
        COALESCE(em.joined_source, ''),
-       COALESCE(em.pricing_factor::double precision, 1.0),
+       COALESCE(em.pricing_factor::double precision, 0),
        COALESCE(em.pricing_scope, 'balance'),
        em.created_by,
        em.created_at,
@@ -1081,9 +1214,13 @@ func scanEnterpriseTenant(rows *sql.Rows) (service.EnterpriseTenant, error) {
 		&item.Notes,
 		&item.PortalHost,
 		&item.PricingFloorFactor,
+		&item.MemberDefaultPricingFactor,
 		&item.PricingScope,
+		&item.Concurrency,
 		&item.BalanceQuotaTotal,
 		&item.BalanceQuotaUsed,
+		&item.BalanceQuotaSpent,
+		&item.BalanceOverdraftLimit,
 		&createdBy,
 		&updatedBy,
 		&item.CreatedAt,
@@ -1094,6 +1231,7 @@ func scanEnterpriseTenant(rows *sql.Rows) (service.EnterpriseTenant, error) {
 		return service.EnterpriseTenant{}, err
 	}
 	item.PricingFloorFactor = service.NormalizePricingDiscountFactorForRepo(item.PricingFloorFactor)
+	item.MemberDefaultPricingFactor = service.NormalizeEnterpriseMemberDefaultPricingFactor(item.MemberDefaultPricingFactor)
 	item.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(item.PricingScope)
 	if createdBy.Valid {
 		v := createdBy.Int64
@@ -1130,7 +1268,7 @@ func scanEnterpriseMembership(rows *sql.Rows) (service.EnterpriseMembership, err
 	); err != nil {
 		return service.EnterpriseMembership{}, err
 	}
-	item.PricingFactor = service.NormalizePricingDiscountFactorForRepo(item.PricingFactor)
+	item.PricingFactor = service.NormalizeEnterpriseMemberPricingFactorForRepo(item.PricingFactor)
 	item.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(item.PricingScope)
 	if createdBy.Valid {
 		v := createdBy.Int64

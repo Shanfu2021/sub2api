@@ -19,6 +19,32 @@ func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBill
 	return &usageBillingRepository{db: sqlDB}
 }
 
+func (r *usageBillingRepository) IncrementEnterpriseQuotaSpent(ctx context.Context, tenantID int64, amount float64) error {
+	if amount <= 0 {
+		return nil
+	}
+	if r == nil || r.db == nil {
+		return errors.New("usage billing repository db is nil")
+	}
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE enterprise_tenants
+		SET balance_quota_spent = balance_quota_spent + $1,
+			updated_at = NOW()
+		WHERE id = $2
+	`, amount, tenantID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrEnterpriseTenantNotFound
+	}
+	return nil
+}
+
 func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBillingCommand) (_ *service.UsageBillingApplyResult, err error) {
 	if cmd == nil {
 		return &service.UsageBillingApplyResult{}, nil
@@ -120,6 +146,12 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.NewBalance = &newBalance
 	}
 
+	if cmd.EnterpriseCost > 0 && cmd.EnterpriseTenantID != nil && *cmd.EnterpriseTenantID > 0 {
+		if err := incrementUsageBillingEnterpriseSpent(ctx, tx, *cmd.EnterpriseTenantID, cmd.EnterpriseCost); err != nil {
+			return err
+		}
+	}
+
 	if cmd.APIKeyQuotaCost > 0 {
 		exhausted, err := incrementUsageBillingAPIKeyQuota(ctx, tx, cmd.APIKeyID, cmd.APIKeyQuotaCost)
 		if err != nil {
@@ -189,6 +221,26 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 		return 0, err
 	}
 	return newBalance, nil
+}
+
+func incrementUsageBillingEnterpriseSpent(ctx context.Context, tx *sql.Tx, tenantID int64, amount float64) error {
+	res, err := tx.ExecContext(ctx, `
+		UPDATE enterprise_tenants
+		SET balance_quota_spent = balance_quota_spent + $1,
+			updated_at = NOW()
+		WHERE id = $2
+	`, amount, tenantID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrEnterpriseTenantNotFound
+	}
+	return nil
 }
 
 func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {

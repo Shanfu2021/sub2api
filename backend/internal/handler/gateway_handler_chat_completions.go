@@ -125,7 +125,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 	}()
 
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireSubjectSlotsWithWait(c, subject, reqStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.cc.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)

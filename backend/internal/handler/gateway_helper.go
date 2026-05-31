@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -228,6 +229,12 @@ func (h *ConcurrencyHelper) TryAcquireUserSlot(ctx context.Context, userID int64
 	return result.ReleaseFunc, true, nil
 }
 
+// TryAcquireEnterpriseSlot reuses account concurrency slots with a negative ID
+// namespace so enterprise-wide limits do not collide with real account IDs.
+func (h *ConcurrencyHelper) TryAcquireEnterpriseSlot(ctx context.Context, tenantID int64, maxConcurrency int) (func(), bool, error) {
+	return h.TryAcquireAccountSlot(ctx, enterpriseConcurrencySlotID(tenantID), maxConcurrency)
+}
+
 // TryAcquireAccountSlot 尝试立即获取账号并发槽位。
 // 返回值: (releaseFunc, acquired, error)
 func (h *ConcurrencyHelper) TryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (func(), bool, error) {
@@ -259,6 +266,35 @@ func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, userID int64
 
 	// Need to wait - handle streaming ping if needed
 	return h.waitForSlotWithPing(c, "user", userID, maxConcurrency, isStream, streamStarted)
+}
+
+func (h *ConcurrencyHelper) AcquireSubjectSlotsWithWait(c *gin.Context, subject middleware2.AuthSubject, isStream bool, streamStarted *bool) (func(), error) {
+	userRelease, err := h.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, isStream, streamStarted)
+	if err != nil {
+		return nil, err
+	}
+	var enterpriseRelease func()
+	if subject.EnterpriseTenantID > 0 && subject.EnterpriseConcurrency > 0 {
+		enterpriseRelease, err = h.AcquireEnterpriseSlotWithWait(c, subject.EnterpriseTenantID, subject.EnterpriseConcurrency, isStream, streamStarted)
+		if err != nil {
+			if userRelease != nil {
+				userRelease()
+			}
+			return nil, err
+		}
+	}
+	return combineReleaseFuncs(userRelease, enterpriseRelease), nil
+}
+
+func (h *ConcurrencyHelper) AcquireEnterpriseSlotWithWait(c *gin.Context, tenantID int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
+	releaseFunc, acquired, err := h.TryAcquireEnterpriseSlot(c.Request.Context(), tenantID, maxConcurrency)
+	if err != nil {
+		return nil, err
+	}
+	if acquired {
+		return releaseFunc, nil
+	}
+	return h.waitForSlotWithPing(c, "enterprise", enterpriseConcurrencySlotID(tenantID), maxConcurrency, isStream, streamStarted)
 }
 
 // AcquireAccountSlotWithWait acquires an account concurrency slot, waiting if necessary.
@@ -370,6 +406,23 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 			}
 			backoff = nextBackoff(backoff)
 			timer.Reset(backoff)
+		}
+	}
+}
+
+func enterpriseConcurrencySlotID(tenantID int64) int64 {
+	if tenantID <= 0 {
+		return 0
+	}
+	return -tenantID
+}
+
+func combineReleaseFuncs(releases ...func()) func() {
+	return func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			if releases[i] != nil {
+				releases[i]()
+			}
 		}
 	}
 }

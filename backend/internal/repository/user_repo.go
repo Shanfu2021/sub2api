@@ -1266,9 +1266,15 @@ SELECT em.user_id,
        COALESCE(em.member_note, ''),
        COALESCE(em.joined_via, ''),
        COALESCE(em.joined_source, ''),
-       COALESCE(em.pricing_factor::double precision, 1.0),
+       COALESCE(em.pricing_factor::double precision, 0),
        COALESCE(em.pricing_scope, 'balance'),
-       COALESCE(t.pricing_floor_factor::double precision, 1.0)
+       COALESCE(t.pricing_floor_factor::double precision, 1.0),
+       COALESCE(t.member_default_pricing_factor::double precision, 0),
+       COALESCE(t.concurrency, 0),
+       COALESCE(t.balance_quota_total::double precision, 0),
+       COALESCE(t.balance_quota_used::double precision, 0),
+       COALESCE(t.balance_quota_spent::double precision, 0),
+       COALESCE(t.balance_overdraft_limit::double precision, 0)
 FROM enterprise_memberships em
 JOIN enterprise_tenants t ON t.id = em.tenant_id
 WHERE em.user_id = ANY($1)
@@ -1297,12 +1303,19 @@ WHERE em.user_id = ANY($1)
 			&ctxItem.PricingFactor,
 			&ctxItem.PricingScope,
 			&ctxItem.PricingFloorFactor,
+			&ctxItem.MemberDefaultPricingFactor,
+			&ctxItem.Concurrency,
+			&ctxItem.BalanceQuotaTotal,
+			&ctxItem.BalanceQuotaUsed,
+			&ctxItem.BalanceQuotaSpent,
+			&ctxItem.BalanceOverdraftLimit,
 		); err != nil {
 			return err
 		}
-		ctxItem.PricingFactor = service.NormalizePricingDiscountFactorForRepo(ctxItem.PricingFactor)
+		ctxItem.PricingFactor = service.NormalizeEnterpriseMemberPricingFactorForRepo(ctxItem.PricingFactor)
 		ctxItem.PricingScope = service.NormalizeEnterprisePricingScopeForRepo(ctxItem.PricingScope)
 		ctxItem.PricingFloorFactor = service.NormalizePricingDiscountFactorForRepo(ctxItem.PricingFloorFactor)
+		ctxItem.MemberDefaultPricingFactor = service.NormalizeEnterpriseMemberDefaultPricingFactor(ctxItem.MemberDefaultPricingFactor)
 		ctxItem.SelfRechargeBlocked = true
 		ctxItem.SelfRedeemBlocked = true
 		contexts[userID] = ctxItem
@@ -1314,9 +1327,10 @@ WHERE em.user_id = ANY($1)
 
 	allowedGroupsByTenant := make(map[int64][]int64)
 	groupRatesByTenant := make(map[int64]map[int64]float64)
+	memberGroupRatesByTenant := make(map[int64]map[int64]float64)
 	if len(tenantIDs) > 0 {
 		groupRows, err := exec.QueryContext(ctx, `
-SELECT tenant_id, group_id, pricing_floor_multiplier
+SELECT tenant_id, group_id, pricing_floor_multiplier, member_default_multiplier
 FROM enterprise_tenant_groups
 WHERE tenant_id = ANY($1)
 ORDER BY tenant_id, group_id
@@ -1328,7 +1342,8 @@ ORDER BY tenant_id, group_id
 		for groupRows.Next() {
 			var tenantID, groupID int64
 			var rate sql.NullFloat64
-			if err := groupRows.Scan(&tenantID, &groupID, &rate); err != nil {
+			var memberRate sql.NullFloat64
+			if err := groupRows.Scan(&tenantID, &groupID, &rate, &memberRate); err != nil {
 				return err
 			}
 			allowedGroupsByTenant[tenantID] = append(allowedGroupsByTenant[tenantID], groupID)
@@ -1337,6 +1352,12 @@ ORDER BY tenant_id, group_id
 					groupRatesByTenant[tenantID] = make(map[int64]float64)
 				}
 				groupRatesByTenant[tenantID][groupID] = service.NormalizePricingDiscountFactorForRepo(rate.Float64)
+			}
+			if memberRate.Valid {
+				if memberGroupRatesByTenant[tenantID] == nil {
+					memberGroupRatesByTenant[tenantID] = make(map[int64]float64)
+				}
+				memberGroupRatesByTenant[tenantID][groupID] = service.NormalizePricingDiscountFactorForRepo(memberRate.Float64)
 			}
 		}
 		if err := groupRows.Err(); err != nil {
@@ -1350,6 +1371,7 @@ ORDER BY tenant_id, group_id
 		}
 		enterprise.AllowedGroupIDs = allowedGroupsByTenant[enterprise.TenantID]
 		enterprise.GroupRates = groupRatesByTenant[enterprise.TenantID]
+		enterprise.MemberGroupRates = memberGroupRatesByTenant[enterprise.TenantID]
 		if user := userMap[userID]; user != nil {
 			user.Enterprise = enterprise
 		}

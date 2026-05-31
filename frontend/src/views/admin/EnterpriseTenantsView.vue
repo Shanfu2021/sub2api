@@ -56,7 +56,7 @@
                     </span>
                   </div>
                   <div class="mt-2 text-xs text-gray-500 dark:text-dark-300">
-                    已用 {{ item.balance_quota_used.toFixed(2) }} / 总额 {{ item.balance_quota_total.toFixed(2) }}
+                    企业余额 {{ tenantNetBalance(item).toFixed(2) }} / 可用 {{ tenantAvailableBalance(item).toFixed(2) }}
                   </div>
                 </button>
               </div>
@@ -90,11 +90,35 @@
                   type="number"
                   min="0.01"
                   step="0.01"
-                  placeholder="兜底底价，未配置分组底价时使用"
+                  placeholder="企业兜底底价，未配置分组底价时使用"
+                />
+                <input
+                  v-model="tenantForm.member_default_pricing_factor"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="成员默认售价，0 表示沿用企业底价"
+                />
+                <input
+                  v-model="tenantForm.concurrency"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="企业总并发，0 不限制"
                 />
                 <select v-model="tenantForm.pricing_scope" class="input">
                   <option value="balance">仅余额</option>
                 </select>
+                <input
+                  v-model="tenantForm.balance_overdraft_limit"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="企业授信额度，例如 10 / 50 / 100"
+                />
                 <input v-model="tenantForm.portal_host" class="input" placeholder="门户域名，可留空" />
                 <select v-model="tenantForm.status" class="input">
                   <option value="active">启用</option>
@@ -102,6 +126,9 @@
                 </select>
               </div>
               <textarea v-model="tenantForm.notes" class="input mt-3 min-h-[76px]" placeholder="备注"></textarea>
+              <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
+                授信额度只用于企业总账可透支，企业管理员给成员分发额度不消耗企业总账；成员真实调用后才按企业底价消耗企业额度。
+              </p>
               <div class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-dark-700">
                 <div class="mb-2 flex items-center justify-between gap-2">
                   <div class="text-xs font-medium text-gray-600 dark:text-dark-200">企业可用分组</div>
@@ -133,6 +160,18 @@
                           @click.stop
                         />
                       </span>
+                      <span v-if="tenantForm.allowed_group_ids.includes(group.id)" class="mt-2 flex items-center gap-2">
+                        <span class="shrink-0 text-gray-500 dark:text-dark-300">成员默认</span>
+                        <input
+                          v-model.number="tenantForm.member_group_rates[group.id]"
+                          class="input h-8 min-w-0 flex-1 text-xs"
+                          type="number"
+                          min="0.01"
+                          step="0.001"
+                          :placeholder="`默认 ${tenantMemberDefaultRate(group.id).toFixed(3)}`"
+                          @click.stop
+                        />
+                      </span>
                     </span>
                   </label>
                   <div v-if="!groupOptions.length" class="text-xs text-gray-500 dark:text-dark-300">暂无可选分组</div>
@@ -154,7 +193,7 @@
                   </span>
                 </div>
                 <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
-                  企业成员可直接使用这里选中的分组，包括专属分组；未选择时只允许公开分组。
+                  企业底价是平台向企业计费的成本；成员默认是企业成员未单独设置时的售价。企业成员可直接使用这里选中的分组，包括专属分组；未选择时只允许公开分组。
                 </p>
               </div>
               <div class="mt-3 flex flex-wrap gap-2">
@@ -166,22 +205,30 @@
             </div>
 
             <div v-if="selectedTenant" class="space-y-4">
-            <div class="grid gap-4 md:grid-cols-4">
+            <div class="grid gap-4 md:grid-cols-5">
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500 dark:text-dark-300">企业额度</div>
+                <div class="text-xs text-gray-500 dark:text-dark-300">企业总额度</div>
                 <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.balance_quota_total.toFixed(2) }}</div>
               </div>
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500 dark:text-dark-300">已分发额度</div>
+                <div class="text-xs text-gray-500 dark:text-dark-300">平台已消耗</div>
+                <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.balance_quota_spent.toFixed(2) }}</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                <div class="text-xs text-gray-500 dark:text-dark-300">可用含授信</div>
+                <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ tenantAvailableBalance(selectedTenant).toFixed(2) }}</div>
+              </div>
+              <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+                <div class="text-xs text-gray-500 dark:text-dark-300">已分发成员额度</div>
                 <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.balance_quota_used.toFixed(2) }}</div>
               </div>
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500 dark:text-dark-300">企业管理员</div>
-                <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.manager_count }}</div>
+                <div class="text-xs text-gray-500 dark:text-dark-300">授信额度</div>
+                <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.balance_overdraft_limit.toFixed(2) }}</div>
               </div>
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-                <div class="text-xs text-gray-500 dark:text-dark-300">成员数</div>
-                <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.member_count }}</div>
+                <div class="text-xs text-gray-500 dark:text-dark-300">企业总并发</div>
+                <div class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ selectedTenant.concurrency || '不限' }}</div>
               </div>
             </div>
 
@@ -212,23 +259,23 @@
                       v-model="bindForm.pricing_factor"
                       class="input"
                       type="number"
-                      min="0.01"
+                      min="0"
                       step="0.01"
-                      placeholder="兜底倍率"
+                      placeholder="留空/0 使用企业默认售价"
                     />
                   </div>
                   <div v-if="selectedGroupLabels.length" class="rounded-lg border border-gray-100 p-2 dark:border-dark-700">
                     <div class="mb-2 text-xs font-medium text-gray-600 dark:text-dark-200">成员分组倍率</div>
                     <div class="grid gap-2 sm:grid-cols-2">
                       <label v-for="group in selectedGroupLabels" :key="group.id" class="text-xs text-gray-500 dark:text-dark-300">
-                        <span class="mb-1 block truncate">#{{ group.id }} {{ group.name }}，底价 {{ tenantGroupFloor(group.id).toFixed(3) }}</span>
+                        <span class="mb-1 block truncate">#{{ group.id }} {{ group.name }}，默认 {{ tenantMemberDefaultRate(group.id).toFixed(3) }}</span>
                         <input
                           v-model.number="bindForm.group_rates[group.id]"
                           class="input h-9 text-xs"
                           type="number"
                           min="0.01"
                           step="0.001"
-                          :placeholder="`默认 ${tenantGroupFloor(group.id).toFixed(3)}`"
+                          :placeholder="`默认 ${tenantMemberDefaultRate(group.id).toFixed(3)}`"
                         />
                       </label>
                     </div>
@@ -251,7 +298,9 @@
                       <tr>
                         <th class="py-2">用户</th>
                         <th class="py-2">角色</th>
+                        <th class="py-2">默认倍率</th>
                         <th class="py-2">分组倍率</th>
+                        <th class="py-2">并发</th>
                         <th class="py-2">余额</th>
                         <th class="py-2">操作</th>
                       </tr>
@@ -264,17 +313,22 @@
                         </td>
                         <td class="py-2">{{ member.member_role }}</td>
                         <td class="py-2">
+                          <span v-if="Number(member.pricing_factor) > 0">{{ Number(member.pricing_factor).toFixed(3) }}x</span>
+                          <span v-else class="text-xs text-gray-400">继承企业默认</span>
+                        </td>
+                        <td class="py-2">
                           <div v-if="member.group_rates && Object.keys(member.group_rates).length" class="flex flex-wrap gap-1">
                             <span
                               v-for="(rate, groupID) in member.group_rates"
                               :key="groupID"
                               class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-dark-200"
                             >
-                              #{{ groupID }} {{ Number(rate).toFixed(3) }}x
+                              {{ groupLabel(Number(groupID)) }} {{ Number(rate).toFixed(3) }}x
                             </span>
                           </div>
-                          <span v-else class="text-xs text-gray-400">默认企业底价</span>
+                          <span v-else class="text-xs text-gray-400">默认企业成员售价</span>
                         </td>
+                        <td class="py-2">{{ member.user_concurrency || '不限' }}</td>
                         <td class="py-2">{{ member.user_balance.toFixed(2) }}</td>
                         <td class="py-2">
                           <button class="btn btn-secondary btn-sm" @click="removeMember(member)">移除</button>
@@ -387,9 +441,13 @@ const tenantForm = reactive({
   notes: '',
   portal_host: '',
   pricing_floor_factor: 1,
+  member_default_pricing_factor: 0,
   pricing_scope: 'balance',
+  concurrency: 0,
+  balance_overdraft_limit: 0,
   allowed_group_ids: [] as number[],
   group_rates: {} as Record<number, number | undefined>,
+  member_group_rates: {} as Record<number, number | undefined>,
 })
 
 const quotaForm = reactive({
@@ -402,7 +460,7 @@ const bindForm = reactive({
   user_id: 0,
   member_role: 'member',
   member_note: '',
-  pricing_factor: 1,
+  pricing_factor: 0,
   group_rates: {} as Record<number, number | undefined>,
 })
 
@@ -455,6 +513,19 @@ const missingGroupIDs = computed(() => {
 
 const tenantPages = computed(() => Math.max(1, Math.ceil(tenantTotal.value / tenantPageSize)))
 
+function tenantNetBalance(item: EnterpriseTenant): number {
+  return Number(item.balance_quota_total || 0) - Number(item.balance_quota_spent || 0)
+}
+
+function tenantAvailableBalance(item: EnterpriseTenant): number {
+  return tenantNetBalance(item) + Number(item.balance_overdraft_limit || 0)
+}
+
+function groupLabel(groupID: number): string {
+  const group = groups.value.find((item) => item.id === groupID)
+  return group ? `#${group.id} ${group.name}` : `#${groupID}`
+}
+
 function resetTenantForm() {
   tenantForm.name = ''
   tenantForm.code = ''
@@ -462,9 +533,13 @@ function resetTenantForm() {
   tenantForm.notes = ''
   tenantForm.portal_host = ''
   tenantForm.pricing_floor_factor = 1
+  tenantForm.member_default_pricing_factor = 0
   tenantForm.pricing_scope = 'balance'
+  tenantForm.concurrency = 0
+  tenantForm.balance_overdraft_limit = 0
   tenantForm.allowed_group_ids = []
   tenantForm.group_rates = {}
+  tenantForm.member_group_rates = {}
   selectedTenant.value = null
 }
 
@@ -475,9 +550,13 @@ function fillTenantForm(item: EnterpriseTenant) {
   tenantForm.notes = item.notes || ''
   tenantForm.portal_host = item.portal_host || ''
   tenantForm.pricing_floor_factor = item.pricing_floor_factor
+  tenantForm.member_default_pricing_factor = item.member_default_pricing_factor || 0
   tenantForm.pricing_scope = item.pricing_scope || 'balance'
+  tenantForm.concurrency = item.concurrency || 0
+  tenantForm.balance_overdraft_limit = item.balance_overdraft_limit || 0
   tenantForm.allowed_group_ids = [...(item.allowed_group_ids || [])]
   tenantForm.group_rates = { ...(item.group_rates || {}) }
+  tenantForm.member_group_rates = { ...(item.member_group_rates || {}) }
 }
 
 function buildGroupRatesPayload(groupIDs: number[], rates: Record<number, number | undefined>): Record<number, number> {
@@ -487,6 +566,15 @@ function buildGroupRatesPayload(groupIDs: number[], rates: Record<number, number
     if (Number.isFinite(value) && value > 0) {
       payload[groupID] = value
     }
+  }
+  return payload
+}
+
+function buildOptionalGroupRatesPayload(groupIDs: number[], rates: Record<number, number | undefined>): Record<number, number | null> {
+  const payload: Record<number, number | null> = {}
+  for (const groupID of groupIDs) {
+    const value = Number(rates[groupID])
+    payload[groupID] = Number.isFinite(value) && value > 0 ? value : null
   }
   return payload
 }
@@ -510,6 +598,19 @@ function tenantGroupFloor(groupID: number): number {
     return Number(value)
   }
   return Number(selected?.pricing_floor_factor || tenantForm.pricing_floor_factor || 1)
+}
+
+function tenantMemberDefaultRate(groupID: number): number {
+  const selected = selectedTenant.value
+  const groupRate = selected?.member_group_rates?.[groupID] ?? tenantForm.member_group_rates[groupID]
+  if (Number.isFinite(Number(groupRate)) && Number(groupRate) > 0) {
+    return Number(groupRate)
+  }
+  const fallback = selected?.member_default_pricing_factor ?? tenantForm.member_default_pricing_factor
+  if (Number.isFinite(Number(fallback)) && Number(fallback) > 0) {
+    return Number(fallback)
+  }
+  return tenantGroupFloor(groupID)
 }
 
 function formatDate(value?: string | null) {
@@ -618,18 +719,26 @@ async function submitTenant() {
       notes: string
       portal_host: string
       pricing_floor_factor: number
+      member_default_pricing_factor: number
       pricing_scope: string
+      concurrency: number
+      balance_overdraft_limit: number
       allowed_group_ids: number[]
       group_rates: Record<number, number>
+      member_group_rates: Record<number, number | null>
     } = {
       name: tenantForm.name.trim(),
       status: tenantForm.status,
       notes: tenantForm.notes.trim(),
       portal_host: tenantForm.portal_host.trim(),
       pricing_floor_factor: Number(tenantForm.pricing_floor_factor) || 1,
+      member_default_pricing_factor: Math.max(0, Number(tenantForm.member_default_pricing_factor) || 0),
       pricing_scope: tenantForm.pricing_scope,
+      concurrency: Math.max(0, Number(tenantForm.concurrency) || 0),
+      balance_overdraft_limit: Math.max(0, Number(tenantForm.balance_overdraft_limit) || 0),
       allowed_group_ids: [...tenantForm.allowed_group_ids],
       group_rates: buildGroupRatesPayload(tenantForm.allowed_group_ids, tenantForm.group_rates),
+      member_group_rates: buildOptionalGroupRatesPayload(tenantForm.allowed_group_ids, tenantForm.member_group_rates),
     }
     if (code) {
       payload.code = code
@@ -677,7 +786,7 @@ async function submitBindMember() {
       user_id: Number(bindForm.user_id),
       member_role: bindForm.member_role,
       member_note: bindForm.member_note,
-      pricing_factor: Number(bindForm.pricing_factor) || 1,
+      pricing_factor: Math.max(0, Number(bindForm.pricing_factor) || 0),
       pricing_scope: 'balance',
       group_rates: buildMemberGroupRatesPayload(selectedTenant.value.allowed_group_ids || [], bindForm.group_rates),
       joined_via: 'manual_bind',
@@ -686,7 +795,7 @@ async function submitBindMember() {
     showSuccess('成员已绑定')
     bindForm.user_id = 0
     bindForm.member_note = ''
-    bindForm.pricing_factor = 1
+    bindForm.pricing_factor = 0
     bindForm.group_rates = {}
     await Promise.all([loadMembers(), loadTenants()])
   } catch (error) {

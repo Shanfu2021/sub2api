@@ -7,6 +7,11 @@ import type {
   PaginatedResponse,
 } from '@/types'
 
+export type EnterpriseTenantPayload = Omit<Partial<EnterpriseTenant>, 'group_rates' | 'member_group_rates'> & {
+  group_rates?: Record<number, number | null>
+  member_group_rates?: Record<number, number | null>
+}
+
 export async function listTenants(
   page = 1,
   pageSize = 20,
@@ -23,12 +28,12 @@ export async function getTenant(id: number): Promise<EnterpriseTenant> {
   return data
 }
 
-export async function createTenant(payload: Partial<EnterpriseTenant> & { name: string; code?: string }): Promise<EnterpriseTenant> {
+export async function createTenant(payload: EnterpriseTenantPayload & { name: string; code?: string }): Promise<EnterpriseTenant> {
   const { data } = await apiClient.post<EnterpriseTenant>('/admin/enterprise/tenants', payload)
   return data
 }
 
-export async function updateTenant(id: number, payload: Partial<EnterpriseTenant>): Promise<EnterpriseTenant> {
+export async function updateTenant(id: number, payload: EnterpriseTenantPayload): Promise<EnterpriseTenant> {
   const { data } = await apiClient.put<EnterpriseTenant>(`/admin/enterprise/tenants/${id}`, payload)
   return data
 }
@@ -61,7 +66,7 @@ export async function bindMember(
 export async function updateMember(
   tenantId: number,
   userId: number,
-  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; group_rates?: Record<number, number | null>; status?: string; allowed_groups?: number[] }
+  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; concurrency?: number; group_rates?: Record<number, number | null>; status?: string; allowed_groups?: number[] }
 ): Promise<EnterpriseMembership> {
   const { data } = await apiClient.put<EnterpriseMembership>(`/admin/enterprise/tenants/${tenantId}/members/${userId}`, payload)
   return data

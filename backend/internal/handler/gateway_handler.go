@@ -234,7 +234,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}()
 
 	// 1. 首先获取用户并发槽位
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireSubjectSlotsWithWait(c, subject, reqStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)

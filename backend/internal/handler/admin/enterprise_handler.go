@@ -20,26 +20,34 @@ func NewEnterpriseHandler(enterpriseService *service.EnterpriseService) *Enterpr
 }
 
 type createEnterpriseTenantRequest struct {
-	Name               string  `json:"name" binding:"required"`
-	Code               string  `json:"code"`
-	Status             string  `json:"status"`
-	Notes              string  `json:"notes"`
-	PortalHost         string  `json:"portal_host"`
-	PricingFloorFactor float64 `json:"pricing_floor_factor"`
-	PricingScope       string  `json:"pricing_scope"`
-	AllowedGroupIDs    []int64            `json:"allowed_group_ids"`
-	GroupRates         map[int64]*float64 `json:"group_rates"`
+	Name                       string  `json:"name" binding:"required"`
+	Code                       string  `json:"code"`
+	Status                     string  `json:"status"`
+	Notes                      string  `json:"notes"`
+	PortalHost                 string  `json:"portal_host"`
+	PricingFloorFactor         float64 `json:"pricing_floor_factor"`
+	MemberDefaultPricingFactor float64 `json:"member_default_pricing_factor"`
+	PricingScope               string  `json:"pricing_scope"`
+	Concurrency                int     `json:"concurrency"`
+	BalanceOverdraftLimit      float64 `json:"balance_overdraft_limit"`
+	AllowedGroupIDs            []int64            `json:"allowed_group_ids"`
+	GroupRates                 map[int64]*float64 `json:"group_rates"`
+	MemberGroupRates           map[int64]*float64 `json:"member_group_rates"`
 }
 
 type updateEnterpriseTenantRequest struct {
-	Name               *string  `json:"name"`
-	Status             *string  `json:"status"`
-	Notes              *string  `json:"notes"`
-	PortalHost         *string  `json:"portal_host"`
-	PricingFloorFactor *float64 `json:"pricing_floor_factor"`
-	PricingScope       *string  `json:"pricing_scope"`
-	AllowedGroupIDs    *[]int64           `json:"allowed_group_ids"`
-	GroupRates         map[int64]*float64 `json:"group_rates"`
+	Name                       *string  `json:"name"`
+	Status                     *string  `json:"status"`
+	Notes                      *string  `json:"notes"`
+	PortalHost                 *string  `json:"portal_host"`
+	PricingFloorFactor         *float64 `json:"pricing_floor_factor"`
+	MemberDefaultPricingFactor *float64 `json:"member_default_pricing_factor"`
+	PricingScope               *string  `json:"pricing_scope"`
+	Concurrency                *int     `json:"concurrency"`
+	BalanceOverdraftLimit      *float64 `json:"balance_overdraft_limit"`
+	AllowedGroupIDs            *[]int64           `json:"allowed_group_ids"`
+	GroupRates                 map[int64]*float64 `json:"group_rates"`
+	MemberGroupRates           map[int64]*float64 `json:"member_group_rates"`
 }
 
 type adjustEnterpriseQuotaRequest struct {
@@ -64,6 +72,7 @@ type updateEnterpriseMemberRequest struct {
 	MemberNote    *string            `json:"member_note"`
 	PricingFactor *float64           `json:"pricing_factor"`
 	PricingScope  *string            `json:"pricing_scope"`
+	Concurrency   *int               `json:"concurrency"`
 	Status        *string            `json:"status"`
 	AllowedGroups *[]int64           `json:"allowed_groups"`
 	GroupRates    map[int64]*float64 `json:"group_rates"`
@@ -104,15 +113,19 @@ func (h *EnterpriseHandler) CreateTenant(c *gin.Context) {
 	}
 	actor, _ := middleware.GetAuthSubjectFromContext(c)
 	item, err := h.enterpriseService.CreateTenant(c.Request.Context(), actor.UserID, service.CreateEnterpriseTenantInput{
-		Name:               req.Name,
-		Code:               req.Code,
-		Status:             req.Status,
-		Notes:              req.Notes,
-		PortalHost:         req.PortalHost,
-		PricingFloorFactor: req.PricingFloorFactor,
-		PricingScope:       req.PricingScope,
-		AllowedGroupIDs:    req.AllowedGroupIDs,
-		GroupRates:         req.GroupRates,
+		Name:                       req.Name,
+		Code:                       req.Code,
+		Status:                     req.Status,
+		Notes:                      req.Notes,
+		PortalHost:                 req.PortalHost,
+		PricingFloorFactor:         req.PricingFloorFactor,
+		MemberDefaultPricingFactor: req.MemberDefaultPricingFactor,
+		PricingScope:               req.PricingScope,
+		Concurrency:                req.Concurrency,
+		BalanceOverdraftLimit:      req.BalanceOverdraftLimit,
+		AllowedGroupIDs:            req.AllowedGroupIDs,
+		GroupRates:                 req.GroupRates,
+		MemberGroupRates:           req.MemberGroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -146,14 +159,18 @@ func (h *EnterpriseHandler) UpdateTenant(c *gin.Context) {
 	}
 	actor, _ := middleware.GetAuthSubjectFromContext(c)
 	item, err := h.enterpriseService.UpdateTenant(c.Request.Context(), actor.UserID, tenantID, service.UpdateEnterpriseTenantInput{
-		Name:               req.Name,
-		Status:             req.Status,
-		Notes:              req.Notes,
-		PortalHost:         req.PortalHost,
-		PricingFloorFactor: req.PricingFloorFactor,
-		PricingScope:       req.PricingScope,
-		AllowedGroupIDs:    req.AllowedGroupIDs,
-		GroupRates:         req.GroupRates,
+		Name:                       req.Name,
+		Status:                     req.Status,
+		Notes:                      req.Notes,
+		PortalHost:                 req.PortalHost,
+		PricingFloorFactor:         req.PricingFloorFactor,
+		MemberDefaultPricingFactor: req.MemberDefaultPricingFactor,
+		PricingScope:               req.PricingScope,
+		Concurrency:                req.Concurrency,
+		BalanceOverdraftLimit:      req.BalanceOverdraftLimit,
+		AllowedGroupIDs:            req.AllowedGroupIDs,
+		GroupRates:                 req.GroupRates,
+		MemberGroupRates:           req.MemberGroupRates,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -251,6 +268,7 @@ func (h *EnterpriseHandler) UpdateMember(c *gin.Context) {
 		MemberNote:    req.MemberNote,
 		PricingFactor: req.PricingFactor,
 		PricingScope:  req.PricingScope,
+		Concurrency:   req.Concurrency,
 		Status:        req.Status,
 		AllowedGroups: req.AllowedGroups,
 		GroupRates:    req.GroupRates,

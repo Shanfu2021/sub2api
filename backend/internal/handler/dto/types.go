@@ -41,22 +41,29 @@ type User struct {
 }
 
 type EnterpriseContext struct {
-	TenantID            int64   `json:"tenant_id"`
-	TenantName          string  `json:"tenant_name"`
-	TenantCode          string  `json:"tenant_code"`
-	TenantStatus        string  `json:"tenant_status"`
-	PortalHost          string  `json:"portal_host,omitempty"`
-	MemberRole          string  `json:"member_role"`
-	MemberNote          string  `json:"member_note,omitempty"`
-	JoinedVia           string  `json:"joined_via,omitempty"`
-	JoinedSource        string  `json:"joined_source,omitempty"`
-	PricingFactor       float64 `json:"pricing_factor"`
-	PricingScope        string  `json:"pricing_scope"`
-	PricingFloorFactor  float64 `json:"pricing_floor_factor"`
-	AllowedGroupIDs     []int64           `json:"allowed_group_ids,omitempty"`
-	GroupRates          map[int64]float64 `json:"group_rates,omitempty"`
-	SelfRechargeBlocked bool              `json:"self_recharge_blocked"`
-	SelfRedeemBlocked   bool              `json:"self_redeem_blocked"`
+	TenantID                   int64   `json:"tenant_id"`
+	TenantName                 string  `json:"tenant_name"`
+	TenantCode                 string  `json:"tenant_code"`
+	TenantStatus               string  `json:"tenant_status"`
+	PortalHost                 string  `json:"portal_host,omitempty"`
+	MemberRole                 string  `json:"member_role"`
+	MemberNote                 string  `json:"member_note,omitempty"`
+	JoinedVia                  string  `json:"joined_via,omitempty"`
+	JoinedSource               string  `json:"joined_source,omitempty"`
+	PricingFactor              float64 `json:"pricing_factor"`
+	PricingScope               string  `json:"pricing_scope"`
+	PricingFloorFactor         float64 `json:"pricing_floor_factor"`
+	MemberDefaultPricingFactor float64 `json:"member_default_pricing_factor"`
+	Concurrency                int     `json:"concurrency"`
+	BalanceQuotaTotal          float64 `json:"balance_quota_total"`
+	BalanceQuotaUsed           float64 `json:"balance_quota_used"`
+	BalanceQuotaSpent          float64 `json:"balance_quota_spent"`
+	BalanceOverdraftLimit      float64 `json:"balance_overdraft_limit"`
+	AllowedGroupIDs            []int64           `json:"allowed_group_ids,omitempty"`
+	GroupRates                 map[int64]float64 `json:"group_rates,omitempty"`
+	MemberGroupRates           map[int64]float64 `json:"member_group_rates,omitempty"`
+	SelfRechargeBlocked        bool              `json:"self_recharge_blocked"`
+	SelfRedeemBlocked          bool              `json:"self_redeem_blocked"`
 }
 
 // AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。

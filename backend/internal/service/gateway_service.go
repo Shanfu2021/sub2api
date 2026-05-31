@@ -8125,9 +8125,6 @@ func effectiveUserPricingDiscountFactor(user *User, group *Group) float64 {
 		return DefaultPricingDiscountFactor
 	}
 	if user.Enterprise != nil && user.Enterprise.TenantStatus == EnterpriseTenantStatusActive {
-		if PromoDiscountAppliesToGroup(NormalizeEnterprisePricingScopeForRepo(user.Enterprise.PricingScope), group) {
-			return NormalizePricingDiscountFactorForRepo(user.Enterprise.PricingFactor)
-		}
 		return DefaultPricingDiscountFactor
 	}
 	if PromoDiscountAppliesToGroup(user.PricingDiscountScope, group) {
@@ -8140,14 +8137,42 @@ func enterpriseGroupDefaultRateMultiplier(user *User, group *Group) (float64, bo
 	if user == nil || group == nil || user.Enterprise == nil || user.Enterprise.TenantStatus != EnterpriseTenantStatusActive {
 		return 0, false
 	}
-	if user.Enterprise.GroupRates == nil {
+	if user.Enterprise.MemberGroupRates != nil {
+		if rate, ok := user.Enterprise.MemberGroupRates[group.ID]; ok {
+			return normalizeEnterprisePricingFactor(rate), true
+		}
+	}
+	if PromoDiscountAppliesToGroup(NormalizeEnterprisePricingScopeForRepo(user.Enterprise.PricingScope), group) && user.Enterprise.PricingFactor > 0 {
+		return normalizeEnterprisePricingFactor(user.Enterprise.PricingFactor), true
+	}
+	if user.Enterprise.MemberDefaultPricingFactor > 0 {
+		return normalizeEnterprisePricingFactor(user.Enterprise.MemberDefaultPricingFactor), true
+	}
+	if user.Enterprise.GroupRates != nil {
+		if rate, ok := user.Enterprise.GroupRates[group.ID]; ok {
+			return normalizeEnterprisePricingFactor(rate), true
+		}
+	}
+	return normalizeEnterprisePricingFactor(user.Enterprise.PricingFloorFactor), true
+}
+
+func enterprisePlatformRateMultiplier(user *User, group *Group) (float64, bool) {
+	if user == nil || user.Enterprise == nil || user.Enterprise.TenantStatus != EnterpriseTenantStatusActive {
 		return 0, false
 	}
-	rate, ok := user.Enterprise.GroupRates[group.ID]
-	if !ok {
-		return 0, false
+	if group != nil && user.Enterprise.GroupRates != nil {
+		if rate, ok := user.Enterprise.GroupRates[group.ID]; ok {
+			return normalizeEnterprisePricingFactor(rate), true
+		}
 	}
-	return normalizeEnterprisePricingFactor(rate), true
+	return normalizeEnterprisePricingFactor(user.Enterprise.PricingFloorFactor), true
+}
+
+func costActualOrZero(cost *CostBreakdown) float64 {
+	if cost == nil || cost.ActualCost <= 0 {
+		return 0
+	}
+	return cost.ActualCost
 }
 
 // RecordUsageInput 记录使用量的输入参数
@@ -8196,6 +8221,8 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	EnterpriseTenantID    *int64
+	EnterpriseCost        float64
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -8275,6 +8302,12 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
+		}
+	}
+
+	if p.EnterpriseTenantID != nil && *p.EnterpriseTenantID > 0 && p.EnterpriseCost > 0 && deps.enterpriseBillingRepo != nil {
+		if err := deps.enterpriseBillingRepo.IncrementEnterpriseQuotaSpent(billingCtx, *p.EnterpriseTenantID, p.EnterpriseCost); err != nil {
+			slog.Error("increment enterprise quota spent failed", "tenant_id", *p.EnterpriseTenantID, "cost", p.EnterpriseCost, "error", err)
 		}
 	}
 
@@ -8380,6 +8413,10 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	}
 	if p.shouldUpdateAccountQuota() {
 		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+	}
+	if p.EnterpriseTenantID != nil && *p.EnterpriseTenantID > 0 && p.EnterpriseCost > 0 {
+		cmd.EnterpriseTenantID = p.EnterpriseTenantID
+		cmd.EnterpriseCost = p.EnterpriseCost
 	}
 
 	cmd.Normalize()
@@ -8573,6 +8610,7 @@ type billingDeps struct {
 	accountRepo           AccountRepository
 	userRepo              UserRepository
 	userSubRepo           UserSubscriptionRepository
+	enterpriseBillingRepo UsageBillingRepository
 	billingCacheService   *BillingCacheService
 	deferredService       *DeferredService
 	balanceNotifyService  *BalanceNotifyService
@@ -8584,6 +8622,7 @@ func (s *GatewayService) billingDeps() *billingDeps {
 		accountRepo:           s.accountRepo,
 		userRepo:              s.userRepo,
 		userSubRepo:           s.userSubRepo,
+		enterpriseBillingRepo: s.usageBillingRepo,
 		billingCacheService:   s.billingCacheService,
 		deferredService:       s.deferredService,
 		balanceNotifyService:  s.balanceNotifyService,
@@ -8781,6 +8820,14 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 计算费用
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
+	enterpriseCost := 0.0
+	var enterpriseTenantID *int64
+	if enterpriseMultiplier, ok := enterprisePlatformRateMultiplier(user, apiKey.Group); ok {
+		enterpriseImageMultiplier := resolveImageRateMultiplier(apiKey, enterpriseMultiplier, DefaultPricingDiscountFactor)
+		enterpriseCost = costActualOrZero(s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, enterpriseMultiplier, enterpriseImageMultiplier, opts))
+		tenantID := user.Enterprise.TenantID
+		enterpriseTenantID = &tenantID
+	}
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -8837,6 +8884,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		EnterpriseTenantID:    enterpriseTenantID,
+		EnterpriseCost:        enterpriseCost,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

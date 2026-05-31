@@ -127,6 +127,7 @@ func RegisterUserRoutes(
 		{
 			enterprise.GET("/me", h.Enterprise.GetMe)
 			enterprise.POST("/bind-invite", h.Enterprise.BindInviteCode)
+			enterprise.GET("/groups", h.Enterprise.ListGroups)
 			enterprise.GET("/members", h.Enterprise.ListMembers)
 			enterprise.POST("/members", h.Enterprise.CreateMember)
 			enterprise.PUT("/members/:user_id", h.Enterprise.UpdateMember)

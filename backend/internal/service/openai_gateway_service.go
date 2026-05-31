@@ -535,6 +535,7 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 		accountRepo:           s.accountRepo,
 		userRepo:              s.userRepo,
 		userSubRepo:           s.userSubRepo,
+		enterpriseBillingRepo: s.usageBillingRepo,
 		billingCacheService:   s.billingCacheService,
 		deferredService:       s.deferredService,
 		balanceNotifyService:  s.balanceNotifyService,
@@ -6112,6 +6113,26 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)}
 	}
 
+	enterpriseCost := 0.0
+	var enterpriseTenantID *int64
+	if enterpriseMultiplier, ok := enterprisePlatformRateMultiplier(user, apiKey.Group); ok {
+		enterpriseImageMultiplier := resolveImageRateMultiplier(apiKey, enterpriseMultiplier, DefaultPricingDiscountFactor)
+		enterpriseCostBreakdown, enterpriseErr := s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, enterpriseMultiplier, enterpriseImageMultiplier, tokens, serviceTier)
+		if enterpriseErr != nil {
+			logger.L().With(
+				zap.String("component", "service.openai_gateway"),
+				zap.Strings("billing_models", billingModels),
+				zap.Int64("tenant_id", user.Enterprise.TenantID),
+				zap.Int64("api_key_id", apiKey.ID),
+				zap.Int64("account_id", account.ID),
+			).Warn("openai_usage.enterprise_pricing_missing_record_zero_cost", zap.Error(enterpriseErr))
+		} else {
+			enterpriseCost = costActualOrZero(enterpriseCostBreakdown)
+		}
+		tenantID := user.Enterprise.TenantID
+		enterpriseTenantID = &tenantID
+	}
+
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 	billingType := BillingTypeBalance
@@ -6233,6 +6254,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
 			Platform:              PlatformFromAPIKey(apiKey),
+			EnterpriseTenantID:    enterpriseTenantID,
+			EnterpriseCost:        enterpriseCost,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

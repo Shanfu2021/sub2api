@@ -120,10 +120,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		if cfg.RunMode == config.RunModeSimple {
 			c.Set(string(ContextKeyAPIKey), apiKey)
-			c.Set(string(ContextKeyUser), AuthSubject{
-				UserID:      apiKey.User.ID,
-				Concurrency: apiKey.User.Concurrency,
-			})
+			c.Set(string(ContextKeyUser), authSubjectFromAPIKeyUser(apiKey.User))
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 			setGroupContext(c, apiKey.Group)
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
@@ -215,16 +212,28 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			c.Set(string(ContextKeySubscription), subscription)
 		}
 		c.Set(string(ContextKeyAPIKey), apiKey)
-		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      apiKey.User.ID,
-			Concurrency: apiKey.User.Concurrency,
-		})
+		c.Set(string(ContextKeyUser), authSubjectFromAPIKeyUser(apiKey.User))
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		setGroupContext(c, apiKey.Group)
 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
 	}
+}
+
+func authSubjectFromAPIKeyUser(user *service.User) AuthSubject {
+	if user == nil {
+		return AuthSubject{}
+	}
+	subject := AuthSubject{
+		UserID:      user.ID,
+		Concurrency: user.Concurrency,
+	}
+	if user.Enterprise != nil {
+		subject.EnterpriseTenantID = user.Enterprise.TenantID
+		subject.EnterpriseConcurrency = user.Enterprise.Concurrency
+	}
+	return subject
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

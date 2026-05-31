@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   EnterpriseContext,
+  EnterpriseGroupSummary,
   EnterpriseInviteCode,
   EnterpriseLedgerEntry,
   EnterpriseMembership,
@@ -21,6 +22,11 @@ export async function getMe(): Promise<EnterpriseMeResponse> {
 
 export async function bindInviteCode(code: string): Promise<EnterpriseMembership> {
   const { data } = await apiClient.post<EnterpriseMembership>('/enterprise/bind-invite', { code })
+  return data
+}
+
+export async function listGroups(): Promise<EnterpriseGroupSummary[]> {
+  const { data } = await apiClient.get<EnterpriseGroupSummary[]>('/enterprise/groups')
   return data
 }
 
@@ -55,7 +61,7 @@ export async function createMember(payload: {
 
 export async function updateMember(
   userId: number,
-  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; group_rates?: Record<number, number | null>; status?: string; allowed_groups?: number[] }
+  payload: { member_role?: string; member_note?: string; pricing_factor?: number; pricing_scope?: string; concurrency?: number; group_rates?: Record<number, number | null>; status?: string; allowed_groups?: number[] }
 ): Promise<EnterpriseMembership> {
   const { data } = await apiClient.put<EnterpriseMembership>(`/enterprise/members/${userId}`, payload)
   return data
@@ -104,6 +110,7 @@ export async function listLedger(
 export default {
   getMe,
   bindInviteCode,
+  listGroups,
   listMembers,
   createMember,
   updateMember,

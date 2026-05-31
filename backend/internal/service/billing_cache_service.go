@@ -726,6 +726,10 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		}
 	}
 
+	if err := s.checkEnterpriseBalanceEligibility(ctx, user); err != nil {
+		return err
+	}
+
 	// user × platform quota 仅在 standard（余额）模式生效；订阅模式豁免
 	if !isSubscriptionMode {
 		if err := s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform); err != nil {
@@ -850,6 +854,30 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 		return ErrInsufficientBalance
 	}
 
+	return nil
+}
+
+func (s *BillingCacheService) checkEnterpriseBalanceEligibility(ctx context.Context, user *User) error {
+	if user == nil || user.Enterprise == nil || user.Enterprise.TenantStatus != EnterpriseTenantStatusActive {
+		return nil
+	}
+	enterprise := user.Enterprise
+	if s.userRepo != nil {
+		freshUser, err := s.userRepo.GetByID(ctx, user.ID)
+		if err != nil {
+			logger.LegacyPrintf("service.billing_cache", "ALERT: enterprise balance check failed for user %d: %v", user.ID, err)
+			return ErrBillingServiceUnavailable.WithCause(err)
+		}
+		if freshUser != nil && freshUser.Enterprise != nil {
+			enterprise = freshUser.Enterprise
+		}
+	}
+	if enterprise.TenantStatus != EnterpriseTenantStatusActive {
+		return ErrEnterpriseTenantDisabled
+	}
+	if enterprise.AvailableBalanceQuota() <= 0 {
+		return ErrEnterpriseQuotaExceeded
+	}
 	return nil
 }
 

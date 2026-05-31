@@ -52,6 +52,10 @@ func (s *openAIRecordUsageBillingRepoStub) Apply(ctx context.Context, cmd *Usage
 	return &UsageBillingApplyResult{Applied: true}, nil
 }
 
+func (s *openAIRecordUsageBillingRepoStub) IncrementEnterpriseQuotaSpent(ctx context.Context, tenantID int64, amount float64) error {
+	return nil
+}
+
 func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	require.Error(t, svc.RecordUsage(context.Background(), nil))
