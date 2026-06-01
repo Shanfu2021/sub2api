@@ -1321,6 +1321,14 @@ func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T
 		SetStatus(service.StatusActive).
 		Save(ctx)
 	require.NoError(t, err)
+	_, err = client.User.Create().
+		SetEmail("admin@example.com").
+		SetUsername("admin").
+		SetPasswordHash("admin-hash").
+		SetRole(service.RoleAdmin).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
 
 	_, err = client.AuthIdentity.Create().
 		SetUserID(conflictOwner.ID).
