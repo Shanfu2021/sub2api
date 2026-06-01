@@ -28,9 +28,11 @@ func (s *AgentManagementRepoSuite) SetupTest() {
 
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM agent_group_delegations")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
 }
 
@@ -54,6 +56,20 @@ func (s *AgentManagementRepoSuite) mustCreateAgentUser(email string, role string
 		Save(s.ctx)
 	s.Require().NoError(err)
 	return userEntityToService(created)
+}
+
+func (s *AgentManagementRepoSuite) mustCreateAgentGroup(name string, isExclusive bool, rateMultiplier float64) *service.Group {
+	s.T().Helper()
+
+	created, err := s.client.Group.Create().
+		SetName(name).
+		SetStatus(service.StatusActive).
+		SetPlatform(service.PlatformAnthropic).
+		SetRateMultiplier(rateMultiplier).
+		SetIsExclusive(isExclusive).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	return groupEntityToService(created)
 }
 
 func (s *AgentManagementRepoSuite) TestListDirectChildrenByRole() {
@@ -170,4 +186,44 @@ func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentMovesChildrenAndPromotes
 	s.Require().NotNil(reloadedNested.ParentUserID)
 	s.Require().Equal(directLevel2.ID, *reloadedNested.ParentUserID)
 	s.Require().Equal(service.RoleUser, reloadedNested.Role)
+}
+
+func (s *AgentManagementRepoSuite) TestGroupDelegationRoundTripAndSoftDelete() {
+	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
+	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
+	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delegated", true, 0.3)
+
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, root.ID, level1.ID, exclusiveGroup.ID, 1.8, true))
+
+	got, err := s.repo.GetGroupDelegation(s.ctx, root.ID, level1.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(root.ID, got.ManagerUserID)
+	s.Require().Equal(level1.ID, got.ChildUserID)
+	s.Require().Equal(exclusiveGroup.ID, got.GroupID)
+	s.Require().Equal(1.8, got.RateMultiplier)
+	s.Require().True(got.CanDelegate)
+	s.Require().NotNil(got.Group)
+	s.Require().Equal("exclusive-delegated", got.Group.Name)
+
+	list, err := s.repo.ListGroupDelegationsForChild(s.ctx, level1.ID)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	s.Require().Equal(1.8, list[0].RateMultiplier)
+
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, root.ID, level1.ID, exclusiveGroup.ID, 2.1, false))
+	got, err = s.repo.GetGroupDelegation(s.ctx, root.ID, level1.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	s.Require().Equal(2.1, got.RateMultiplier)
+	s.Require().False(got.CanDelegate)
+
+	s.Require().NoError(s.repo.DeleteGroupDelegation(s.ctx, root.ID, level1.ID, exclusiveGroup.ID))
+	got, err = s.repo.GetGroupDelegation(s.ctx, root.ID, level1.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(got)
+
+	list, err = s.repo.ListGroupDelegationsForChild(s.ctx, level1.ID)
+	s.Require().NoError(err)
+	s.Require().Empty(list)
 }

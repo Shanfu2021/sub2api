@@ -37,6 +37,10 @@ func (s *userGroupRateRepoStubForGroupRate) GetByUserAndGroup(_ context.Context,
 	panic("unexpected GetByUserAndGroup call")
 }
 
+func (s *userGroupRateRepoStubForGroupRate) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	panic("unexpected GetDelegatedRateByUserAndGroup call")
+}
+
 func (s *userGroupRateRepoStubForGroupRate) GetRPMOverrideByUserAndGroup(_ context.Context, _, _ int64) (*int, error) {
 	panic("unexpected GetRPMOverrideByUserAndGroup call")
 }

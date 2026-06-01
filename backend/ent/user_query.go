@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -33,25 +34,27 @@ import (
 // UserQuery is the builder for querying User entities.
 type UserQuery struct {
 	config
-	ctx                       *QueryContext
-	order                     []user.OrderOption
-	inters                    []Interceptor
-	predicates                []predicate.User
-	withAPIKeys               *APIKeyQuery
-	withRedeemCodes           *RedeemCodeQuery
-	withSubscriptions         *UserSubscriptionQuery
-	withAssignedSubscriptions *UserSubscriptionQuery
-	withAnnouncementReads     *AnnouncementReadQuery
-	withAllowedGroups         *GroupQuery
-	withUsageLogs             *UsageLogQuery
-	withAttributeValues       *UserAttributeValueQuery
-	withPromoCodeUsages       *PromoCodeUsageQuery
-	withPaymentOrders         *PaymentOrderQuery
-	withAuthIdentities        *AuthIdentityQuery
-	withPendingAuthSessions   *PendingAuthSessionQuery
-	withPlatformQuotas        *UserPlatformQuotaQuery
-	withUserAllowedGroups     *UserAllowedGroupQuery
-	modifiers                 []func(*sql.Selector)
+	ctx                          *QueryContext
+	order                        []user.OrderOption
+	inters                       []Interceptor
+	predicates                   []predicate.User
+	withAPIKeys                  *APIKeyQuery
+	withRedeemCodes              *RedeemCodeQuery
+	withSubscriptions            *UserSubscriptionQuery
+	withAssignedSubscriptions    *UserSubscriptionQuery
+	withAnnouncementReads        *AnnouncementReadQuery
+	withAllowedGroups            *GroupQuery
+	withUsageLogs                *UsageLogQuery
+	withAttributeValues          *UserAttributeValueQuery
+	withPromoCodeUsages          *PromoCodeUsageQuery
+	withPaymentOrders            *PaymentOrderQuery
+	withAuthIdentities           *AuthIdentityQuery
+	withPendingAuthSessions      *PendingAuthSessionQuery
+	withManagedGroupDelegations  *AgentGroupDelegationQuery
+	withReceivedGroupDelegations *AgentGroupDelegationQuery
+	withPlatformQuotas           *UserPlatformQuotaQuery
+	withUserAllowedGroups        *UserAllowedGroupQuery
+	modifiers                    []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -352,6 +355,50 @@ func (_q *UserQuery) QueryPendingAuthSessions() *PendingAuthSessionQuery {
 	return query
 }
 
+// QueryManagedGroupDelegations chains the current query on the "managed_group_delegations" edge.
+func (_q *UserQuery) QueryManagedGroupDelegations() *AgentGroupDelegationQuery {
+	query := (&AgentGroupDelegationClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(agentgroupdelegation.Table, agentgroupdelegation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ManagedGroupDelegationsTable, user.ManagedGroupDelegationsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryReceivedGroupDelegations chains the current query on the "received_group_delegations" edge.
+func (_q *UserQuery) QueryReceivedGroupDelegations() *AgentGroupDelegationQuery {
+	query := (&AgentGroupDelegationClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(agentgroupdelegation.Table, agentgroupdelegation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ReceivedGroupDelegationsTable, user.ReceivedGroupDelegationsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryPlatformQuotas chains the current query on the "platform_quotas" edge.
 func (_q *UserQuery) QueryPlatformQuotas() *UserPlatformQuotaQuery {
 	query := (&UserPlatformQuotaClient{config: _q.config}).Query()
@@ -583,25 +630,27 @@ func (_q *UserQuery) Clone() *UserQuery {
 		return nil
 	}
 	return &UserQuery{
-		config:                    _q.config,
-		ctx:                       _q.ctx.Clone(),
-		order:                     append([]user.OrderOption{}, _q.order...),
-		inters:                    append([]Interceptor{}, _q.inters...),
-		predicates:                append([]predicate.User{}, _q.predicates...),
-		withAPIKeys:               _q.withAPIKeys.Clone(),
-		withRedeemCodes:           _q.withRedeemCodes.Clone(),
-		withSubscriptions:         _q.withSubscriptions.Clone(),
-		withAssignedSubscriptions: _q.withAssignedSubscriptions.Clone(),
-		withAnnouncementReads:     _q.withAnnouncementReads.Clone(),
-		withAllowedGroups:         _q.withAllowedGroups.Clone(),
-		withUsageLogs:             _q.withUsageLogs.Clone(),
-		withAttributeValues:       _q.withAttributeValues.Clone(),
-		withPromoCodeUsages:       _q.withPromoCodeUsages.Clone(),
-		withPaymentOrders:         _q.withPaymentOrders.Clone(),
-		withAuthIdentities:        _q.withAuthIdentities.Clone(),
-		withPendingAuthSessions:   _q.withPendingAuthSessions.Clone(),
-		withPlatformQuotas:        _q.withPlatformQuotas.Clone(),
-		withUserAllowedGroups:     _q.withUserAllowedGroups.Clone(),
+		config:                       _q.config,
+		ctx:                          _q.ctx.Clone(),
+		order:                        append([]user.OrderOption{}, _q.order...),
+		inters:                       append([]Interceptor{}, _q.inters...),
+		predicates:                   append([]predicate.User{}, _q.predicates...),
+		withAPIKeys:                  _q.withAPIKeys.Clone(),
+		withRedeemCodes:              _q.withRedeemCodes.Clone(),
+		withSubscriptions:            _q.withSubscriptions.Clone(),
+		withAssignedSubscriptions:    _q.withAssignedSubscriptions.Clone(),
+		withAnnouncementReads:        _q.withAnnouncementReads.Clone(),
+		withAllowedGroups:            _q.withAllowedGroups.Clone(),
+		withUsageLogs:                _q.withUsageLogs.Clone(),
+		withAttributeValues:          _q.withAttributeValues.Clone(),
+		withPromoCodeUsages:          _q.withPromoCodeUsages.Clone(),
+		withPaymentOrders:            _q.withPaymentOrders.Clone(),
+		withAuthIdentities:           _q.withAuthIdentities.Clone(),
+		withPendingAuthSessions:      _q.withPendingAuthSessions.Clone(),
+		withManagedGroupDelegations:  _q.withManagedGroupDelegations.Clone(),
+		withReceivedGroupDelegations: _q.withReceivedGroupDelegations.Clone(),
+		withPlatformQuotas:           _q.withPlatformQuotas.Clone(),
+		withUserAllowedGroups:        _q.withUserAllowedGroups.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -740,6 +789,28 @@ func (_q *UserQuery) WithPendingAuthSessions(opts ...func(*PendingAuthSessionQue
 	return _q
 }
 
+// WithManagedGroupDelegations tells the query-builder to eager-load the nodes that are connected to
+// the "managed_group_delegations" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithManagedGroupDelegations(opts ...func(*AgentGroupDelegationQuery)) *UserQuery {
+	query := (&AgentGroupDelegationClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withManagedGroupDelegations = query
+	return _q
+}
+
+// WithReceivedGroupDelegations tells the query-builder to eager-load the nodes that are connected to
+// the "received_group_delegations" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithReceivedGroupDelegations(opts ...func(*AgentGroupDelegationQuery)) *UserQuery {
+	query := (&AgentGroupDelegationClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withReceivedGroupDelegations = query
+	return _q
+}
+
 // WithPlatformQuotas tells the query-builder to eager-load the nodes that are connected to
 // the "platform_quotas" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithPlatformQuotas(opts ...func(*UserPlatformQuotaQuery)) *UserQuery {
@@ -840,7 +911,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [14]bool{
+		loadedTypes = [16]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
@@ -853,6 +924,8 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withPaymentOrders != nil,
 			_q.withAuthIdentities != nil,
 			_q.withPendingAuthSessions != nil,
+			_q.withManagedGroupDelegations != nil,
+			_q.withReceivedGroupDelegations != nil,
 			_q.withPlatformQuotas != nil,
 			_q.withUserAllowedGroups != nil,
 		}
@@ -962,6 +1035,24 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			func(n *User) { n.Edges.PendingAuthSessions = []*PendingAuthSession{} },
 			func(n *User, e *PendingAuthSession) {
 				n.Edges.PendingAuthSessions = append(n.Edges.PendingAuthSessions, e)
+			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withManagedGroupDelegations; query != nil {
+		if err := _q.loadManagedGroupDelegations(ctx, query, nodes,
+			func(n *User) { n.Edges.ManagedGroupDelegations = []*AgentGroupDelegation{} },
+			func(n *User, e *AgentGroupDelegation) {
+				n.Edges.ManagedGroupDelegations = append(n.Edges.ManagedGroupDelegations, e)
+			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withReceivedGroupDelegations; query != nil {
+		if err := _q.loadReceivedGroupDelegations(ctx, query, nodes,
+			func(n *User) { n.Edges.ReceivedGroupDelegations = []*AgentGroupDelegation{} },
+			func(n *User, e *AgentGroupDelegation) {
+				n.Edges.ReceivedGroupDelegations = append(n.Edges.ReceivedGroupDelegations, e)
 			}); err != nil {
 			return nil, err
 		}
@@ -1378,6 +1469,66 @@ func (_q *UserQuery) loadPendingAuthSessions(ctx context.Context, query *Pending
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "target_user_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadManagedGroupDelegations(ctx context.Context, query *AgentGroupDelegationQuery, nodes []*User, init func(*User), assign func(*User, *AgentGroupDelegation)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(agentgroupdelegation.FieldManagerUserID)
+	}
+	query.Where(predicate.AgentGroupDelegation(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ManagedGroupDelegationsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ManagerUserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "manager_user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadReceivedGroupDelegations(ctx context.Context, query *AgentGroupDelegationQuery, nodes []*User, init func(*User), assign func(*User, *AgentGroupDelegation)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(agentgroupdelegation.FieldChildUserID)
+	}
+	query.Where(predicate.AgentGroupDelegation(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ReceivedGroupDelegationsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ChildUserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "child_user_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

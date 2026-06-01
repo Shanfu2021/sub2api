@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -741,6 +742,21 @@ func (_u *GroupUpdate) AddAllowedUsers(v ...*User) *GroupUpdate {
 	return _u.AddAllowedUserIDs(ids...)
 }
 
+// AddAgentGroupDelegationIDs adds the "agent_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *GroupUpdate) AddAgentGroupDelegationIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.AddAgentGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddAgentGroupDelegations adds the "agent_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *GroupUpdate) AddAgentGroupDelegations(v ...*AgentGroupDelegation) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAgentGroupDelegationIDs(ids...)
+}
+
 // Mutation returns the GroupMutation object of the builder.
 func (_u *GroupUpdate) Mutation() *GroupMutation {
 	return _u.mutation
@@ -870,6 +886,27 @@ func (_u *GroupUpdate) RemoveAllowedUsers(v ...*User) *GroupUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedUserIDs(ids...)
+}
+
+// ClearAgentGroupDelegations clears all "agent_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *GroupUpdate) ClearAgentGroupDelegations() *GroupUpdate {
+	_u.mutation.ClearAgentGroupDelegations()
+	return _u
+}
+
+// RemoveAgentGroupDelegationIDs removes the "agent_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *GroupUpdate) RemoveAgentGroupDelegationIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.RemoveAgentGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveAgentGroupDelegations removes "agent_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *GroupUpdate) RemoveAgentGroupDelegations(v ...*AgentGroupDelegation) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAgentGroupDelegationIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1427,6 +1464,51 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AgentGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.AgentGroupDelegationsTable,
+			Columns: []string{group.AgentGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAgentGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.AgentGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.AgentGroupDelegationsTable,
+			Columns: []string{group.AgentGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.AgentGroupDelegationsTable,
+			Columns: []string{group.AgentGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
@@ -2154,6 +2236,21 @@ func (_u *GroupUpdateOne) AddAllowedUsers(v ...*User) *GroupUpdateOne {
 	return _u.AddAllowedUserIDs(ids...)
 }
 
+// AddAgentGroupDelegationIDs adds the "agent_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *GroupUpdateOne) AddAgentGroupDelegationIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.AddAgentGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddAgentGroupDelegations adds the "agent_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *GroupUpdateOne) AddAgentGroupDelegations(v ...*AgentGroupDelegation) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAgentGroupDelegationIDs(ids...)
+}
+
 // Mutation returns the GroupMutation object of the builder.
 func (_u *GroupUpdateOne) Mutation() *GroupMutation {
 	return _u.mutation
@@ -2283,6 +2380,27 @@ func (_u *GroupUpdateOne) RemoveAllowedUsers(v ...*User) *GroupUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedUserIDs(ids...)
+}
+
+// ClearAgentGroupDelegations clears all "agent_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *GroupUpdateOne) ClearAgentGroupDelegations() *GroupUpdateOne {
+	_u.mutation.ClearAgentGroupDelegations()
+	return _u
+}
+
+// RemoveAgentGroupDelegationIDs removes the "agent_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *GroupUpdateOne) RemoveAgentGroupDelegationIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.RemoveAgentGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveAgentGroupDelegations removes "agent_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *GroupUpdateOne) RemoveAgentGroupDelegations(v ...*AgentGroupDelegation) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAgentGroupDelegationIDs(ids...)
 }
 
 // Where appends a list predicates to the GroupUpdate builder.
@@ -2870,6 +2988,51 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AgentGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.AgentGroupDelegationsTable,
+			Columns: []string{group.AgentGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAgentGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.AgentGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.AgentGroupDelegationsTable,
+			Columns: []string{group.AgentGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.AgentGroupDelegationsTable,
+			Columns: []string{group.AgentGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Group{config: _u.config}

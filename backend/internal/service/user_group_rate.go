@@ -36,6 +36,9 @@ type UserGroupRateRepository interface {
 	// GetByUserAndGroup 获取用户在特定分组的专属 rate_multiplier（NULL 返回 nil）
 	GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
 
+	// GetDelegatedRateByUserAndGroup 获取代理传播给用户的直属专属分组倍率（NULL 返回 nil）。
+	GetDelegatedRateByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
+
 	// GetRPMOverrideByUserAndGroup 获取用户在特定分组的 rpm_override（NULL 返回 nil）
 	GetRPMOverrideByUserAndGroup(ctx context.Context, userID, groupID int64) (*int, error)
 
@@ -60,4 +63,8 @@ type UserGroupRateRepository interface {
 
 	// DeleteByUserID 删除指定用户的所有专属条目（用户删除时调用）
 	DeleteByUserID(ctx context.Context, userID int64) error
+}
+
+type DelegatedGroupRateRepository interface {
+	GetDelegatedRateByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
 }

@@ -46,6 +46,10 @@ func (s *rpmStatusRateRepoStub) GetRPMOverrideByUserAndGroup(_ context.Context, 
 	return s.overrides[groupID], nil
 }
 
+func (s *rpmStatusRateRepoStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
+}
+
 type rpmStatusCacheStub struct {
 	UserRPMCache
 	userUsed  int

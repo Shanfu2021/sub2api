@@ -127,6 +127,10 @@ func (s *openAIUserGroupRateRepoStub) GetByUserAndGroup(ctx context.Context, use
 	return s.rate, nil
 }
 
+func (s *openAIUserGroupRateRepoStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
+}
+
 func i64p(v int64) *int64 {
 	return &v
 }

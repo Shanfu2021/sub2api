@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -660,6 +661,36 @@ func (_u *UserUpdate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserUpda
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdate) AddManagedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddManagedGroupDelegations adds the "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) AddManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddManagedGroupDelegationIDs(ids...)
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdate) AddReceivedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddReceivedGroupDelegations adds the "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) AddReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddReceivedGroupDelegationIDs(ids...)
+}
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
 func (_u *UserUpdate) AddPlatformQuotaIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddPlatformQuotaIDs(ids...)
@@ -930,6 +961,48 @@ func (_u *UserUpdate) RemovePendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearManagedGroupDelegations clears all "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) ClearManagedGroupDelegations() *UserUpdate {
+	_u.mutation.ClearManagedGroupDelegations()
+	return _u
+}
+
+// RemoveManagedGroupDelegationIDs removes the "managed_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdate) RemoveManagedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveManagedGroupDelegations removes "managed_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdate) RemoveManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveManagedGroupDelegationIDs(ids...)
+}
+
+// ClearReceivedGroupDelegations clears all "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) ClearReceivedGroupDelegations() *UserUpdate {
+	_u.mutation.ClearReceivedGroupDelegations()
+	return _u
+}
+
+// RemoveReceivedGroupDelegationIDs removes the "received_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdate) RemoveReceivedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveReceivedGroupDelegations removes "received_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdate) RemoveReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveReceivedGroupDelegationIDs(ids...)
 }
 
 // ClearPlatformQuotas clears all "platform_quotas" edges to the UserPlatformQuota entity.
@@ -1714,6 +1787,96 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedManagedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ManagedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedReceivedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ReceivedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.PlatformQuotasCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2399,6 +2562,36 @@ func (_u *UserUpdateOne) AddPendingAuthSessions(v ...*PendingAuthSession) *UserU
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdateOne) AddManagedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddManagedGroupDelegations adds the "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) AddManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddManagedGroupDelegationIDs(ids...)
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdateOne) AddReceivedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddReceivedGroupDelegations adds the "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) AddReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddReceivedGroupDelegationIDs(ids...)
+}
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
 func (_u *UserUpdateOne) AddPlatformQuotaIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddPlatformQuotaIDs(ids...)
@@ -2669,6 +2862,48 @@ func (_u *UserUpdateOne) RemovePendingAuthSessions(v ...*PendingAuthSession) *Us
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearManagedGroupDelegations clears all "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) ClearManagedGroupDelegations() *UserUpdateOne {
+	_u.mutation.ClearManagedGroupDelegations()
+	return _u
+}
+
+// RemoveManagedGroupDelegationIDs removes the "managed_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdateOne) RemoveManagedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveManagedGroupDelegations removes "managed_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdateOne) RemoveManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveManagedGroupDelegationIDs(ids...)
+}
+
+// ClearReceivedGroupDelegations clears all "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) ClearReceivedGroupDelegations() *UserUpdateOne {
+	_u.mutation.ClearReceivedGroupDelegations()
+	return _u
+}
+
+// RemoveReceivedGroupDelegationIDs removes the "received_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdateOne) RemoveReceivedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveReceivedGroupDelegations removes "received_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdateOne) RemoveReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveReceivedGroupDelegationIDs(ids...)
 }
 
 // ClearPlatformQuotas clears all "platform_quotas" edges to the UserPlatformQuota entity.
@@ -3476,6 +3711,96 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedManagedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ManagedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedReceivedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ReceivedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

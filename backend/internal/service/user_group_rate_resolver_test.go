@@ -12,9 +12,11 @@ import (
 type userGroupRateResolverRepoStub struct {
 	UserGroupRateRepository
 
-	rate  *float64
-	err   error
-	calls int
+	rate           *float64
+	delegationRate *float64
+	err            error
+	calls          int
+	delegatedCalls int
 }
 
 func (s *userGroupRateResolverRepoStub) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
@@ -23,6 +25,14 @@ func (s *userGroupRateResolverRepoStub) GetByUserAndGroup(ctx context.Context, u
 		return nil, s.err
 	}
 	return s.rate, nil
+}
+
+func (s *userGroupRateResolverRepoStub) GetDelegatedRateByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
+	s.delegatedCalls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.delegationRate, nil
 }
 
 func TestNewUserGroupRateResolver_Defaults(t *testing.T) {
@@ -80,4 +90,17 @@ func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolv
 	got := svc.getUserGroupRateMultiplier(context.Background(), 101, 202, 1.2)
 	require.Equal(t, rate, got)
 	require.Equal(t, 1, repo.calls)
+}
+
+func TestEffectiveGroupRateUsesDirectDelegation(t *testing.T) {
+	adminRate := 1.4
+	delegatedRate := 2.2
+	repo := &userGroupRateResolverRepoStub{rate: &adminRate, delegationRate: &delegatedRate}
+	resolver := newUserGroupRateResolver(repo, nil, time.Minute, nil, "service.test")
+
+	got := resolver.Resolve(context.Background(), 101, 202, 1.0)
+
+	require.Equal(t, delegatedRate, got)
+	require.Equal(t, 1, repo.delegatedCalls)
+	require.Equal(t, 0, repo.calls)
 }

@@ -245,6 +245,69 @@ var (
 			},
 		},
 	}
+	// AgentGroupDelegationsColumns holds the columns for the "agent_group_delegations" table.
+	AgentGroupDelegationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "rate_multiplier", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "can_delegate", Type: field.TypeBool, Default: false},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "manager_user_id", Type: field.TypeInt64},
+		{Name: "child_user_id", Type: field.TypeInt64},
+	}
+	// AgentGroupDelegationsTable holds the schema information for the "agent_group_delegations" table.
+	AgentGroupDelegationsTable = &schema.Table{
+		Name:       "agent_group_delegations",
+		Columns:    AgentGroupDelegationsColumns,
+		PrimaryKey: []*schema.Column{AgentGroupDelegationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "agent_group_delegations_groups_agent_group_delegations",
+				Columns:    []*schema.Column{AgentGroupDelegationsColumns[6]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "agent_group_delegations_users_managed_group_delegations",
+				Columns:    []*schema.Column{AgentGroupDelegationsColumns[7]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "agent_group_delegations_users_received_group_delegations",
+				Columns:    []*schema.Column{AgentGroupDelegationsColumns[8]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentgroupdelegation_manager_user_id_child_user_id_group_id",
+				Unique:  true,
+				Columns: []*schema.Column{AgentGroupDelegationsColumns[7], AgentGroupDelegationsColumns[8], AgentGroupDelegationsColumns[6]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL",
+				},
+			},
+			{
+				Name:    "agentgroupdelegation_child_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentGroupDelegationsColumns[8]},
+			},
+			{
+				Name:    "agentgroupdelegation_manager_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentGroupDelegationsColumns[7]},
+			},
+			{
+				Name:    "agentgroupdelegation_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentGroupDelegationsColumns[6]},
+			},
+		},
+	}
 	// AnnouncementsColumns holds the columns for the "announcements" table.
 	AnnouncementsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1767,6 +1830,7 @@ var (
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		AgentGroupDelegationsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
@@ -1816,6 +1880,12 @@ func init() {
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+	}
+	AgentGroupDelegationsTable.ForeignKeys[0].RefTable = GroupsTable
+	AgentGroupDelegationsTable.ForeignKeys[1].RefTable = UsersTable
+	AgentGroupDelegationsTable.ForeignKeys[2].RefTable = UsersTable
+	AgentGroupDelegationsTable.Annotation = &entsql.Annotation{
+		Table: "agent_group_delegations",
 	}
 	AnnouncementsTable.Annotation = &entsql.Annotation{
 		Table: "announcements",

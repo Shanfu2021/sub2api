@@ -4,12 +4,21 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
+
+type agentGroupDelegationRecord struct {
+	managerID      int64
+	childID        int64
+	groupID        int64
+	rateMultiplier float64
+	canDelegate    bool
+}
 
 type agentManagementRepoStub struct {
 	users map[int64]*User
@@ -28,6 +37,7 @@ type agentManagementRepoStub struct {
 		agentID     int64
 		rootAdminID int64
 	}
+	groupDelegations []agentGroupDelegationRecord
 }
 
 func newAgentManagementRepoStub(users ...*User) *agentManagementRepoStub {
@@ -135,9 +145,84 @@ func (r *agentManagementRepoStub) DeleteLevel1AgentAndMoveChildren(_ context.Con
 	return nil
 }
 
+func (r *agentManagementRepoStub) ListGroupDelegationsForChild(_ context.Context, childID int64) ([]AgentGroupDelegation, error) {
+	out := make([]AgentGroupDelegation, 0)
+	for _, delegation := range r.groupDelegations {
+		if delegation.childID != childID {
+			continue
+		}
+		group := Group{ID: delegation.groupID}
+		out = append(out, AgentGroupDelegation{
+			ManagerUserID:  delegation.managerID,
+			ChildUserID:    delegation.childID,
+			GroupID:        delegation.groupID,
+			RateMultiplier: delegation.rateMultiplier,
+			CanDelegate:    delegation.canDelegate,
+			Group:          &group,
+		})
+	}
+	return out, nil
+}
+
+func (r *agentManagementRepoStub) GetGroupDelegation(_ context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error) {
+	for _, delegation := range r.groupDelegations {
+		if delegation.managerID == managerID && delegation.childID == childID && delegation.groupID == groupID {
+			group := Group{ID: delegation.groupID}
+			return &AgentGroupDelegation{
+				ManagerUserID:  delegation.managerID,
+				ChildUserID:    delegation.childID,
+				GroupID:        delegation.groupID,
+				RateMultiplier: delegation.rateMultiplier,
+				CanDelegate:    delegation.canDelegate,
+				Group:          &group,
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *agentManagementRepoStub) UpsertGroupDelegation(_ context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error {
+	for i := range r.groupDelegations {
+		if r.groupDelegations[i].managerID == managerID && r.groupDelegations[i].childID == childID && r.groupDelegations[i].groupID == groupID {
+			r.groupDelegations[i].rateMultiplier = rateMultiplier
+			r.groupDelegations[i].canDelegate = canDelegate
+			return nil
+		}
+	}
+	r.groupDelegations = append(r.groupDelegations, agentGroupDelegationRecord{
+		managerID:      managerID,
+		childID:        childID,
+		groupID:        groupID,
+		rateMultiplier: rateMultiplier,
+		canDelegate:    canDelegate,
+	})
+	return nil
+}
+
+func (r *agentManagementRepoStub) DeleteGroupDelegation(_ context.Context, managerID int64, childID int64, groupID int64) error {
+	filtered := r.groupDelegations[:0]
+	for _, delegation := range r.groupDelegations {
+		if delegation.managerID == managerID && delegation.childID == childID && delegation.groupID == groupID {
+			continue
+		}
+		filtered = append(filtered, delegation)
+	}
+	r.groupDelegations = filtered
+	return nil
+}
+
 type agentManagementUserRepoStub struct {
 	*mockUserRepo
 	users map[int64]*User
+
+	addedAllowedGroups []struct {
+		userID  int64
+		groupID int64
+	}
+	removedAllowedGroups []struct {
+		userID  int64
+		groupID int64
+	}
 }
 
 func (r *agentManagementUserRepoStub) GetByID(_ context.Context, id int64) (*User, error) {
@@ -149,6 +234,39 @@ func (r *agentManagementUserRepoStub) GetByID(_ context.Context, id int64) (*Use
 	return &clone, nil
 }
 
+func (r *agentManagementUserRepoStub) AddGroupToAllowedGroups(_ context.Context, userID int64, groupID int64) error {
+	r.addedAllowedGroups = append(r.addedAllowedGroups, struct {
+		userID  int64
+		groupID int64
+	}{userID: userID, groupID: groupID})
+	if user, ok := r.users[userID]; ok {
+		for _, allowedID := range user.AllowedGroups {
+			if allowedID == groupID {
+				return nil
+			}
+		}
+		user.AllowedGroups = append(user.AllowedGroups, groupID)
+	}
+	return nil
+}
+
+func (r *agentManagementUserRepoStub) RemoveGroupFromUserAllowedGroups(_ context.Context, userID int64, groupID int64) error {
+	r.removedAllowedGroups = append(r.removedAllowedGroups, struct {
+		userID  int64
+		groupID int64
+	}{userID: userID, groupID: groupID})
+	if user, ok := r.users[userID]; ok {
+		filtered := user.AllowedGroups[:0]
+		for _, allowedID := range user.AllowedGroups {
+			if allowedID != groupID {
+				filtered = append(filtered, allowedID)
+			}
+		}
+		user.AllowedGroups = filtered
+	}
+	return nil
+}
+
 type agentManagementAuthInvalidatorStub struct {
 	userIDs []int64
 }
@@ -158,6 +276,98 @@ func (s *agentManagementAuthInvalidatorStub) InvalidateAuthCacheByGroupID(contex
 }
 func (s *agentManagementAuthInvalidatorStub) InvalidateAuthCacheByUserID(_ context.Context, userID int64) {
 	s.userIDs = append(s.userIDs, userID)
+}
+
+type agentManagementGroupRepoStub struct {
+	groups []Group
+	byID   map[int64]*Group
+}
+
+func newAgentManagementGroupRepoStub(groups ...Group) *agentManagementGroupRepoStub {
+	out := &agentManagementGroupRepoStub{
+		groups: make([]Group, 0, len(groups)),
+		byID:   map[int64]*Group{},
+	}
+	for i := range groups {
+		clone := groups[i]
+		out.groups = append(out.groups, clone)
+		out.byID[clone.ID] = &clone
+	}
+	return out
+}
+
+func (r *agentManagementGroupRepoStub) Create(context.Context, *Group) error {
+	panic("unexpected Create")
+}
+func (r *agentManagementGroupRepoStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	group, ok := r.byID[id]
+	if !ok {
+		return nil, ErrGroupNotFound
+	}
+	clone := *group
+	return &clone, nil
+}
+func (r *agentManagementGroupRepoStub) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	return r.GetByID(ctx, id)
+}
+func (r *agentManagementGroupRepoStub) Update(context.Context, *Group) error {
+	panic("unexpected Update")
+}
+func (r *agentManagementGroupRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete")
+}
+func (r *agentManagementGroupRepoStub) DeleteCascade(context.Context, int64) ([]int64, error) {
+	panic("unexpected DeleteCascade")
+}
+func (r *agentManagementGroupRepoStub) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected List")
+}
+func (r *agentManagementGroupRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters")
+}
+func (r *agentManagementGroupRepoStub) ListActive(context.Context) ([]Group, error) {
+	out := make([]Group, 0, len(r.groups))
+	for i := range r.groups {
+		if r.groups[i].Status == StatusActive {
+			out = append(out, r.groups[i])
+		}
+	}
+	return out, nil
+}
+func (r *agentManagementGroupRepoStub) ListActiveByPlatform(_ context.Context, platform string) ([]Group, error) {
+	out := make([]Group, 0, len(r.groups))
+	for i := range r.groups {
+		if r.groups[i].Status == StatusActive && r.groups[i].Platform == platform {
+			out = append(out, r.groups[i])
+		}
+	}
+	return out, nil
+}
+func (r *agentManagementGroupRepoStub) ExistsByName(context.Context, string) (bool, error) {
+	panic("unexpected ExistsByName")
+}
+func (r *agentManagementGroupRepoStub) GetAccountCount(context.Context, int64) (int64, int64, error) {
+	panic("unexpected GetAccountCount")
+}
+func (r *agentManagementGroupRepoStub) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
+	panic("unexpected DeleteAccountGroupsByGroupID")
+}
+func (r *agentManagementGroupRepoStub) GetAccountIDsByGroupIDs(context.Context, []int64) ([]int64, error) {
+	panic("unexpected GetAccountIDsByGroupIDs")
+}
+func (r *agentManagementGroupRepoStub) BindAccountsToGroup(context.Context, int64, []int64) error {
+	panic("unexpected BindAccountsToGroup")
+}
+func (r *agentManagementGroupRepoStub) UpdateSortOrders(context.Context, []GroupSortOrderUpdate) error {
+	panic("unexpected UpdateSortOrders")
+}
+
+func agentRatesByGroupID(rates []AgentGroupRate) map[int64]AgentGroupRate {
+	out := make(map[int64]AgentGroupRate, len(rates))
+	for i := range rates {
+		out[rates[i].Group.ID] = rates[i]
+	}
+	return out
 }
 
 func TestAgentManagementUpgradeRules(t *testing.T) {
@@ -326,4 +536,109 @@ func TestAgentManagementResolveInvitationParent(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Equal(t, rootID, *got)
+}
+
+func TestAgentGroupsShowsPublicAndDelegatedExclusiveGroups(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.8, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(
+		Group{ID: 10, Name: "public", RateMultiplier: 1.2, Status: StatusActive},
+		Group{ID: 20, Name: "exclusive", RateMultiplier: 0.3, IsExclusive: true, Status: StatusActive},
+		Group{ID: 30, Name: "hidden-exclusive", RateMultiplier: 0.4, IsExclusive: true, Status: StatusActive},
+	)
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	groups, err := svc.ListMyGroups(context.Background(), level1ID)
+	require.NoError(t, err)
+
+	byID := agentRatesByGroupID(groups)
+	require.Len(t, byID, 2)
+	require.Equal(t, 1.2, byID[10].EffectiveRate)
+	require.False(t, byID[10].CanDelegate)
+	require.Equal(t, "public", byID[10].Source)
+	require.Equal(t, 1.8, byID[20].EffectiveRate)
+	require.True(t, byID[20].CanDelegate)
+	require.Equal(t, "delegated", byID[20].Source)
+}
+
+func TestAgentGroupsAdminSeesExclusiveGroupsAsDelegable(t *testing.T) {
+	rootID := int64(1)
+	repo := newAgentManagementRepoStub(&User{ID: rootID, Role: RoleAdmin, Status: StatusActive})
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(
+		Group{ID: 10, Name: "public", RateMultiplier: 1.2, Status: StatusActive},
+		Group{ID: 20, Name: "exclusive", RateMultiplier: 0.3, IsExclusive: true, Status: StatusActive},
+	)
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	groups, err := svc.ListMyGroups(context.Background(), rootID)
+	require.NoError(t, err)
+
+	byID := agentRatesByGroupID(groups)
+	require.Len(t, byID, 2)
+	require.Equal(t, 0.3, byID[20].EffectiveRate)
+	require.True(t, byID[20].CanDelegate)
+	require.Equal(t, "admin_exclusive", byID[20].Source)
+}
+
+func TestDelegateExclusiveGroupRequiresManagerAccess(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	level2ID := int64(3)
+	ordinaryChildID := int64(4)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Status: StatusActive},
+		&User{ID: ordinaryChildID, Role: RoleUser, ParentUserID: &level2ID, Status: StatusActive},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: 20, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	err := svc.SetChildGroupDelegation(context.Background(), level1ID, level2ID, 20, ChildGroupDelegationInput{RateMultiplier: 1.8, CanDelegate: true})
+	require.ErrorIs(t, err, ErrAgentManagementForbidden)
+
+	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), rootID, level1ID, 20, ChildGroupDelegationInput{RateMultiplier: 1.5, CanDelegate: true}))
+	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), level1ID, level2ID, 20, ChildGroupDelegationInput{RateMultiplier: 1.8, CanDelegate: true}))
+	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), level2ID, ordinaryChildID, 20, ChildGroupDelegationInput{RateMultiplier: 2.1, CanDelegate: false}))
+
+	require.Len(t, userRepo.addedAllowedGroups, 3)
+	require.Equal(t, ordinaryChildID, userRepo.addedAllowedGroups[2].userID)
+	require.Equal(t, int64(20), userRepo.addedAllowedGroups[2].groupID)
+}
+
+func TestDelegatedExclusiveGroupHidesUpstreamRate(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.8, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: 20, Name: "exclusive", RateMultiplier: 0.3, IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	groups, err := svc.ListMyGroups(context.Background(), level1ID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, 1.8, groups[0].EffectiveRate)
+	require.Equal(t, 1.8, groups[0].Group.RateMultiplier)
+
+	payload, err := json.Marshal(groups[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), "rate_multiplier")
+	require.NotContains(t, string(payload), "0.3")
+	require.Contains(t, string(payload), "effective_rate")
 }

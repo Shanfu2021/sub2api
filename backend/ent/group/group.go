@@ -98,6 +98,8 @@ const (
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
 	EdgeAllowedUsers = "allowed_users"
+	// EdgeAgentGroupDelegations holds the string denoting the agent_group_delegations edge name in mutations.
+	EdgeAgentGroupDelegations = "agent_group_delegations"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
@@ -142,6 +144,13 @@ const (
 	// AllowedUsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	AllowedUsersInverseTable = "users"
+	// AgentGroupDelegationsTable is the table that holds the agent_group_delegations relation/edge.
+	AgentGroupDelegationsTable = "agent_group_delegations"
+	// AgentGroupDelegationsInverseTable is the table name for the AgentGroupDelegation entity.
+	// It exists in this package in order to avoid circular dependency with the "agentgroupdelegation" package.
+	AgentGroupDelegationsInverseTable = "agent_group_delegations"
+	// AgentGroupDelegationsColumn is the table column denoting the agent_group_delegations relation/edge.
+	AgentGroupDelegationsColumn = "group_id"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -532,6 +541,20 @@ func ByAllowedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByAgentGroupDelegationsCount orders the results by agent_group_delegations count.
+func ByAgentGroupDelegationsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAgentGroupDelegationsStep(), opts...)
+	}
+}
+
+// ByAgentGroupDelegations orders the results by agent_group_delegations terms.
+func ByAgentGroupDelegations(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAgentGroupDelegationsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -599,6 +622,13 @@ func newAllowedUsersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AllowedUsersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, AllowedUsersTable, AllowedUsersPrimaryKey...),
+	)
+}
+func newAgentGroupDelegationsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AgentGroupDelegationsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, AgentGroupDelegationsTable, AgentGroupDelegationsColumn),
 	)
 }
 func newAccountGroupsStep() *sqlgraph.Step {

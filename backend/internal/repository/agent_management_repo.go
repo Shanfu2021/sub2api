@@ -4,6 +4,7 @@ import (
 	"context"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -174,4 +175,96 @@ func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context
 		return err
 	}
 	return nil
+}
+
+func (r *agentManagementRepository) ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]service.AgentGroupDelegation, error) {
+	rows, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Query().
+		Where(dbagentgroupdelegation.ChildUserIDEQ(childID)).
+		WithGroup().
+		Order(dbent.Asc(dbagentgroupdelegation.FieldGroupID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.AgentGroupDelegation, 0, len(rows))
+	for i := range rows {
+		out = append(out, *agentGroupDelegationEntityToService(rows[i]))
+	}
+	return out, nil
+}
+
+func (r *agentManagementRepository) GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*service.AgentGroupDelegation, error) {
+	row, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Query().
+		Where(
+			dbagentgroupdelegation.ManagerUserIDEQ(managerID),
+			dbagentgroupdelegation.ChildUserIDEQ(childID),
+			dbagentgroupdelegation.GroupIDEQ(groupID),
+			dbagentgroupdelegation.DeletedAtIsNil(),
+		).
+		WithGroup().
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return agentGroupDelegationEntityToService(row), nil
+}
+
+func (r *agentManagementRepository) UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error {
+	client := clientFromContext(ctx, r.client)
+	updated, err := client.AgentGroupDelegation.Update().
+		Where(
+			dbagentgroupdelegation.ManagerUserIDEQ(managerID),
+			dbagentgroupdelegation.ChildUserIDEQ(childID),
+			dbagentgroupdelegation.GroupIDEQ(groupID),
+			dbagentgroupdelegation.DeletedAtIsNil(),
+		).
+		SetRateMultiplier(rateMultiplier).
+		SetCanDelegate(canDelegate).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated > 0 {
+		return nil
+	}
+	return client.AgentGroupDelegation.Create().
+		SetManagerUserID(managerID).
+		SetChildUserID(childID).
+		SetGroupID(groupID).
+		SetRateMultiplier(rateMultiplier).
+		SetCanDelegate(canDelegate).
+		Exec(ctx)
+}
+
+func (r *agentManagementRepository) DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error {
+	_, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Delete().
+		Where(
+			dbagentgroupdelegation.ManagerUserIDEQ(managerID),
+			dbagentgroupdelegation.ChildUserIDEQ(childID),
+			dbagentgroupdelegation.GroupIDEQ(groupID),
+			dbagentgroupdelegation.DeletedAtIsNil(),
+		).
+		Exec(ctx)
+	return err
+}
+
+func agentGroupDelegationEntityToService(m *dbent.AgentGroupDelegation) *service.AgentGroupDelegation {
+	if m == nil {
+		return nil
+	}
+	out := &service.AgentGroupDelegation{
+		ID:             m.ID,
+		ManagerUserID:  m.ManagerUserID,
+		ChildUserID:    m.ChildUserID,
+		GroupID:        m.GroupID,
+		RateMultiplier: m.RateMultiplier,
+		CanDelegate:    m.CanDelegate,
+	}
+	if m.Edges.Group != nil {
+		out.Group = groupEntityToService(m.Edges.Group)
+	}
+	return out
 }

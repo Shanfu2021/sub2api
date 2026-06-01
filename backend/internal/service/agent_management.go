@@ -16,6 +16,8 @@ var (
 	ErrAgentManagementUnsupportedRole     = infraerrors.BadRequest("AGENT_MANAGEMENT_UNSUPPORTED_ROLE", "unsupported agent management role")
 	ErrAgentManagementInvalidTarget       = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_TARGET", "invalid target user")
 	ErrAgentManagementInvalidAllocation   = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_ALLOCATION", "allocation must be non-negative")
+	ErrAgentManagementInvalidGroupRate    = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_RATE", "group delegation rate multiplier must be positive")
+	ErrAgentManagementInvalidGroup        = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP", "only active exclusive groups can be delegated")
 	ErrAgentManagementRootAdminNotPresent = infraerrors.NotFound("AGENT_MANAGEMENT_ROOT_ADMIN_NOT_PRESENT", "root admin not found")
 	ErrAgentManagementNotImplemented      = infraerrors.New(http.StatusNotImplemented, "AGENT_MANAGEMENT_NOT_IMPLEMENTED", "agent management feature is not implemented yet")
 )
@@ -50,6 +52,16 @@ type AgentGroupRate struct {
 	Source        string  `json:"source"`
 }
 
+type AgentGroupDelegation struct {
+	ID             int64
+	ManagerUserID  int64
+	ChildUserID    int64
+	GroupID        int64
+	RateMultiplier float64
+	CanDelegate    bool
+	Group          *Group
+}
+
 type ChildGroupDelegationInput struct {
 	RateMultiplier float64 `json:"rate_multiplier"`
 	CanDelegate    bool    `json:"can_delegate"`
@@ -63,6 +75,10 @@ type AgentManagementRepository interface {
 	SetRoleAndParent(ctx context.Context, userID int64, role string, parentID *int64) error
 	SetAllocation(ctx context.Context, userID int64, concurrency int, rpm int) error
 	DeleteLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error
+	ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]AgentGroupDelegation, error)
+	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
+	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
+	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
 }
 
 type AgentManagementService struct {
@@ -223,10 +239,14 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 }
 
 func (s *AgentManagementService) ListMyGroups(ctx context.Context, actorID int64) ([]AgentGroupRate, error) {
-	if _, err := s.requireManager(ctx, actorID); err != nil {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
 		return nil, err
 	}
 	if s.groupRepo == nil {
+		return []AgentGroupRate{}, nil
+	}
+	if s.repo == nil {
 		return []AgentGroupRate{}, nil
 	}
 	groups, err := s.groupRepo.ListActive(ctx)
@@ -235,31 +255,109 @@ func (s *AgentManagementService) ListMyGroups(ctx context.Context, actorID int64
 	}
 	out := make([]AgentGroupRate, 0, len(groups))
 	for i := range groups {
-		if groups[i].IsExclusive {
+		if groups[i].IsExclusive && actor.Role != RoleAdmin {
 			continue
+		}
+		canDelegate := false
+		source := "public"
+		if groups[i].IsExclusive {
+			canDelegate = true
+			source = "admin_exclusive"
 		}
 		out = append(out, AgentGroupRate{
 			Group:         groups[i],
 			EffectiveRate: groups[i].RateMultiplier,
-			CanDelegate:   false,
-			Source:        "public",
+			CanDelegate:   canDelegate,
+			Source:        source,
+		})
+	}
+	delegations, err := s.repo.ListGroupDelegationsForChild(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	groupsByID := make(map[int64]Group, len(groups))
+	for i := range groups {
+		groupsByID[groups[i].ID] = groups[i]
+	}
+	for i := range delegations {
+		group, ok := groupsByID[delegations[i].GroupID]
+		if !ok && delegations[i].Group != nil {
+			group = *delegations[i].Group
+			ok = true
+		}
+		if !ok {
+			continue
+		}
+		if !group.IsExclusive || !group.IsActive() {
+			continue
+		}
+		group.RateMultiplier = delegations[i].RateMultiplier
+		out = append(out, AgentGroupRate{
+			Group:         group,
+			EffectiveRate: delegations[i].RateMultiplier,
+			CanDelegate:   delegations[i].CanDelegate,
+			Source:        "delegated",
 		})
 	}
 	return out, nil
 }
 
 func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input ChildGroupDelegationInput) error {
-	if _, err := s.requireManager(ctx, actorID); err != nil {
+	if input.RateMultiplier <= 0 {
+		return ErrAgentManagementInvalidGroupRate
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
 		return err
 	}
-	return ErrAgentManagementNotImplemented
+	if s.groupRepo == nil {
+		return ErrAgentManagementInvalidGroup
+	}
+	child, err := s.requireDirectChild(ctx, actor, childID)
+	if err != nil {
+		return err
+	}
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if !group.IsActive() || !group.IsExclusive {
+		return ErrAgentManagementInvalidGroup
+	}
+	if err := s.requireGroupDelegationAccess(ctx, actor, groupID); err != nil {
+		return err
+	}
+	if err := s.repo.UpsertGroupDelegation(ctx, actor.ID, child.ID, groupID, input.RateMultiplier, input.CanDelegate); err != nil {
+		return err
+	}
+	if s.userRepo != nil {
+		if err := s.userRepo.AddGroupToAllowedGroups(ctx, child.ID, groupID); err != nil {
+			return err
+		}
+	}
+	s.invalidateUser(ctx, child.ID)
+	return nil
 }
 
 func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error {
-	if _, err := s.requireManager(ctx, actorID); err != nil {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
 		return err
 	}
-	return ErrAgentManagementNotImplemented
+	child, err := s.requireDirectChild(ctx, actor, childID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteGroupDelegation(ctx, actor.ID, child.ID, groupID); err != nil {
+		return err
+	}
+	if s.userRepo != nil {
+		if err := s.userRepo.RemoveGroupFromUserAllowedGroups(ctx, child.ID, groupID); err != nil {
+			return err
+		}
+	}
+	s.invalidateUser(ctx, child.ID)
+	return nil
 }
 
 func (s *AgentManagementService) ResolveInvitationParent(ctx context.Context, inviterID int64) (*int64, error) {
@@ -337,6 +435,23 @@ func (s *AgentManagementService) requireDirectChild(ctx context.Context, actor *
 		return nil, ErrAgentManagementNotDirectChild
 	}
 	return child, nil
+}
+
+func (s *AgentManagementService) requireGroupDelegationAccess(ctx context.Context, actor *User, groupID int64) error {
+	if actor.Role == RoleAdmin {
+		return nil
+	}
+	if actor.ParentUserID == nil {
+		return ErrAgentManagementForbidden
+	}
+	delegation, err := s.repo.GetGroupDelegation(ctx, *actor.ParentUserID, actor.ID, groupID)
+	if err != nil {
+		return err
+	}
+	if delegation == nil || !delegation.CanDelegate {
+		return ErrAgentManagementForbidden
+	}
+	return nil
 }
 
 func (s *AgentManagementService) invalidateUser(ctx context.Context, userID int64) {

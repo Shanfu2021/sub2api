@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -562,6 +563,36 @@ func (_c *UserCreate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserCrea
 	return _c.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_c *UserCreate) AddManagedGroupDelegationIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddManagedGroupDelegationIDs(ids...)
+	return _c
+}
+
+// AddManagedGroupDelegations adds the "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_c *UserCreate) AddManagedGroupDelegations(v ...*AgentGroupDelegation) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddManagedGroupDelegationIDs(ids...)
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_c *UserCreate) AddReceivedGroupDelegationIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddReceivedGroupDelegationIDs(ids...)
+	return _c
+}
+
+// AddReceivedGroupDelegations adds the "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_c *UserCreate) AddReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddReceivedGroupDelegationIDs(ids...)
+}
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
 func (_c *UserCreate) AddPlatformQuotaIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddPlatformQuotaIDs(ids...)
@@ -1100,6 +1131,38 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ManagedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ReceivedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

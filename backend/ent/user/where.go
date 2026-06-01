@@ -1761,6 +1761,52 @@ func HasPendingAuthSessionsWith(preds ...predicate.PendingAuthSession) predicate
 	})
 }
 
+// HasManagedGroupDelegations applies the HasEdge predicate on the "managed_group_delegations" edge.
+func HasManagedGroupDelegations() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ManagedGroupDelegationsTable, ManagedGroupDelegationsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasManagedGroupDelegationsWith applies the HasEdge predicate on the "managed_group_delegations" edge with a given conditions (other predicates).
+func HasManagedGroupDelegationsWith(preds ...predicate.AgentGroupDelegation) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newManagedGroupDelegationsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasReceivedGroupDelegations applies the HasEdge predicate on the "received_group_delegations" edge.
+func HasReceivedGroupDelegations() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ReceivedGroupDelegationsTable, ReceivedGroupDelegationsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasReceivedGroupDelegationsWith applies the HasEdge predicate on the "received_group_delegations" edge with a given conditions (other predicates).
+func HasReceivedGroupDelegationsWith(preds ...predicate.AgentGroupDelegation) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newReceivedGroupDelegationsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasPlatformQuotas applies the HasEdge predicate on the "platform_quotas" edge.
 func HasPlatformQuotas() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

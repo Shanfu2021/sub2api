@@ -18,12 +18,18 @@ import (
 
 type authRepoStub struct {
 	getByKeyForAuth   func(ctx context.Context, key string) (*APIKey, error)
+	create            func(ctx context.Context, key *APIKey) error
+	existsByKey       func(ctx context.Context, key string) (bool, error)
+	listByUserID      func(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error)
 	listKeysByUserID  func(ctx context.Context, userID int64) ([]string, error)
 	listKeysByGroupID func(ctx context.Context, groupID int64) ([]string, error)
 }
 
 func (s *authRepoStub) Create(ctx context.Context, key *APIKey) error {
-	panic("unexpected Create call")
+	if s.create == nil {
+		panic("unexpected Create call")
+	}
+	return s.create(ctx, key)
 }
 
 func (s *authRepoStub) GetByID(ctx context.Context, id int64) (*APIKey, error) {
@@ -54,7 +60,10 @@ func (s *authRepoStub) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *authRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
-	panic("unexpected ListByUserID call")
+	if s.listByUserID == nil {
+		panic("unexpected ListByUserID call")
+	}
+	return s.listByUserID(ctx, userID, params, filters)
 }
 
 func (s *authRepoStub) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
@@ -66,7 +75,10 @@ func (s *authRepoStub) CountByUserID(ctx context.Context, userID int64) (int64, 
 }
 
 func (s *authRepoStub) ExistsByKey(ctx context.Context, key string) (bool, error) {
-	panic("unexpected ExistsByKey call")
+	if s.existsByKey == nil {
+		panic("unexpected ExistsByKey call")
+	}
+	return s.existsByKey(ctx, key)
 }
 
 func (s *authRepoStub) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {

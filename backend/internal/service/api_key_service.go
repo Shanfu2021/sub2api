@@ -321,6 +321,9 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
 		return err == nil // 有有效订阅则允许
 	}
+	if s.hasDelegatedGroupAccess(ctx, user.ID, group.ID, group.IsExclusive) {
+		return true
+	}
 	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
@@ -433,6 +436,7 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 	if err != nil {
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
+	s.applyDelegatedGroupRatesToAPIKeys(ctx, userID, keys)
 	return keys, pagination, nil
 }
 
@@ -767,7 +771,8 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 	// 过滤出用户有权限的分组
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
-		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
+		if s.canUserBindGroupInternal(ctx, user, &group, subscribedGroupIDs) {
+			s.applyDelegatedGroupRate(ctx, user.ID, &group)
 			availableGroups = append(availableGroups, group)
 		}
 	}
@@ -776,13 +781,51 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 }
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）
-func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
+func (s *APIKeyService) canUserBindGroupInternal(ctx context.Context, user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
 	// 订阅类型分组：需要有效订阅
 	if group.IsSubscriptionType() {
 		return subscribedGroupIDs[group.ID]
 	}
 	// 标准类型分组：使用原有逻辑
+	if s.hasDelegatedGroupAccess(ctx, user.ID, group.ID, group.IsExclusive) {
+		return true
+	}
 	return user.CanBindGroup(group.ID, group.IsExclusive)
+}
+
+func (s *APIKeyService) hasDelegatedGroupAccess(ctx context.Context, userID int64, groupID int64, isExclusive bool) bool {
+	if !isExclusive || s == nil || s.userGroupRateRepo == nil {
+		return false
+	}
+	delegatedRepo, ok := s.userGroupRateRepo.(DelegatedGroupRateRepository)
+	if !ok {
+		return false
+	}
+	rate, err := delegatedRepo.GetDelegatedRateByUserAndGroup(ctx, userID, groupID)
+	return err == nil && rate != nil
+}
+
+func (s *APIKeyService) applyDelegatedGroupRatesToAPIKeys(ctx context.Context, userID int64, keys []APIKey) {
+	for i := range keys {
+		if keys[i].Group != nil {
+			s.applyDelegatedGroupRate(ctx, userID, keys[i].Group)
+		}
+	}
+}
+
+func (s *APIKeyService) applyDelegatedGroupRate(ctx context.Context, userID int64, group *Group) {
+	if group == nil || !group.IsExclusive || s == nil || s.userGroupRateRepo == nil {
+		return
+	}
+	delegatedRepo, ok := s.userGroupRateRepo.(DelegatedGroupRateRepository)
+	if !ok {
+		return
+	}
+	rate, err := delegatedRepo.GetDelegatedRateByUserAndGroup(ctx, userID, group.ID)
+	if err != nil || rate == nil {
+		return
+	}
+	group.RateMultiplier = *rate
 }
 
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {

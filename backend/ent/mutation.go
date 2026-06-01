@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -63,6 +64,7 @@ const (
 	TypeAPIKey                        = "APIKey"
 	TypeAccount                       = "Account"
 	TypeAccountGroup                  = "AccountGroup"
+	TypeAgentGroupDelegation          = "AgentGroupDelegation"
 	TypeAnnouncement                  = "Announcement"
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
@@ -5184,6 +5186,940 @@ func (m *AccountGroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AccountGroup edge %s", name)
+}
+
+// AgentGroupDelegationMutation represents an operation that mutates the AgentGroupDelegation nodes in the graph.
+type AgentGroupDelegationMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	deleted_at         *time.Time
+	rate_multiplier    *float64
+	addrate_multiplier *float64
+	can_delegate       *bool
+	clearedFields      map[string]struct{}
+	manager            *int64
+	clearedmanager     bool
+	child              *int64
+	clearedchild       bool
+	group              *int64
+	clearedgroup       bool
+	done               bool
+	oldValue           func(context.Context) (*AgentGroupDelegation, error)
+	predicates         []predicate.AgentGroupDelegation
+}
+
+var _ ent.Mutation = (*AgentGroupDelegationMutation)(nil)
+
+// agentgroupdelegationOption allows management of the mutation configuration using functional options.
+type agentgroupdelegationOption func(*AgentGroupDelegationMutation)
+
+// newAgentGroupDelegationMutation creates new mutation for the AgentGroupDelegation entity.
+func newAgentGroupDelegationMutation(c config, op Op, opts ...agentgroupdelegationOption) *AgentGroupDelegationMutation {
+	m := &AgentGroupDelegationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAgentGroupDelegation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAgentGroupDelegationID sets the ID field of the mutation.
+func withAgentGroupDelegationID(id int64) agentgroupdelegationOption {
+	return func(m *AgentGroupDelegationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AgentGroupDelegation
+		)
+		m.oldValue = func(ctx context.Context) (*AgentGroupDelegation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AgentGroupDelegation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAgentGroupDelegation sets the old AgentGroupDelegation of the mutation.
+func withAgentGroupDelegation(node *AgentGroupDelegation) agentgroupdelegationOption {
+	return func(m *AgentGroupDelegationMutation) {
+		m.oldValue = func(context.Context) (*AgentGroupDelegation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AgentGroupDelegationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AgentGroupDelegationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AgentGroupDelegationMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AgentGroupDelegationMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AgentGroupDelegation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AgentGroupDelegationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AgentGroupDelegationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AgentGroupDelegationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AgentGroupDelegationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AgentGroupDelegationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AgentGroupDelegationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *AgentGroupDelegationMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *AgentGroupDelegationMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *AgentGroupDelegationMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[agentgroupdelegation.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *AgentGroupDelegationMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[agentgroupdelegation.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *AgentGroupDelegationMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, agentgroupdelegation.FieldDeletedAt)
+}
+
+// SetManagerUserID sets the "manager_user_id" field.
+func (m *AgentGroupDelegationMutation) SetManagerUserID(i int64) {
+	m.manager = &i
+}
+
+// ManagerUserID returns the value of the "manager_user_id" field in the mutation.
+func (m *AgentGroupDelegationMutation) ManagerUserID() (r int64, exists bool) {
+	v := m.manager
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManagerUserID returns the old "manager_user_id" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldManagerUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManagerUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManagerUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManagerUserID: %w", err)
+	}
+	return oldValue.ManagerUserID, nil
+}
+
+// ResetManagerUserID resets all changes to the "manager_user_id" field.
+func (m *AgentGroupDelegationMutation) ResetManagerUserID() {
+	m.manager = nil
+}
+
+// SetChildUserID sets the "child_user_id" field.
+func (m *AgentGroupDelegationMutation) SetChildUserID(i int64) {
+	m.child = &i
+}
+
+// ChildUserID returns the value of the "child_user_id" field in the mutation.
+func (m *AgentGroupDelegationMutation) ChildUserID() (r int64, exists bool) {
+	v := m.child
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChildUserID returns the old "child_user_id" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldChildUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChildUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChildUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChildUserID: %w", err)
+	}
+	return oldValue.ChildUserID, nil
+}
+
+// ResetChildUserID resets all changes to the "child_user_id" field.
+func (m *AgentGroupDelegationMutation) ResetChildUserID() {
+	m.child = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *AgentGroupDelegationMutation) SetGroupID(i int64) {
+	m.group = &i
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *AgentGroupDelegationMutation) GroupID() (r int64, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *AgentGroupDelegationMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetRateMultiplier sets the "rate_multiplier" field.
+func (m *AgentGroupDelegationMutation) SetRateMultiplier(f float64) {
+	m.rate_multiplier = &f
+	m.addrate_multiplier = nil
+}
+
+// RateMultiplier returns the value of the "rate_multiplier" field in the mutation.
+func (m *AgentGroupDelegationMutation) RateMultiplier() (r float64, exists bool) {
+	v := m.rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRateMultiplier returns the old "rate_multiplier" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRateMultiplier: %w", err)
+	}
+	return oldValue.RateMultiplier, nil
+}
+
+// AddRateMultiplier adds f to the "rate_multiplier" field.
+func (m *AgentGroupDelegationMutation) AddRateMultiplier(f float64) {
+	if m.addrate_multiplier != nil {
+		*m.addrate_multiplier += f
+	} else {
+		m.addrate_multiplier = &f
+	}
+}
+
+// AddedRateMultiplier returns the value that was added to the "rate_multiplier" field in this mutation.
+func (m *AgentGroupDelegationMutation) AddedRateMultiplier() (r float64, exists bool) {
+	v := m.addrate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRateMultiplier resets all changes to the "rate_multiplier" field.
+func (m *AgentGroupDelegationMutation) ResetRateMultiplier() {
+	m.rate_multiplier = nil
+	m.addrate_multiplier = nil
+}
+
+// SetCanDelegate sets the "can_delegate" field.
+func (m *AgentGroupDelegationMutation) SetCanDelegate(b bool) {
+	m.can_delegate = &b
+}
+
+// CanDelegate returns the value of the "can_delegate" field in the mutation.
+func (m *AgentGroupDelegationMutation) CanDelegate() (r bool, exists bool) {
+	v := m.can_delegate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanDelegate returns the old "can_delegate" field's value of the AgentGroupDelegation entity.
+// If the AgentGroupDelegation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentGroupDelegationMutation) OldCanDelegate(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanDelegate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanDelegate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanDelegate: %w", err)
+	}
+	return oldValue.CanDelegate, nil
+}
+
+// ResetCanDelegate resets all changes to the "can_delegate" field.
+func (m *AgentGroupDelegationMutation) ResetCanDelegate() {
+	m.can_delegate = nil
+}
+
+// SetManagerID sets the "manager" edge to the User entity by id.
+func (m *AgentGroupDelegationMutation) SetManagerID(id int64) {
+	m.manager = &id
+}
+
+// ClearManager clears the "manager" edge to the User entity.
+func (m *AgentGroupDelegationMutation) ClearManager() {
+	m.clearedmanager = true
+	m.clearedFields[agentgroupdelegation.FieldManagerUserID] = struct{}{}
+}
+
+// ManagerCleared reports if the "manager" edge to the User entity was cleared.
+func (m *AgentGroupDelegationMutation) ManagerCleared() bool {
+	return m.clearedmanager
+}
+
+// ManagerID returns the "manager" edge ID in the mutation.
+func (m *AgentGroupDelegationMutation) ManagerID() (id int64, exists bool) {
+	if m.manager != nil {
+		return *m.manager, true
+	}
+	return
+}
+
+// ManagerIDs returns the "manager" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ManagerID instead. It exists only for internal usage by the builders.
+func (m *AgentGroupDelegationMutation) ManagerIDs() (ids []int64) {
+	if id := m.manager; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetManager resets all changes to the "manager" edge.
+func (m *AgentGroupDelegationMutation) ResetManager() {
+	m.manager = nil
+	m.clearedmanager = false
+}
+
+// SetChildID sets the "child" edge to the User entity by id.
+func (m *AgentGroupDelegationMutation) SetChildID(id int64) {
+	m.child = &id
+}
+
+// ClearChild clears the "child" edge to the User entity.
+func (m *AgentGroupDelegationMutation) ClearChild() {
+	m.clearedchild = true
+	m.clearedFields[agentgroupdelegation.FieldChildUserID] = struct{}{}
+}
+
+// ChildCleared reports if the "child" edge to the User entity was cleared.
+func (m *AgentGroupDelegationMutation) ChildCleared() bool {
+	return m.clearedchild
+}
+
+// ChildID returns the "child" edge ID in the mutation.
+func (m *AgentGroupDelegationMutation) ChildID() (id int64, exists bool) {
+	if m.child != nil {
+		return *m.child, true
+	}
+	return
+}
+
+// ChildIDs returns the "child" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ChildID instead. It exists only for internal usage by the builders.
+func (m *AgentGroupDelegationMutation) ChildIDs() (ids []int64) {
+	if id := m.child; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetChild resets all changes to the "child" edge.
+func (m *AgentGroupDelegationMutation) ResetChild() {
+	m.child = nil
+	m.clearedchild = false
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (m *AgentGroupDelegationMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[agentgroupdelegation.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the Group entity was cleared.
+func (m *AgentGroupDelegationMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *AgentGroupDelegationMutation) GroupIDs() (ids []int64) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *AgentGroupDelegationMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the AgentGroupDelegationMutation builder.
+func (m *AgentGroupDelegationMutation) Where(ps ...predicate.AgentGroupDelegation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AgentGroupDelegationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AgentGroupDelegationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AgentGroupDelegation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AgentGroupDelegationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AgentGroupDelegationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AgentGroupDelegation).
+func (m *AgentGroupDelegationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AgentGroupDelegationMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.created_at != nil {
+		fields = append(fields, agentgroupdelegation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, agentgroupdelegation.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, agentgroupdelegation.FieldDeletedAt)
+	}
+	if m.manager != nil {
+		fields = append(fields, agentgroupdelegation.FieldManagerUserID)
+	}
+	if m.child != nil {
+		fields = append(fields, agentgroupdelegation.FieldChildUserID)
+	}
+	if m.group != nil {
+		fields = append(fields, agentgroupdelegation.FieldGroupID)
+	}
+	if m.rate_multiplier != nil {
+		fields = append(fields, agentgroupdelegation.FieldRateMultiplier)
+	}
+	if m.can_delegate != nil {
+		fields = append(fields, agentgroupdelegation.FieldCanDelegate)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AgentGroupDelegationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case agentgroupdelegation.FieldCreatedAt:
+		return m.CreatedAt()
+	case agentgroupdelegation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case agentgroupdelegation.FieldDeletedAt:
+		return m.DeletedAt()
+	case agentgroupdelegation.FieldManagerUserID:
+		return m.ManagerUserID()
+	case agentgroupdelegation.FieldChildUserID:
+		return m.ChildUserID()
+	case agentgroupdelegation.FieldGroupID:
+		return m.GroupID()
+	case agentgroupdelegation.FieldRateMultiplier:
+		return m.RateMultiplier()
+	case agentgroupdelegation.FieldCanDelegate:
+		return m.CanDelegate()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AgentGroupDelegationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case agentgroupdelegation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case agentgroupdelegation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case agentgroupdelegation.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case agentgroupdelegation.FieldManagerUserID:
+		return m.OldManagerUserID(ctx)
+	case agentgroupdelegation.FieldChildUserID:
+		return m.OldChildUserID(ctx)
+	case agentgroupdelegation.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case agentgroupdelegation.FieldRateMultiplier:
+		return m.OldRateMultiplier(ctx)
+	case agentgroupdelegation.FieldCanDelegate:
+		return m.OldCanDelegate(ctx)
+	}
+	return nil, fmt.Errorf("unknown AgentGroupDelegation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AgentGroupDelegationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case agentgroupdelegation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case agentgroupdelegation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case agentgroupdelegation.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case agentgroupdelegation.FieldManagerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManagerUserID(v)
+		return nil
+	case agentgroupdelegation.FieldChildUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChildUserID(v)
+		return nil
+	case agentgroupdelegation.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case agentgroupdelegation.FieldRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRateMultiplier(v)
+		return nil
+	case agentgroupdelegation.FieldCanDelegate:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanDelegate(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AgentGroupDelegation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AgentGroupDelegationMutation) AddedFields() []string {
+	var fields []string
+	if m.addrate_multiplier != nil {
+		fields = append(fields, agentgroupdelegation.FieldRateMultiplier)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AgentGroupDelegationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case agentgroupdelegation.FieldRateMultiplier:
+		return m.AddedRateMultiplier()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AgentGroupDelegationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case agentgroupdelegation.FieldRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRateMultiplier(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AgentGroupDelegation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AgentGroupDelegationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(agentgroupdelegation.FieldDeletedAt) {
+		fields = append(fields, agentgroupdelegation.FieldDeletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AgentGroupDelegationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AgentGroupDelegationMutation) ClearField(name string) error {
+	switch name {
+	case agentgroupdelegation.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AgentGroupDelegation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AgentGroupDelegationMutation) ResetField(name string) error {
+	switch name {
+	case agentgroupdelegation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case agentgroupdelegation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case agentgroupdelegation.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case agentgroupdelegation.FieldManagerUserID:
+		m.ResetManagerUserID()
+		return nil
+	case agentgroupdelegation.FieldChildUserID:
+		m.ResetChildUserID()
+		return nil
+	case agentgroupdelegation.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case agentgroupdelegation.FieldRateMultiplier:
+		m.ResetRateMultiplier()
+		return nil
+	case agentgroupdelegation.FieldCanDelegate:
+		m.ResetCanDelegate()
+		return nil
+	}
+	return fmt.Errorf("unknown AgentGroupDelegation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AgentGroupDelegationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.manager != nil {
+		edges = append(edges, agentgroupdelegation.EdgeManager)
+	}
+	if m.child != nil {
+		edges = append(edges, agentgroupdelegation.EdgeChild)
+	}
+	if m.group != nil {
+		edges = append(edges, agentgroupdelegation.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AgentGroupDelegationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case agentgroupdelegation.EdgeManager:
+		if id := m.manager; id != nil {
+			return []ent.Value{*id}
+		}
+	case agentgroupdelegation.EdgeChild:
+		if id := m.child; id != nil {
+			return []ent.Value{*id}
+		}
+	case agentgroupdelegation.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AgentGroupDelegationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AgentGroupDelegationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AgentGroupDelegationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedmanager {
+		edges = append(edges, agentgroupdelegation.EdgeManager)
+	}
+	if m.clearedchild {
+		edges = append(edges, agentgroupdelegation.EdgeChild)
+	}
+	if m.clearedgroup {
+		edges = append(edges, agentgroupdelegation.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AgentGroupDelegationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case agentgroupdelegation.EdgeManager:
+		return m.clearedmanager
+	case agentgroupdelegation.EdgeChild:
+		return m.clearedchild
+	case agentgroupdelegation.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AgentGroupDelegationMutation) ClearEdge(name string) error {
+	switch name {
+	case agentgroupdelegation.EdgeManager:
+		m.ClearManager()
+		return nil
+	case agentgroupdelegation.EdgeChild:
+		m.ClearChild()
+		return nil
+	case agentgroupdelegation.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown AgentGroupDelegation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AgentGroupDelegationMutation) ResetEdge(name string) error {
+	switch name {
+	case agentgroupdelegation.EdgeManager:
+		m.ResetManager()
+		return nil
+	case agentgroupdelegation.EdgeChild:
+		m.ResetChild()
+		return nil
+	case agentgroupdelegation.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown AgentGroupDelegation edge %s", name)
 }
 
 // AnnouncementMutation represents an operation that mutates the Announcement nodes in the graph.
@@ -14923,6 +15859,9 @@ type GroupMutation struct {
 	allowed_users                           map[int64]struct{}
 	removedallowed_users                    map[int64]struct{}
 	clearedallowed_users                    bool
+	agent_group_delegations                 map[int64]struct{}
+	removedagent_group_delegations          map[int64]struct{}
+	clearedagent_group_delegations          bool
 	done                                    bool
 	oldValue                                func(context.Context) (*Group, error)
 	predicates                              []predicate.Group
@@ -17036,6 +17975,60 @@ func (m *GroupMutation) ResetAllowedUsers() {
 	m.removedallowed_users = nil
 }
 
+// AddAgentGroupDelegationIDs adds the "agent_group_delegations" edge to the AgentGroupDelegation entity by ids.
+func (m *GroupMutation) AddAgentGroupDelegationIDs(ids ...int64) {
+	if m.agent_group_delegations == nil {
+		m.agent_group_delegations = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.agent_group_delegations[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAgentGroupDelegations clears the "agent_group_delegations" edge to the AgentGroupDelegation entity.
+func (m *GroupMutation) ClearAgentGroupDelegations() {
+	m.clearedagent_group_delegations = true
+}
+
+// AgentGroupDelegationsCleared reports if the "agent_group_delegations" edge to the AgentGroupDelegation entity was cleared.
+func (m *GroupMutation) AgentGroupDelegationsCleared() bool {
+	return m.clearedagent_group_delegations
+}
+
+// RemoveAgentGroupDelegationIDs removes the "agent_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (m *GroupMutation) RemoveAgentGroupDelegationIDs(ids ...int64) {
+	if m.removedagent_group_delegations == nil {
+		m.removedagent_group_delegations = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.agent_group_delegations, ids[i])
+		m.removedagent_group_delegations[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAgentGroupDelegations returns the removed IDs of the "agent_group_delegations" edge to the AgentGroupDelegation entity.
+func (m *GroupMutation) RemovedAgentGroupDelegationsIDs() (ids []int64) {
+	for id := range m.removedagent_group_delegations {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AgentGroupDelegationsIDs returns the "agent_group_delegations" edge IDs in the mutation.
+func (m *GroupMutation) AgentGroupDelegationsIDs() (ids []int64) {
+	for id := range m.agent_group_delegations {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAgentGroupDelegations resets all changes to the "agent_group_delegations" edge.
+func (m *GroupMutation) ResetAgentGroupDelegations() {
+	m.agent_group_delegations = nil
+	m.clearedagent_group_delegations = false
+	m.removedagent_group_delegations = nil
+}
+
 // Where appends a list predicates to the GroupMutation builder.
 func (m *GroupMutation) Where(ps ...predicate.Group) {
 	m.predicates = append(m.predicates, ps...)
@@ -17975,7 +18968,7 @@ func (m *GroupMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *GroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.api_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -17993,6 +18986,9 @@ func (m *GroupMutation) AddedEdges() []string {
 	}
 	if m.allowed_users != nil {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.agent_group_delegations != nil {
+		edges = append(edges, group.EdgeAgentGroupDelegations)
 	}
 	return edges
 }
@@ -18037,13 +19033,19 @@ func (m *GroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case group.EdgeAgentGroupDelegations:
+		ids := make([]ent.Value, 0, len(m.agent_group_delegations))
+		for id := range m.agent_group_delegations {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *GroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedapi_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -18061,6 +19063,9 @@ func (m *GroupMutation) RemovedEdges() []string {
 	}
 	if m.removedallowed_users != nil {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.removedagent_group_delegations != nil {
+		edges = append(edges, group.EdgeAgentGroupDelegations)
 	}
 	return edges
 }
@@ -18105,13 +19110,19 @@ func (m *GroupMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case group.EdgeAgentGroupDelegations:
+		ids := make([]ent.Value, 0, len(m.removedagent_group_delegations))
+		for id := range m.removedagent_group_delegations {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *GroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedapi_keys {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -18129,6 +19140,9 @@ func (m *GroupMutation) ClearedEdges() []string {
 	}
 	if m.clearedallowed_users {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.clearedagent_group_delegations {
+		edges = append(edges, group.EdgeAgentGroupDelegations)
 	}
 	return edges
 }
@@ -18149,6 +19163,8 @@ func (m *GroupMutation) EdgeCleared(name string) bool {
 		return m.clearedaccounts
 	case group.EdgeAllowedUsers:
 		return m.clearedallowed_users
+	case group.EdgeAgentGroupDelegations:
+		return m.clearedagent_group_delegations
 	}
 	return false
 }
@@ -18182,6 +19198,9 @@ func (m *GroupMutation) ResetEdge(name string) error {
 		return nil
 	case group.EdgeAllowedUsers:
 		m.ResetAllowedUsers()
+		return nil
+	case group.EdgeAgentGroupDelegations:
+		m.ResetAgentGroupDelegations()
 		return nil
 	}
 	return fmt.Errorf("unknown Group edge %s", name)
@@ -38148,86 +39167,92 @@ func (m *UsageLogMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                            Op
-	typ                           string
-	id                            *int64
-	created_at                    *time.Time
-	updated_at                    *time.Time
-	deleted_at                    *time.Time
-	email                         *string
-	password_hash                 *string
-	role                          *string
-	parent_user_id                *int64
-	addparent_user_id             *int64
-	balance                       *float64
-	addbalance                    *float64
-	concurrency                   *int
-	addconcurrency                *int
-	allocated_concurrency         *int
-	addallocated_concurrency      *int
-	allocated_rpm                 *int
-	addallocated_rpm              *int
-	status                        *string
-	username                      *string
-	notes                         *string
-	totp_secret_encrypted         *string
-	totp_enabled                  *bool
-	totp_enabled_at               *time.Time
-	signup_source                 *string
-	last_login_at                 *time.Time
-	last_active_at                *time.Time
-	balance_notify_enabled        *bool
-	balance_notify_threshold_type *string
-	balance_notify_threshold      *float64
-	addbalance_notify_threshold   *float64
-	balance_notify_extra_emails   *string
-	total_recharged               *float64
-	addtotal_recharged            *float64
-	rpm_limit                     *int
-	addrpm_limit                  *int
-	clearedFields                 map[string]struct{}
-	api_keys                      map[int64]struct{}
-	removedapi_keys               map[int64]struct{}
-	clearedapi_keys               bool
-	redeem_codes                  map[int64]struct{}
-	removedredeem_codes           map[int64]struct{}
-	clearedredeem_codes           bool
-	subscriptions                 map[int64]struct{}
-	removedsubscriptions          map[int64]struct{}
-	clearedsubscriptions          bool
-	assigned_subscriptions        map[int64]struct{}
-	removedassigned_subscriptions map[int64]struct{}
-	clearedassigned_subscriptions bool
-	announcement_reads            map[int64]struct{}
-	removedannouncement_reads     map[int64]struct{}
-	clearedannouncement_reads     bool
-	allowed_groups                map[int64]struct{}
-	removedallowed_groups         map[int64]struct{}
-	clearedallowed_groups         bool
-	usage_logs                    map[int64]struct{}
-	removedusage_logs             map[int64]struct{}
-	clearedusage_logs             bool
-	attribute_values              map[int64]struct{}
-	removedattribute_values       map[int64]struct{}
-	clearedattribute_values       bool
-	promo_code_usages             map[int64]struct{}
-	removedpromo_code_usages      map[int64]struct{}
-	clearedpromo_code_usages      bool
-	payment_orders                map[int64]struct{}
-	removedpayment_orders         map[int64]struct{}
-	clearedpayment_orders         bool
-	auth_identities               map[int64]struct{}
-	removedauth_identities        map[int64]struct{}
-	clearedauth_identities        bool
-	pending_auth_sessions         map[int64]struct{}
-	removedpending_auth_sessions  map[int64]struct{}
-	clearedpending_auth_sessions  bool
-	platform_quotas               map[int64]struct{}
-	removedplatform_quotas        map[int64]struct{}
-	clearedplatform_quotas        bool
-	done                          bool
-	oldValue                      func(context.Context) (*User, error)
-	predicates                    []predicate.User
+	op                                Op
+	typ                               string
+	id                                *int64
+	created_at                        *time.Time
+	updated_at                        *time.Time
+	deleted_at                        *time.Time
+	email                             *string
+	password_hash                     *string
+	role                              *string
+	parent_user_id                    *int64
+	addparent_user_id                 *int64
+	balance                           *float64
+	addbalance                        *float64
+	concurrency                       *int
+	addconcurrency                    *int
+	allocated_concurrency             *int
+	addallocated_concurrency          *int
+	allocated_rpm                     *int
+	addallocated_rpm                  *int
+	status                            *string
+	username                          *string
+	notes                             *string
+	totp_secret_encrypted             *string
+	totp_enabled                      *bool
+	totp_enabled_at                   *time.Time
+	signup_source                     *string
+	last_login_at                     *time.Time
+	last_active_at                    *time.Time
+	balance_notify_enabled            *bool
+	balance_notify_threshold_type     *string
+	balance_notify_threshold          *float64
+	addbalance_notify_threshold       *float64
+	balance_notify_extra_emails       *string
+	total_recharged                   *float64
+	addtotal_recharged                *float64
+	rpm_limit                         *int
+	addrpm_limit                      *int
+	clearedFields                     map[string]struct{}
+	api_keys                          map[int64]struct{}
+	removedapi_keys                   map[int64]struct{}
+	clearedapi_keys                   bool
+	redeem_codes                      map[int64]struct{}
+	removedredeem_codes               map[int64]struct{}
+	clearedredeem_codes               bool
+	subscriptions                     map[int64]struct{}
+	removedsubscriptions              map[int64]struct{}
+	clearedsubscriptions              bool
+	assigned_subscriptions            map[int64]struct{}
+	removedassigned_subscriptions     map[int64]struct{}
+	clearedassigned_subscriptions     bool
+	announcement_reads                map[int64]struct{}
+	removedannouncement_reads         map[int64]struct{}
+	clearedannouncement_reads         bool
+	allowed_groups                    map[int64]struct{}
+	removedallowed_groups             map[int64]struct{}
+	clearedallowed_groups             bool
+	usage_logs                        map[int64]struct{}
+	removedusage_logs                 map[int64]struct{}
+	clearedusage_logs                 bool
+	attribute_values                  map[int64]struct{}
+	removedattribute_values           map[int64]struct{}
+	clearedattribute_values           bool
+	promo_code_usages                 map[int64]struct{}
+	removedpromo_code_usages          map[int64]struct{}
+	clearedpromo_code_usages          bool
+	payment_orders                    map[int64]struct{}
+	removedpayment_orders             map[int64]struct{}
+	clearedpayment_orders             bool
+	auth_identities                   map[int64]struct{}
+	removedauth_identities            map[int64]struct{}
+	clearedauth_identities            bool
+	pending_auth_sessions             map[int64]struct{}
+	removedpending_auth_sessions      map[int64]struct{}
+	clearedpending_auth_sessions      bool
+	managed_group_delegations         map[int64]struct{}
+	removedmanaged_group_delegations  map[int64]struct{}
+	clearedmanaged_group_delegations  bool
+	received_group_delegations        map[int64]struct{}
+	removedreceived_group_delegations map[int64]struct{}
+	clearedreceived_group_delegations bool
+	platform_quotas                   map[int64]struct{}
+	removedplatform_quotas            map[int64]struct{}
+	clearedplatform_quotas            bool
+	done                              bool
+	oldValue                          func(context.Context) (*User, error)
+	predicates                        []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -40165,6 +41190,114 @@ func (m *UserMutation) ResetPendingAuthSessions() {
 	m.removedpending_auth_sessions = nil
 }
 
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by ids.
+func (m *UserMutation) AddManagedGroupDelegationIDs(ids ...int64) {
+	if m.managed_group_delegations == nil {
+		m.managed_group_delegations = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.managed_group_delegations[ids[i]] = struct{}{}
+	}
+}
+
+// ClearManagedGroupDelegations clears the "managed_group_delegations" edge to the AgentGroupDelegation entity.
+func (m *UserMutation) ClearManagedGroupDelegations() {
+	m.clearedmanaged_group_delegations = true
+}
+
+// ManagedGroupDelegationsCleared reports if the "managed_group_delegations" edge to the AgentGroupDelegation entity was cleared.
+func (m *UserMutation) ManagedGroupDelegationsCleared() bool {
+	return m.clearedmanaged_group_delegations
+}
+
+// RemoveManagedGroupDelegationIDs removes the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (m *UserMutation) RemoveManagedGroupDelegationIDs(ids ...int64) {
+	if m.removedmanaged_group_delegations == nil {
+		m.removedmanaged_group_delegations = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.managed_group_delegations, ids[i])
+		m.removedmanaged_group_delegations[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedManagedGroupDelegations returns the removed IDs of the "managed_group_delegations" edge to the AgentGroupDelegation entity.
+func (m *UserMutation) RemovedManagedGroupDelegationsIDs() (ids []int64) {
+	for id := range m.removedmanaged_group_delegations {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ManagedGroupDelegationsIDs returns the "managed_group_delegations" edge IDs in the mutation.
+func (m *UserMutation) ManagedGroupDelegationsIDs() (ids []int64) {
+	for id := range m.managed_group_delegations {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetManagedGroupDelegations resets all changes to the "managed_group_delegations" edge.
+func (m *UserMutation) ResetManagedGroupDelegations() {
+	m.managed_group_delegations = nil
+	m.clearedmanaged_group_delegations = false
+	m.removedmanaged_group_delegations = nil
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by ids.
+func (m *UserMutation) AddReceivedGroupDelegationIDs(ids ...int64) {
+	if m.received_group_delegations == nil {
+		m.received_group_delegations = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.received_group_delegations[ids[i]] = struct{}{}
+	}
+}
+
+// ClearReceivedGroupDelegations clears the "received_group_delegations" edge to the AgentGroupDelegation entity.
+func (m *UserMutation) ClearReceivedGroupDelegations() {
+	m.clearedreceived_group_delegations = true
+}
+
+// ReceivedGroupDelegationsCleared reports if the "received_group_delegations" edge to the AgentGroupDelegation entity was cleared.
+func (m *UserMutation) ReceivedGroupDelegationsCleared() bool {
+	return m.clearedreceived_group_delegations
+}
+
+// RemoveReceivedGroupDelegationIDs removes the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (m *UserMutation) RemoveReceivedGroupDelegationIDs(ids ...int64) {
+	if m.removedreceived_group_delegations == nil {
+		m.removedreceived_group_delegations = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.received_group_delegations, ids[i])
+		m.removedreceived_group_delegations[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedReceivedGroupDelegations returns the removed IDs of the "received_group_delegations" edge to the AgentGroupDelegation entity.
+func (m *UserMutation) RemovedReceivedGroupDelegationsIDs() (ids []int64) {
+	for id := range m.removedreceived_group_delegations {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ReceivedGroupDelegationsIDs returns the "received_group_delegations" edge IDs in the mutation.
+func (m *UserMutation) ReceivedGroupDelegationsIDs() (ids []int64) {
+	for id := range m.received_group_delegations {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetReceivedGroupDelegations resets all changes to the "received_group_delegations" edge.
+func (m *UserMutation) ResetReceivedGroupDelegations() {
+	m.received_group_delegations = nil
+	m.clearedreceived_group_delegations = false
+	m.removedreceived_group_delegations = nil
+}
+
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by ids.
 func (m *UserMutation) AddPlatformQuotaIDs(ids ...int64) {
 	if m.platform_quotas == nil {
@@ -40921,7 +42054,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 15)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40957,6 +42090,12 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.pending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
+	}
+	if m.managed_group_delegations != nil {
+		edges = append(edges, user.EdgeManagedGroupDelegations)
+	}
+	if m.received_group_delegations != nil {
+		edges = append(edges, user.EdgeReceivedGroupDelegations)
 	}
 	if m.platform_quotas != nil {
 		edges = append(edges, user.EdgePlatformQuotas)
@@ -41040,6 +42179,18 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeManagedGroupDelegations:
+		ids := make([]ent.Value, 0, len(m.managed_group_delegations))
+		for id := range m.managed_group_delegations {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeReceivedGroupDelegations:
+		ids := make([]ent.Value, 0, len(m.received_group_delegations))
+		for id := range m.received_group_delegations {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgePlatformQuotas:
 		ids := make([]ent.Value, 0, len(m.platform_quotas))
 		for id := range m.platform_quotas {
@@ -41052,7 +42203,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 15)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -41088,6 +42239,12 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedpending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
+	}
+	if m.removedmanaged_group_delegations != nil {
+		edges = append(edges, user.EdgeManagedGroupDelegations)
+	}
+	if m.removedreceived_group_delegations != nil {
+		edges = append(edges, user.EdgeReceivedGroupDelegations)
 	}
 	if m.removedplatform_quotas != nil {
 		edges = append(edges, user.EdgePlatformQuotas)
@@ -41171,6 +42328,18 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeManagedGroupDelegations:
+		ids := make([]ent.Value, 0, len(m.removedmanaged_group_delegations))
+		for id := range m.removedmanaged_group_delegations {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeReceivedGroupDelegations:
+		ids := make([]ent.Value, 0, len(m.removedreceived_group_delegations))
+		for id := range m.removedreceived_group_delegations {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgePlatformQuotas:
 		ids := make([]ent.Value, 0, len(m.removedplatform_quotas))
 		for id := range m.removedplatform_quotas {
@@ -41183,7 +42352,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 15)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -41220,6 +42389,12 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedpending_auth_sessions {
 		edges = append(edges, user.EdgePendingAuthSessions)
 	}
+	if m.clearedmanaged_group_delegations {
+		edges = append(edges, user.EdgeManagedGroupDelegations)
+	}
+	if m.clearedreceived_group_delegations {
+		edges = append(edges, user.EdgeReceivedGroupDelegations)
+	}
 	if m.clearedplatform_quotas {
 		edges = append(edges, user.EdgePlatformQuotas)
 	}
@@ -41254,6 +42429,10 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedauth_identities
 	case user.EdgePendingAuthSessions:
 		return m.clearedpending_auth_sessions
+	case user.EdgeManagedGroupDelegations:
+		return m.clearedmanaged_group_delegations
+	case user.EdgeReceivedGroupDelegations:
+		return m.clearedreceived_group_delegations
 	case user.EdgePlatformQuotas:
 		return m.clearedplatform_quotas
 	}
@@ -41307,6 +42486,12 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgePendingAuthSessions:
 		m.ResetPendingAuthSessions()
+		return nil
+	case user.EdgeManagedGroupDelegations:
+		m.ResetManagedGroupDelegations()
+		return nil
+	case user.EdgeReceivedGroupDelegations:
+		m.ResetReceivedGroupDelegations()
 		return nil
 	case user.EdgePlatformQuotas:
 		m.ResetPlatformQuotas()

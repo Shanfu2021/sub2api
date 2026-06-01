@@ -35,6 +35,10 @@ func (s *userGroupRateRepoHotpathStub) GetByUserAndGroup(ctx context.Context, us
 	return s.rate, nil
 }
 
+func (s *userGroupRateRepoHotpathStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
+}
+
 type usageLogWindowBatchRepoStub struct {
 	UsageLogRepository
 

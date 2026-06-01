@@ -513,7 +513,7 @@ git push origin hzz
 - Tests: `backend/internal/service/agent_management_test.go`, `backend/internal/repository/agent_management_repo_integration_test.go`
 - Generated: `backend/ent/**`
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Add these tests:
 
@@ -522,7 +522,7 @@ Add these tests:
 - `TestDelegatedExclusiveGroupHidesUpstreamRate`: child group responses contain `effective_rate` and do not contain upstream/admin cost fields.
 - `TestEffectiveGroupRateUsesDirectDelegation`: a child with a delegated exclusive group receives the direct delegation rate as the effective rate.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run:
 
@@ -533,11 +533,11 @@ go test ./internal/service -run 'TestAgent.*Group|TestEffectiveGroupRate' -count
 
 Expected: FAIL because delegation model is not implemented.
 
-- [ ] **Step 3: Add delegation schema**
+- [x] **Step 3: Add delegation schema**
 
 Create Ent schema `AgentGroupDelegation` with fields `manager_user_id`, `child_user_id`, `group_id`, `rate_multiplier`, `can_delegate`, timestamps, and soft delete. Create migration `146_hzz_agent_group_delegations.sql` with table `agent_group_delegations`, foreign keys to `users` and `groups`, and a partial unique index on `(manager_user_id, child_user_id, group_id)` where `deleted_at IS NULL`.
 
-- [ ] **Step 4: Implement delegation service**
+- [x] **Step 4: Implement delegation service**
 
 Implement:
 
@@ -549,7 +549,7 @@ func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context,
 
 Responses must not include upstream original cost fields.
 
-- [ ] **Step 5: Regenerate Ent and run tests**
+- [x] **Step 5: Regenerate Ent and run tests**
 
 Run:
 
@@ -561,7 +561,7 @@ go test ./internal/service ./internal/repository -run 'TestAgent.*Group|TestEffe
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit and push**
+- [x] **Step 6: Commit and push**
 
 ```bash
 git add backend/ent/schema/agent_group_delegation.go backend/migrations backend/internal/service/agent_management.go backend/internal/repository/agent_management_repo.go backend/internal/service/api_key_service.go backend/internal/repository/api_key_repo.go backend/internal/service/agent_management_test.go backend/internal/repository/agent_management_repo_integration_test.go backend/ent

@@ -70,6 +70,10 @@ func (s *rpmOverrideRepoStub) GetRPMOverrideByUserAndGroup(_ context.Context, _,
 	return s.override, nil
 }
 
+func (s *rpmOverrideRepoStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
+}
+
 func newBillingServiceForRPM(t *testing.T, cache UserRPMCache, rateRepo UserGroupRateRepository) *BillingCacheService {
 	t.Helper()
 	// 用 nil BillingCache 走 "无缓存" 分支，避免 CheckBillingEligibility 副作用。

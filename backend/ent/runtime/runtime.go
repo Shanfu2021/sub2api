@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -262,6 +263,29 @@ func init() {
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
+	agentgroupdelegationMixin := schema.AgentGroupDelegation{}.Mixin()
+	agentgroupdelegationMixinHooks1 := agentgroupdelegationMixin[1].Hooks()
+	agentgroupdelegation.Hooks[0] = agentgroupdelegationMixinHooks1[0]
+	agentgroupdelegationMixinInters1 := agentgroupdelegationMixin[1].Interceptors()
+	agentgroupdelegation.Interceptors[0] = agentgroupdelegationMixinInters1[0]
+	agentgroupdelegationMixinFields0 := agentgroupdelegationMixin[0].Fields()
+	_ = agentgroupdelegationMixinFields0
+	agentgroupdelegationFields := schema.AgentGroupDelegation{}.Fields()
+	_ = agentgroupdelegationFields
+	// agentgroupdelegationDescCreatedAt is the schema descriptor for created_at field.
+	agentgroupdelegationDescCreatedAt := agentgroupdelegationMixinFields0[0].Descriptor()
+	// agentgroupdelegation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentgroupdelegation.DefaultCreatedAt = agentgroupdelegationDescCreatedAt.Default.(func() time.Time)
+	// agentgroupdelegationDescUpdatedAt is the schema descriptor for updated_at field.
+	agentgroupdelegationDescUpdatedAt := agentgroupdelegationMixinFields0[1].Descriptor()
+	// agentgroupdelegation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentgroupdelegation.DefaultUpdatedAt = agentgroupdelegationDescUpdatedAt.Default.(func() time.Time)
+	// agentgroupdelegation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentgroupdelegation.UpdateDefaultUpdatedAt = agentgroupdelegationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentgroupdelegationDescCanDelegate is the schema descriptor for can_delegate field.
+	agentgroupdelegationDescCanDelegate := agentgroupdelegationFields[4].Descriptor()
+	// agentgroupdelegation.DefaultCanDelegate holds the default value on creation for the can_delegate field.
+	agentgroupdelegation.DefaultCanDelegate = agentgroupdelegationDescCanDelegate.Default.(bool)
 	announcementFields := schema.Announcement{}.Fields()
 	_ = announcementFields
 	// announcementDescTitle is the schema descriptor for title field.
