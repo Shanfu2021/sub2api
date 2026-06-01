@@ -196,6 +196,16 @@ func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *te
 		},
 	})
 	ctx := context.Background()
+	rootAdmin, err := client.User.Create().
+		SetEmail("admin@example.com").
+		SetUsername("admin").
+		SetRole(service.RoleAdmin).
+		SetStatus(service.StatusActive).
+		SetBalance(0).
+		SetConcurrency(1).
+		SetPasswordHash("admin-password-hash").
+		Save(ctx)
+	require.NoError(t, err)
 	invitation, err := client.RedeemCode.Create().
 		SetCode("INVITE456").
 		SetType(service.RedeemTypeInvitation).
@@ -245,6 +255,8 @@ func TestCompleteEmailOAuthRegistrationUsesAffiliateCodeFromPendingSession(t *te
 	require.NoError(t, err)
 	require.NotEmpty(t, user.PasswordHash)
 	require.NotEqual(t, "secret-123", user.PasswordHash)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootAdmin.ID, *user.ParentUserID)
 	tamperedCount, err := client.User.Query().Where(dbuser.EmailEQ("tampered@example.com")).Count(ctx)
 	require.NoError(t, err)
 	require.Zero(t, tamperedCount)

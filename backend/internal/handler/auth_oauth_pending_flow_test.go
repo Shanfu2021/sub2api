@@ -2634,6 +2634,7 @@ func (r *oauthPendingFlowUserRepo) Create(ctx context.Context, user *service.Use
 		SetNillableTotpEnabledAt(user.TotpEnabledAt).
 		SetTotalRecharged(user.TotalRecharged).
 		SetSignupSource(user.SignupSource).
+		SetNillableParentUserID(user.ParentUserID).
 		SetNillableLastLoginAt(user.LastLoginAt).
 		SetNillableLastActiveAt(user.LastActiveAt).
 		Save(ctx)
@@ -2668,8 +2669,15 @@ func (r *oauthPendingFlowUserRepo) GetByEmail(ctx context.Context, email string)
 	return oauthPendingFlowServiceUser(entity), nil
 }
 
-func (r *oauthPendingFlowUserRepo) GetFirstAdmin(context.Context) (*service.User, error) {
-	panic("unexpected GetFirstAdmin call")
+func (r *oauthPendingFlowUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error) {
+	entity, err := r.client.User.Query().Where(dbuser.RoleEQ(service.RoleAdmin)).First(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return oauthPendingFlowServiceUser(entity), nil
 }
 
 func (r *oauthPendingFlowUserRepo) Update(ctx context.Context, user *service.User) error {
@@ -2687,6 +2695,7 @@ func (r *oauthPendingFlowUserRepo) Update(ctx context.Context, user *service.Use
 		SetNillableTotpEnabledAt(user.TotpEnabledAt).
 		SetTotalRecharged(user.TotalRecharged).
 		SetSignupSource(user.SignupSource).
+		SetNillableParentUserID(user.ParentUserID).
 		SetNillableLastLoginAt(user.LastLoginAt).
 		SetNillableLastActiveAt(user.LastActiveAt).
 		Save(ctx)
@@ -2939,6 +2948,7 @@ func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 		TotpEnabled:         entity.TotpEnabled,
 		TotpEnabledAt:       entity.TotpEnabledAt,
 		TotalRecharged:      entity.TotalRecharged,
+		ParentUserID:        entity.ParentUserID,
 		CreatedAt:           entity.CreatedAt,
 		UpdatedAt:           entity.UpdatedAt,
 	}
