@@ -4,7 +4,9 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
@@ -26,14 +28,24 @@ func (s *AgentManagementRepoSuite) SetupTest() {
 	s.client = testEntClient(s.T())
 	s.repo = NewAgentManagementRepository(s.client)
 
+	s.cleanupAgentManagementGroups()
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM agent_group_delegations")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
+}
+
+func (s *AgentManagementRepoSuite) TearDownTest() {
+	s.cleanupAgentManagementGroups()
+}
+
+func (s *AgentManagementRepoSuite) cleanupAgentManagementGroups() {
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM agent_group_delegations")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups WHERE group_id IN (SELECT id FROM groups WHERE name LIKE 'exclusive-delegated-%')")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM groups WHERE name LIKE 'exclusive-delegated-%'")
 }
 
 func TestAgentManagementRepoSuite(t *testing.T) {
@@ -60,9 +72,10 @@ func (s *AgentManagementRepoSuite) mustCreateAgentUser(email string, role string
 
 func (s *AgentManagementRepoSuite) mustCreateAgentGroup(name string, isExclusive bool, rateMultiplier float64) *service.Group {
 	s.T().Helper()
+	uniqueName := fmt.Sprintf("%s-%d", name, time.Now().UnixNano())
 
 	created, err := s.client.Group.Create().
-		SetName(name).
+		SetName(uniqueName).
 		SetStatus(service.StatusActive).
 		SetPlatform(service.PlatformAnthropic).
 		SetRateMultiplier(rateMultiplier).
@@ -204,7 +217,7 @@ func (s *AgentManagementRepoSuite) TestGroupDelegationRoundTripAndSoftDelete() {
 	s.Require().Equal(1.8, got.RateMultiplier)
 	s.Require().True(got.CanDelegate)
 	s.Require().NotNil(got.Group)
-	s.Require().Equal("exclusive-delegated", got.Group.Name)
+	s.Require().Contains(got.Group.Name, "exclusive-delegated")
 
 	list, err := s.repo.ListGroupDelegationsForChild(s.ctx, level1.ID)
 	s.Require().NoError(err)
