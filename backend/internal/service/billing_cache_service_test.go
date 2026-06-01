@@ -14,9 +14,14 @@ import (
 type billingCacheWorkerStub struct {
 	balanceUpdates      int64
 	subscriptionUpdates int64
+	balances            map[int64]float64
+	balanceLookups      []int64
 }
 
 func (b *billingCacheWorkerStub) GetUserBalance(ctx context.Context, userID int64) (float64, error) {
+	if b.balances != nil {
+		return b.balanceForUser(userID)
+	}
 	return 0, errors.New("not implemented")
 }
 

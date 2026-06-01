@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 11 // v11: reload snapshots for custom models_list_config
+const apiKeyAuthSnapshotVersion = 12 // v12: reload snapshots for agent allocation/effective group rates
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -205,6 +205,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	if apiKey == nil || apiKey.User == nil {
 		return nil
 	}
+	effectiveConcurrency, effectiveRPM := effectiveUserAPIUsageCapacity(apiKey.User)
 	snapshot := &APIKeyAuthSnapshot{
 		Version:     apiKeyAuthSnapshotVersion,
 		APIKeyID:    apiKey.ID,
@@ -225,7 +226,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Status:                     apiKey.User.Status,
 			Role:                       apiKey.User.Role,
 			Balance:                    apiKey.User.Balance,
-			Concurrency:                apiKey.User.Concurrency,
+			Concurrency:                effectiveConcurrency,
 			Email:                      apiKey.User.Email,
 			Username:                   apiKey.User.Username,
 			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
@@ -233,7 +234,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			BalanceNotifyThreshold:     apiKey.User.BalanceNotifyThreshold,
 			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
 			TotalRecharged:             apiKey.User.TotalRecharged,
-			RPMLimit:                   apiKey.User.RPMLimit,
+			RPMLimit:                   effectiveRPM,
 		},
 	}
 
@@ -246,34 +247,36 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		// 查询失败或无 override 时留 nil，checkRPM 会回退到 DB 查询
 	}
 	if apiKey.Group != nil {
+		group := *apiKey.Group
+		s.applyDelegatedGroupRate(ctx, apiKey.UserID, &group)
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
-			ID:                              apiKey.Group.ID,
-			Name:                            apiKey.Group.Name,
-			Platform:                        apiKey.Group.Platform,
-			Status:                          apiKey.Group.Status,
-			SubscriptionType:                apiKey.Group.SubscriptionType,
-			RateMultiplier:                  apiKey.Group.RateMultiplier,
-			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
-			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
-			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
-			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
-			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
-			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
-			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
-			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
-			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
-			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
-			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
-			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
-			ModelRouting:                    apiKey.Group.ModelRouting,
-			ModelRoutingEnabled:             apiKey.Group.ModelRoutingEnabled,
-			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
-			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
-			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
-			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
-			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
-			ModelsListConfig:                apiKey.Group.ModelsListConfig,
-			RPMLimit:                        apiKey.Group.RPMLimit,
+			ID:                              group.ID,
+			Name:                            group.Name,
+			Platform:                        group.Platform,
+			Status:                          group.Status,
+			SubscriptionType:                group.SubscriptionType,
+			RateMultiplier:                  group.RateMultiplier,
+			DailyLimitUSD:                   group.DailyLimitUSD,
+			WeeklyLimitUSD:                  group.WeeklyLimitUSD,
+			MonthlyLimitUSD:                 group.MonthlyLimitUSD,
+			AllowImageGeneration:            group.AllowImageGeneration,
+			ImageRateIndependent:            group.ImageRateIndependent,
+			ImageRateMultiplier:             group.ImageRateMultiplier,
+			ImagePrice1K:                    group.ImagePrice1K,
+			ImagePrice2K:                    group.ImagePrice2K,
+			ImagePrice4K:                    group.ImagePrice4K,
+			ClaudeCodeOnly:                  group.ClaudeCodeOnly,
+			FallbackGroupID:                 group.FallbackGroupID,
+			FallbackGroupIDOnInvalidRequest: group.FallbackGroupIDOnInvalidRequest,
+			ModelRouting:                    group.ModelRouting,
+			ModelRoutingEnabled:             group.ModelRoutingEnabled,
+			MCPXMLInject:                    group.MCPXMLInject,
+			SupportedModelScopes:            group.SupportedModelScopes,
+			AllowMessagesDispatch:           group.AllowMessagesDispatch,
+			DefaultMappedModel:              group.DefaultMappedModel,
+			MessagesDispatchModelConfig:     group.MessagesDispatchModelConfig,
+			ModelsListConfig:                group.ModelsListConfig,
+			RPMLimit:                        group.RPMLimit,
 		}
 	}
 	return snapshot
