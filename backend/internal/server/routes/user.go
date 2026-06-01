@@ -55,6 +55,9 @@ func RegisterUserRoutes(
 			}
 		}
 
+		// 代理/企业推广管理（加法接口，不影响原生管理员用户管理）
+		RegisterAgentManagementRoutes(authenticated, h)
+
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{

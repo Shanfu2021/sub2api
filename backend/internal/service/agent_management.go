@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -16,6 +17,7 @@ var (
 	ErrAgentManagementInvalidTarget       = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_TARGET", "invalid target user")
 	ErrAgentManagementInvalidAllocation   = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_ALLOCATION", "allocation must be non-negative")
 	ErrAgentManagementRootAdminNotPresent = infraerrors.NotFound("AGENT_MANAGEMENT_ROOT_ADMIN_NOT_PRESENT", "root admin not found")
+	ErrAgentManagementNotImplemented      = infraerrors.New(http.StatusNotImplemented, "AGENT_MANAGEMENT_NOT_IMPLEMENTED", "agent management feature is not implemented yet")
 )
 
 type AllocationUpdate struct {
@@ -35,6 +37,22 @@ type AllocationSummary struct {
 type DirectChildrenResult struct {
 	Users      []User                       `json:"users"`
 	Pagination *pagination.PaginationResult `json:"pagination"`
+}
+
+type AgentManagementSummary struct {
+	Allocation AllocationSummary `json:"allocation"`
+}
+
+type AgentGroupRate struct {
+	Group         Group   `json:"group"`
+	EffectiveRate float64 `json:"effective_rate"`
+	CanDelegate   bool    `json:"can_delegate"`
+	Source        string  `json:"source"`
+}
+
+type ChildGroupDelegationInput struct {
+	RateMultiplier float64 `json:"rate_multiplier"`
+	CanDelegate    bool    `json:"can_delegate"`
 }
 
 type AgentManagementRepository interface {
@@ -80,6 +98,28 @@ func (s *AgentManagementService) ListDirectAgents(ctx context.Context, actorID i
 
 func (s *AgentManagementService) ListDirectEnterprises(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
 	return s.listDirectChildren(ctx, actorID, []string{RoleEnterprise}, pagination.DefaultPagination())
+}
+
+func (s *AgentManagementService) GetSummary(ctx context.Context, actorID int64) (*AgentManagementSummary, error) {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	totalConcurrency, totalRPM := managerCapacity(actor)
+	allocatedConcurrency, allocatedRPM, err := s.repo.SumDirectChildAllocations(ctx, actor.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &AgentManagementSummary{
+		Allocation: AllocationSummary{
+			TotalConcurrency:     totalConcurrency,
+			AllocatedConcurrency: allocatedConcurrency,
+			RemainingConcurrency: totalConcurrency - allocatedConcurrency,
+			TotalRPM:             totalRPM,
+			AllocatedRPM:         allocatedRPM,
+			RemainingRPM:         totalRPM - allocatedRPM,
+		},
+	}, nil
 }
 
 func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID int64, childID int64, req AllocationUpdate) (*AllocationSummary, error) {
@@ -180,6 +220,46 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 	}
 
 	return ErrAgentManagementForbidden
+}
+
+func (s *AgentManagementService) ListMyGroups(ctx context.Context, actorID int64) ([]AgentGroupRate, error) {
+	if _, err := s.requireManager(ctx, actorID); err != nil {
+		return nil, err
+	}
+	if s.groupRepo == nil {
+		return []AgentGroupRate{}, nil
+	}
+	groups, err := s.groupRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AgentGroupRate, 0, len(groups))
+	for i := range groups {
+		if groups[i].IsExclusive {
+			continue
+		}
+		out = append(out, AgentGroupRate{
+			Group:         groups[i],
+			EffectiveRate: groups[i].RateMultiplier,
+			CanDelegate:   false,
+			Source:        "public",
+		})
+	}
+	return out, nil
+}
+
+func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input ChildGroupDelegationInput) error {
+	if _, err := s.requireManager(ctx, actorID); err != nil {
+		return err
+	}
+	return ErrAgentManagementNotImplemented
+}
+
+func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error {
+	if _, err := s.requireManager(ctx, actorID); err != nil {
+		return err
+	}
+	return ErrAgentManagementNotImplemented
 }
 
 func (s *AgentManagementService) listDirectChildren(ctx context.Context, actorID int64, roles []string, params pagination.PaginationParams) (*DirectChildrenResult, error) {
