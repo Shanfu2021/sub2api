@@ -12,8 +12,11 @@ const (
 
 // Role constants
 const (
-	RoleAdmin = "admin"
-	RoleUser  = "user"
+	RoleAdmin       = "admin"
+	RoleUser        = "user"
+	RoleAgentLevel1 = "agent_level1"
+	RoleAgentLevel2 = "agent_level2"
+	RoleEnterprise  = "enterprise"
 )
 
 // Platform constants

@@ -46,11 +46,18 @@ func (User) Fields() []ent.Field {
 		field.String("role").
 			MaxLen(20).
 			Default(domain.RoleUser),
+		field.Int64("parent_user_id").
+			Optional().
+			Nillable(),
 		field.Float("balance").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
 		field.Int("concurrency").
 			Default(5),
+		field.Int("allocated_concurrency").
+			Default(0),
+		field.Int("allocated_rpm").
+			Default(0),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
@@ -139,6 +146,8 @@ func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
+		index.Fields("parent_user_id"),
+		index.Fields("role", "parent_user_id"),
 		index.Fields("deleted_at"),
 	}
 }

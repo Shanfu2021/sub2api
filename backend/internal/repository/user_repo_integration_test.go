@@ -113,6 +113,31 @@ func (s *UserRepoSuite) TestCreate() {
 	s.Require().Equal("create@test.com", got.Email)
 }
 
+func (s *UserRepoSuite) TestAgentPromotionFieldsRoundTrip() {
+	parent := s.mustCreateUser(&service.User{
+		Email:       "parent-agent@test.com",
+		Role:        service.RoleAgentLevel1,
+		Concurrency: 50,
+		RPMLimit:    500,
+	})
+	child := s.mustCreateUser(&service.User{
+		Email:                "child-user@test.com",
+		Role:                 service.RoleUser,
+		ParentUserID:         &parent.ID,
+		AllocatedConcurrency: 7,
+		AllocatedRPM:         70,
+		Concurrency:          7,
+		RPMLimit:             70,
+	})
+
+	got, err := s.repo.GetByID(s.ctx, child.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.ParentUserID)
+	s.Require().Equal(parent.ID, *got.ParentUserID)
+	s.Require().Equal(7, got.AllocatedConcurrency)
+	s.Require().Equal(70, got.AllocatedRPM)
+}
+
 func (s *UserRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")

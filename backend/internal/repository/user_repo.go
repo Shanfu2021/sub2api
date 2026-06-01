@@ -99,6 +99,9 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
 	}
+	if err := r.updateAgentPromotionFields(txCtx, created.ID, userIn); err != nil {
+		return err
+	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
 		return err
@@ -124,6 +127,9 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	}
 
 	out := userEntityToService(m)
+	if err := r.loadAgentPromotionFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -141,6 +147,9 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	out := userEntityToService(m)
+	if err := r.loadAgentPromotionFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -168,6 +177,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	m := matches[0]
 
 	out := userEntityToService(m)
+	if err := r.loadAgentPromotionFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -255,6 +267,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	updated, err := updateOp.Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
+	}
+	if err := r.updateAgentPromotionFields(txCtx, updated.ID, userIn); err != nil {
+		return err
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
@@ -498,6 +513,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		u := userEntityToService(users[i])
 		outUsers = append(outUsers, *u)
 		userMap[u.ID] = &outUsers[len(outUsers)-1]
+	}
+	if err := r.loadAgentPromotionFieldsForUsers(ctx, userMap); err != nil {
+		return nil, nil, err
 	}
 
 	shouldLoadSubscriptions := filters.IncludeSubscriptions == nil || *filters.IncludeSubscriptions
@@ -891,6 +909,9 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	}
 
 	out := userEntityToService(m)
+	if err := r.loadAgentPromotionFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -899,6 +920,116 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 		out.AllowedGroups = v
 	}
 	return out, nil
+}
+
+func (r *userRepository) updateAgentPromotionFields(ctx context.Context, userID int64, userIn *service.User) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return fmt.Errorf("sql executor is not configured")
+	}
+
+	res, err := exec.ExecContext(ctx, `
+UPDATE users
+SET parent_user_id = $1,
+    allocated_concurrency = CASE WHEN $2 < 0 THEN 0 ELSE $2 END,
+    allocated_rpm = CASE WHEN $3 < 0 THEN 0 ELSE $3 END,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $4 AND deleted_at IS NULL`,
+		nullableInt64Arg(userIn.ParentUserID),
+		userIn.AllocatedConcurrency,
+		userIn.AllocatedRPM,
+		userID,
+	)
+	if err != nil {
+		if isMissingAgentPromotionColumns(err) {
+			return nil
+		}
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) loadAgentPromotionFields(ctx context.Context, userOut *service.User) error {
+	if userOut == nil {
+		return nil
+	}
+	return r.loadAgentPromotionFieldsForUsers(ctx, map[int64]*service.User{userOut.ID: userOut})
+}
+
+func (r *userRepository) loadAgentPromotionFieldsForUsers(ctx context.Context, users map[int64]*service.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return fmt.Errorf("sql executor is not configured")
+	}
+	probeRows, err := exec.QueryContext(ctx, "SELECT parent_user_id, allocated_concurrency, allocated_rpm FROM users WHERE 1 = 0")
+	if err != nil {
+		if isMissingAgentPromotionColumns(err) {
+			return nil
+		}
+		return err
+	}
+	_ = probeRows.Close()
+
+	userIDs := make([]int64, 0, len(users))
+	for id := range users {
+		userIDs = append(userIDs, id)
+	}
+	placeholders := make([]string, 0, len(userIDs))
+	args := make([]any, 0, len(userIDs))
+	for i, id := range userIDs {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		args = append(args, id)
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT id, parent_user_id, allocated_concurrency, allocated_rpm
+FROM users
+WHERE id IN (` + strings.Join(placeholders, ",") + `)`,
+		args...,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id                   int64
+			parentID             sql.NullInt64
+			allocatedConcurrency int
+			allocatedRPM         int
+		)
+		if err := rows.Scan(&id, &parentID, &allocatedConcurrency, &allocatedRPM); err != nil {
+			return err
+		}
+		if userOut, ok := users[id]; ok {
+			if parentID.Valid {
+				v := parentID.Int64
+				userOut.ParentUserID = &v
+			} else {
+				userOut.ParentUserID = nil
+			}
+			userOut.AllocatedConcurrency = allocatedConcurrency
+			userOut.AllocatedRPM = allocatedRPM
+		}
+	}
+	return rows.Err()
+}
+
+func isMissingAgentPromotionColumns(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "parent_user_id") ||
+		strings.Contains(msg, "allocated_concurrency") ||
+		strings.Contains(msg, "allocated_rpm")
 }
 
 func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64) (map[int64][]int64, error) {
