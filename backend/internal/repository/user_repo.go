@@ -990,7 +990,7 @@ func (r *userRepository) loadAgentPromotionFieldsForUsers(ctx context.Context, u
 	rows, err := exec.QueryContext(ctx, `
 SELECT id, parent_user_id, allocated_concurrency, allocated_rpm
 FROM users
-WHERE id IN (` + strings.Join(placeholders, ",") + `)`,
+WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
 		args...,
 	)
 	if err != nil {
