@@ -5,17 +5,173 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
 type settingRepoStub struct {
 	values map[string]string
 	err    error
+}
+
+type authInvitationRedeemRepoStub struct {
+	code     *RedeemCode
+	getCalls []string
+	useCalls []struct {
+		id     int64
+		userID int64
+	}
+}
+
+func (s *authInvitationRedeemRepoStub) Create(context.Context, *RedeemCode) error {
+	panic("unexpected Create call")
+}
+
+func (s *authInvitationRedeemRepoStub) CreateBatch(context.Context, []RedeemCode) error {
+	panic("unexpected CreateBatch call")
+}
+
+func (s *authInvitationRedeemRepoStub) GetByID(context.Context, int64) (*RedeemCode, error) {
+	panic("unexpected GetByID call")
+}
+
+func (s *authInvitationRedeemRepoStub) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
+	s.getCalls = append(s.getCalls, code)
+	if s.code == nil || s.code.Code != code {
+		return nil, ErrRedeemCodeNotFound
+	}
+	clone := *s.code
+	return &clone, nil
+}
+
+func (s *authInvitationRedeemRepoStub) Update(context.Context, *RedeemCode) error {
+	panic("unexpected Update call")
+}
+
+func (s *authInvitationRedeemRepoStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected BatchUpdate call")
+}
+
+func (s *authInvitationRedeemRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (s *authInvitationRedeemRepoStub) Use(_ context.Context, id, userID int64) error {
+	s.useCalls = append(s.useCalls, struct {
+		id     int64
+		userID int64
+	}{id: id, userID: userID})
+	return nil
+}
+
+func (s *authInvitationRedeemRepoStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (s *authInvitationRedeemRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+
+func (s *authInvitationRedeemRepoStub) ListByUser(context.Context, int64, int) ([]RedeemCode, error) {
+	panic("unexpected ListByUser call")
+}
+
+func (s *authInvitationRedeemRepoStub) ListByUserPaginated(context.Context, int64, pagination.PaginationParams, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserPaginated call")
+}
+
+func (s *authInvitationRedeemRepoStub) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
+	panic("unexpected SumPositiveBalanceByUser call")
+}
+
+type authAffiliateRepoStub struct {
+	codeOwners map[string]int64
+	bindCalls  []struct {
+		userID    int64
+		inviterID int64
+	}
+}
+
+func (s *authAffiliateRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
+	return &AffiliateSummary{UserID: userID, AffCode: "SELF"}, nil
+}
+
+func (s *authAffiliateRepoStub) GetAffiliateByCode(_ context.Context, code string) (*AffiliateSummary, error) {
+	inviterID, ok := s.codeOwners[strings.ToUpper(strings.TrimSpace(code))]
+	if !ok {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	return &AffiliateSummary{UserID: inviterID, AffCode: code}, nil
+}
+
+func (s *authAffiliateRepoStub) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
+	s.bindCalls = append(s.bindCalls, struct {
+		userID    int64
+		inviterID int64
+	}{userID: userID, inviterID: inviterID})
+	return true, nil
+}
+
+func (s *authAffiliateRepoStub) AccrueQuota(context.Context, int64, int64, float64, int, *int64) (bool, error) {
+	panic("unexpected AccrueQuota call")
+}
+
+func (s *authAffiliateRepoStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
+	panic("unexpected GetAccruedRebateFromInvitee call")
+}
+
+func (s *authAffiliateRepoStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
+	return 0, nil
+}
+
+func (s *authAffiliateRepoStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
+	panic("unexpected TransferQuotaToBalance call")
+}
+
+func (s *authAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
+	panic("unexpected ListInvitees call")
+}
+
+func (s *authAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
+	panic("unexpected UpdateUserAffCode call")
+}
+
+func (s *authAffiliateRepoStub) ResetUserAffCode(context.Context, int64) (string, error) {
+	panic("unexpected ResetUserAffCode call")
+}
+
+func (s *authAffiliateRepoStub) SetUserRebateRate(context.Context, int64, *float64) error {
+	panic("unexpected SetUserRebateRate call")
+}
+
+func (s *authAffiliateRepoStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
+	panic("unexpected BatchSetUserRebateRate call")
+}
+
+func (s *authAffiliateRepoStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
+	panic("unexpected ListUsersWithCustomSettings call")
+}
+
+func (s *authAffiliateRepoStub) ListAffiliateInviteRecords(context.Context, AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
+	panic("unexpected ListAffiliateInviteRecords call")
+}
+
+func (s *authAffiliateRepoStub) ListAffiliateRebateRecords(context.Context, AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
+	panic("unexpected ListAffiliateRebateRecords call")
+}
+
+func (s *authAffiliateRepoStub) ListAffiliateTransferRecords(context.Context, AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
+	panic("unexpected ListAffiliateTransferRecords call")
+}
+
+func (s *authAffiliateRepoStub) GetAffiliateUserOverview(context.Context, int64) (*AffiliateUserOverview, error) {
+	panic("unexpected GetAffiliateUserOverview call")
 }
 
 func (s *settingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -470,6 +626,131 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.Equal(t, 2, user.Concurrency)
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
+}
+
+func TestRegisterInvitationOnlyAcceptsAffiliateCodeAsInvitation(t *testing.T) {
+	repo := &userRepoStub{
+		nextID: 100,
+		usersByEmail: map[string]*User{
+			"agent@test.com": {ID: 2, Email: "agent@test.com", Role: RoleAgentLevel1, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": 2}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "affiliate-only@test.com", "password", "", "", "", "AGENTAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(100), user.ID)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, int64(2), *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 100, inviterID: 2}}, affiliateRepo.bindCalls)
+}
+
+func TestRegisterAcceptsAffiliateCodeEnteredAsInvitationCode(t *testing.T) {
+	repo := &userRepoStub{
+		nextID: 104,
+		usersByEmail: map[string]*User{
+			"agent@test.com": {ID: 2, Email: "agent@test.com", Role: RoleAgentLevel1, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": 2}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.redeemRepo = &authInvitationRedeemRepoStub{}
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "affiliate-field@test.com", "password", "", "", "AGENTAFF", "")
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, int64(2), *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 104, inviterID: 2}}, affiliateRepo.bindCalls)
+}
+
+func TestRegisterAssignsParentToAgentInviter(t *testing.T) {
+	parentID := int64(2)
+	repo := &userRepoStub{
+		nextID: 101,
+		usersByEmail: map[string]*User{
+			"agent@test.com": {ID: parentID, Email: "agent@test.com", Role: RoleAgentLevel1, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": parentID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "agent-child@test.com", "password", "", "", "", "AGENTAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, parentID, *user.ParentUserID)
+}
+
+func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
+	rootID := int64(1)
+	level2ID := int64(3)
+	ordinaryID := int64(4)
+	repo := &userRepoStub{
+		nextID: 102,
+		usersByEmail: map[string]*User{
+			"admin@test.com":    {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"agent2@test.com":   {ID: level2ID, Email: "agent2@test.com", Role: RoleAgentLevel2, ParentUserID: &rootID, Status: StatusActive},
+			"ordinary@test.com": {ID: ordinaryID, Email: "ordinary@test.com", Role: RoleUser, ParentUserID: &level2ID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": ordinaryID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "ordinary-child@test.com", "password", "", "", "", "USERAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, level2ID, *user.ParentUserID)
+}
+
+func TestRegisterAssignsParentToRootAdminWhenNoAgentInChain(t *testing.T) {
+	rootID := int64(1)
+	ordinaryID := int64(4)
+	repo := &userRepoStub{
+		nextID: 103,
+		usersByEmail: map[string]*User{
+			"admin@test.com":    {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"ordinary@test.com": {ID: ordinaryID, Email: "ordinary@test.com", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": ordinaryID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "root-child@test.com", "password", "", "", "", "USERAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {

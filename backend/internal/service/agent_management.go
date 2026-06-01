@@ -262,6 +262,45 @@ func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context,
 	return ErrAgentManagementNotImplemented
 }
 
+func (s *AgentManagementService) ResolveInvitationParent(ctx context.Context, inviterID int64) (*int64, error) {
+	if inviterID <= 0 {
+		return nil, ErrAgentManagementInvalidTarget
+	}
+	inviter, err := s.userRepo.GetByID(ctx, inviterID)
+	if err != nil {
+		return nil, err
+	}
+	if inviter.Role == RoleAdmin || isAgentManagerRole(inviter.Role) {
+		return &inviter.ID, nil
+	}
+
+	visited := map[int64]struct{}{inviter.ID: {}}
+	parentID := inviter.ParentUserID
+	for parentID != nil {
+		if _, ok := visited[*parentID]; ok {
+			break
+		}
+		visited[*parentID] = struct{}{}
+		parent, err := s.userRepo.GetByID(ctx, *parentID)
+		if err != nil {
+			return nil, err
+		}
+		if isAgentManagerRole(parent.Role) && parent.Role != RoleAdmin {
+			return &parent.ID, nil
+		}
+		if parent.Role == RoleAdmin {
+			return &parent.ID, nil
+		}
+		parentID = parent.ParentUserID
+	}
+
+	rootAdmin, err := s.repo.GetRootAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+	}
+	return &rootAdmin.ID, nil
+}
+
 func (s *AgentManagementService) listDirectChildren(ctx context.Context, actorID int64, roles []string, params pagination.PaginationParams) (*DirectChildrenResult, error) {
 	actor, err := s.requireManager(ctx, actorID)
 	if err != nil {

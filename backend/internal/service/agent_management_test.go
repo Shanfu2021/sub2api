@@ -294,3 +294,36 @@ func TestAgentManagementRejectsNonDirectChild(t *testing.T) {
 	_, err := svc.UpgradeDirectUser(context.Background(), level1ID, userID, RoleEnterprise)
 	require.True(t, errors.Is(err, ErrAgentManagementNotDirectChild))
 }
+
+func TestAgentManagementResolveInvitationParent(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	level2ID := int64(3)
+	ordinaryUnderLevel2ID := int64(4)
+	ordinaryUnderAdminID := int64(5)
+	users := []*User{
+		{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Status: StatusActive},
+		{ID: ordinaryUnderLevel2ID, Role: RoleUser, ParentUserID: &level2ID, Status: StatusActive},
+		{ID: ordinaryUnderAdminID, Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+	}
+	repo := newAgentManagementRepoStub(users...)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	got, err := svc.ResolveInvitationParent(context.Background(), level1ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, level1ID, *got)
+
+	got, err = svc.ResolveInvitationParent(context.Background(), ordinaryUnderLevel2ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, level2ID, *got)
+
+	got, err = svc.ResolveInvitationParent(context.Background(), ordinaryUnderAdminID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, rootID, *got)
+}

@@ -47,7 +47,17 @@ func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
+	if s.usersByEmail != nil {
+		for _, user := range s.usersByEmail {
+			if user.ID == id {
+				return user, nil
+			}
+		}
+	}
 	if s.user == nil {
+		return nil, ErrUserNotFound
+	}
+	if s.user.ID != 0 && s.user.ID != id {
 		return nil, ErrUserNotFound
 	}
 	return s.user, nil
@@ -69,7 +79,17 @@ func (s *userRepoStub) GetByEmail(ctx context.Context, email string) (*User, err
 }
 
 func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
-	panic("unexpected GetFirstAdmin call")
+	if s.usersByEmail != nil {
+		for _, user := range s.usersByEmail {
+			if user.Role == RoleAdmin {
+				return user, nil
+			}
+		}
+	}
+	if s.user != nil && s.user.Role == RoleAdmin {
+		return s.user, nil
+	}
+	return nil, ErrUserNotFound
 }
 
 func (s *userRepoStub) Update(ctx context.Context, user *User) error {

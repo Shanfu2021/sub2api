@@ -56,26 +56,11 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 }
 
 func (s *AuthService) validateOAuthRegistrationInvitation(ctx context.Context, invitationCode string) (*RedeemCode, error) {
-	if s == nil || s.settingService == nil || !s.settingService.IsInvitationCodeEnabled(ctx) {
-		return nil, nil
-	}
-	if s.redeemRepo == nil && s.oauthEmailFlowClient(ctx) == nil {
-		return nil, ErrServiceUnavailable
-	}
-
-	invitationCode = strings.TrimSpace(invitationCode)
-	if invitationCode == "" {
-		return nil, ErrInvitationCodeRequired
-	}
-
-	redeemCode, err := s.loadOAuthRegistrationInvitation(ctx, invitationCode)
+	resolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, "", false)
 	if err != nil {
-		return nil, ErrInvitationCodeInvalid
+		return nil, err
 	}
-	if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-		return nil, ErrInvitationCodeInvalid
-	}
-	return redeemCode, nil
+	return resolution.RedeemCode, nil
 }
 
 // VerifyOAuthEmailCode verifies the locally entered email verification code for
@@ -127,7 +112,8 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, err
 	}
 
-	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, "", false)
+	if err != nil {
 		slog.Error("oauth email register: invitation failed", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
@@ -157,6 +143,9 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		Concurrency:  grantPlan.Concurrency,
 		Status:       StatusActive,
 		SignupSource: signupSource,
+	}
+	if invitationResolution != nil {
+		user.ParentUserID = invitationResolution.ParentID
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
@@ -207,7 +196,8 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, infraerrors.BadRequest("PASSWORD_REQUIRED", "password is required")
 	}
-	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, "", false)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -240,6 +230,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
+	if invitationResolution != nil {
+		user.ParentUserID = invitationResolution.ParentID
+	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
@@ -270,12 +263,12 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	}
 
 	signupSource = normalizeOAuthSignupSource(signupSource)
-	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, affiliateCode, false)
 	if err != nil {
 		return err
 	}
-	if invitationRedeemCode != nil {
-		if err := s.useOAuthRegistrationInvitation(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+	if invitationResolution != nil && invitationResolution.RedeemCode != nil {
+		if err := s.useOAuthRegistrationInvitation(ctx, invitationResolution.RedeemCode.ID, user.ID); err != nil {
 			return ErrInvitationCodeInvalid
 		}
 	}
@@ -285,6 +278,9 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
+	if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+		affiliateCode = invitationResolution.BindCode
+	}
 	s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
 	return nil
 }
@@ -348,6 +344,9 @@ func (s *AuthService) oauthEmailFlowClient(ctx context.Context) *dbent.Client {
 }
 
 func (s *AuthService) loadOAuthRegistrationInvitation(ctx context.Context, invitationCode string) (*RedeemCode, error) {
+	if s == nil {
+		return nil, ErrServiceUnavailable
+	}
 	if client := s.oauthEmailFlowClient(ctx); client != nil {
 		entity, err := client.RedeemCode.Query().Where(redeemcode.CodeEQ(invitationCode)).Only(ctx)
 		if err != nil {
@@ -370,6 +369,9 @@ func (s *AuthService) loadOAuthRegistrationInvitation(ctx context.Context, invit
 			GroupID:      entity.GroupID,
 			ValidityDays: entity.ValidityDays,
 		}, nil
+	}
+	if s.redeemRepo == nil {
+		return nil, ErrRedeemCodeNotFound
 	}
 	return s.redeemRepo.GetByCode(ctx, invitationCode)
 }

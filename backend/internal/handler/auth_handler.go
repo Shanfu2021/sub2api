@@ -538,6 +538,12 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 	// 验证邀请码
 	redeemCode, err := h.redeemService.GetByCode(c.Request.Context(), req.Code)
 	if err != nil {
+		if h.validateAffiliateInvitationCredential(c, req.Code) {
+			response.Success(c, ValidateInvitationCodeResponse{
+				Valid: true,
+			})
+			return
+		}
 		response.Success(c, ValidateInvitationCodeResponse{
 			Valid:     false,
 			ErrorCode: "INVITATION_CODE_NOT_FOUND",
@@ -547,6 +553,12 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 
 	// 检查类型和状态
 	if redeemCode.Type != service.RedeemTypeInvitation {
+		if h.validateAffiliateInvitationCredential(c, req.Code) {
+			response.Success(c, ValidateInvitationCodeResponse{
+				Valid: true,
+			})
+			return
+		}
 		response.Success(c, ValidateInvitationCodeResponse{
 			Valid:     false,
 			ErrorCode: "INVITATION_CODE_INVALID",
@@ -555,6 +567,12 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 	}
 
 	if redeemCode.Status != service.StatusUnused {
+		if h.validateAffiliateInvitationCredential(c, req.Code) {
+			response.Success(c, ValidateInvitationCodeResponse{
+				Valid: true,
+			})
+			return
+		}
 		response.Success(c, ValidateInvitationCodeResponse{
 			Valid:     false,
 			ErrorCode: "INVITATION_CODE_USED",
@@ -565,6 +583,10 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 	response.Success(c, ValidateInvitationCodeResponse{
 		Valid: true,
 	})
+}
+
+func (h *AuthHandler) validateAffiliateInvitationCredential(c *gin.Context, code string) bool {
+	return h.authService != nil && h.authService.ValidateAffiliateInvitationCode(c.Request.Context(), code) == nil
 }
 
 // ForgotPasswordRequest 忘记密码请求

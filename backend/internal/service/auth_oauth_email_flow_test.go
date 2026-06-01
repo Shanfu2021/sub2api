@@ -147,8 +147,98 @@ func newOAuthEmailFlowAuthService(
 	)
 }
 
+func TestRegisterOAuthEmailAccountAcceptsAffiliateInvitationCode(t *testing.T) {
+	agentID := int64(2)
+	userRepo := &userRepoStub{
+		nextID: 44,
+		usersByEmail: map[string]*User{
+			"agent@example.com": {ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, Status: StatusActive},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyEmailVerifyEnabled:    "true",
+			SettingKeyAffiliateEnabled:      "true",
+		},
+		emailCache,
+		nil,
+	)
+	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"AGENTAFF",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, agentID, *user.ParentUserID)
+	require.Empty(t, affiliateRepo.bindCalls)
+}
+
+func TestFinalizeOAuthEmailAccountBindsAffiliateInvitationCode(t *testing.T) {
+	agentID := int64(2)
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	authService := newOAuthEmailFlowAuthService(
+		&userRepoStub{
+			usersByEmail: map[string]*User{
+				"agent@example.com": {ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, Status: StatusActive},
+			},
+		},
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyAffiliateEnabled:      "true",
+		},
+		&emailCacheStub{},
+		nil,
+	)
+	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+
+	err := authService.FinalizeOAuthEmailAccount(
+		context.Background(),
+		&User{ID: 44, Email: "fresh@example.com", Role: RoleUser, Status: StatusActive},
+		"AGENTAFF",
+		"oidc",
+		"",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 44, inviterID: agentID}}, affiliateRepo.bindCalls)
+}
+
 func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFails(t *testing.T) {
-	userRepo := &userRepoStub{nextID: 42}
+	userRepo := &userRepoStub{
+		nextID: 42,
+		usersByEmail: map[string]*User{
+			"admin@example.com": {ID: 1, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
 	redeemRepo := &redeemCodeRepoStub{
 		codesByCode: map[string]*RedeemCode{
 			"INVITE123": {
