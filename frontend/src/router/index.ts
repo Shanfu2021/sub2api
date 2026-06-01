@@ -3,7 +3,6 @@
  * Defines all application routes with lazy loading and navigation guards
  */
 
-import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -13,11 +12,6 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveDocumentTitle } from './title'
-
-const AgentManagementPlaceholder = {
-  name: 'AgentManagementPlaceholder',
-  setup: () => () => h('div'),
-}
 
 /**
  * Route definitions with lazy loading
@@ -386,7 +380,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/agent/direct-users',
     name: 'AgentDirectUsers',
-    component: AgentManagementPlaceholder,
+    component: () => import('@/views/agent/DirectUsersView.vue'),
     meta: {
       requiresAuth: true,
       requiresAgentManagement: true,
@@ -397,7 +391,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/agent/direct-agents',
     name: 'AgentDirectAgents',
-    component: AgentManagementPlaceholder,
+    component: () => import('@/views/agent/DirectAgentsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAgentManagement: true,
@@ -408,7 +402,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/agent/direct-enterprises',
     name: 'AgentDirectEnterprises',
-    component: AgentManagementPlaceholder,
+    component: () => import('@/views/agent/DirectEnterprisesView.vue'),
     meta: {
       requiresAuth: true,
       requiresAgentManagement: true,
@@ -419,7 +413,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/agent/groups',
     name: 'AgentGroups',
-    component: AgentManagementPlaceholder,
+    component: () => import('@/views/agent/MyGroupsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAgentManagement: true,

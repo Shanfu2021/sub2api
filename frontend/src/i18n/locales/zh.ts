@@ -614,6 +614,41 @@ export default {
     invalidOrExpiredToken: '密码重置链接无效或已过期。请重新请求一个新链接。'
   },
 
+  agentManagement: {
+    direct: {
+      subtitle: '管理直属关系，并分配你可用的并发和 RPM。',
+      role: '角色',
+      allocation: '额度分配',
+      allocatedConcurrency: '并发',
+      allocatedRpm: 'RPM',
+      remainingConcurrency: '剩余并发',
+      remainingRpm: '剩余 RPM',
+      saveAllocation: '保存分配',
+      allocationSaved: '分配已更新',
+      allocationFailed: '保存分配失败',
+      upgradeSaved: '角色已升级',
+      upgradeFailed: '升级角色失败',
+      detach: '解除直属',
+      detachTitle: '解除直属下级',
+      detachConfirm: "确定将 '{email}' 从你的直属列表移出吗？",
+      detached: '已解除直属关系',
+      detachFailed: '解除直属关系失败',
+      loadFailed: '加载直属下级失败'
+    },
+    groups: {
+      subtitle: '查看公共分组和上级传播给你的专属分组；这里只展示你的有效价格。',
+      source: '来源',
+      effectiveRate: '有效倍率',
+      canDelegate: '可继续传播',
+      loadFailed: '加载分组失败',
+      sources: {
+        public: '公共',
+        admin_exclusive: '管理员专属',
+        delegated: '上级传播'
+      }
+    }
+  },
+
   // Dashboard
   dashboard: {
     title: '仪表盘',
@@ -1881,7 +1916,10 @@ export default {
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       roles: {
         admin: '管理员',
-        user: '用户'
+        user: '用户',
+        agent_level1: '一级代理',
+        agent_level2: '二级代理',
+        enterprise: '企业用户'
       },
       form: {
         emailLabel: '邮箱',

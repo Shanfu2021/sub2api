@@ -615,6 +615,41 @@ export default {
     invalidOrExpiredToken: 'The password reset link is invalid or has expired. Please request a new one.'
   },
 
+  agentManagement: {
+    direct: {
+      subtitle: 'Manage direct relationships and distribute your available concurrency and RPM.',
+      role: 'Role',
+      allocation: 'Allocation',
+      allocatedConcurrency: 'Concurrency',
+      allocatedRpm: 'RPM',
+      remainingConcurrency: 'Remaining concurrency',
+      remainingRpm: 'Remaining RPM',
+      saveAllocation: 'Save allocation',
+      allocationSaved: 'Allocation updated',
+      allocationFailed: 'Failed to update allocation',
+      upgradeSaved: 'Role upgraded',
+      upgradeFailed: 'Failed to upgrade role',
+      detach: 'Detach',
+      detachTitle: 'Detach direct child',
+      detachConfirm: "Detach '{email}' from your direct list?",
+      detached: 'Direct child detached',
+      detachFailed: 'Failed to detach direct child',
+      loadFailed: 'Failed to load direct children'
+    },
+    groups: {
+      subtitle: 'View public groups and exclusive groups delegated to you. Only effective prices are shown.',
+      source: 'Source',
+      effectiveRate: 'Effective rate',
+      canDelegate: 'Can delegate',
+      loadFailed: 'Failed to load groups',
+      sources: {
+        public: 'Public',
+        admin_exclusive: 'Admin exclusive',
+        delegated: 'Delegated'
+      }
+    }
+  },
+
   // Dashboard
   dashboard: {
     title: 'Dashboard',
@@ -1936,7 +1971,10 @@ export default {
       totalRecharged: 'Total Recharged',
       roles: {
         admin: 'Admin',
-        user: 'User'
+        user: 'User',
+        agent_level1: 'Level 1 Agent',
+        agent_level2: 'Level 2 Agent',
+        enterprise: 'Enterprise'
       },
       // Settings Dropdowns
       filterSettings: 'Filter Settings',
