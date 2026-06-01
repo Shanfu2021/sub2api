@@ -63,6 +63,8 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
+export type UserRole = 'admin' | 'agent_level1' | 'agent_level2' | 'enterprise' | 'user'
+
 export interface User {
   id: number
   username: string
@@ -84,7 +86,7 @@ export interface User {
   linuxdo_bound?: boolean
   oidc_bound?: boolean
   wechat_bound?: boolean
-  role: 'admin' | 'user' // User role for authorization
+  role: UserRole // User role for authorization
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
@@ -246,6 +248,74 @@ export interface AuthResponse {
 
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
+}
+
+export interface AgentManagedUser {
+  id: number
+  email: string
+  username: string
+  role: UserRole
+  parent_user_id?: number | null
+  concurrency: number
+  rpm_limit: number
+  allocated_concurrency: number
+  allocated_rpm: number
+  status: 'active' | 'disabled'
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentDirectChildrenResponse {
+  items: AgentManagedUser[]
+  pagination: {
+    total?: number
+    page?: number
+    page_size?: number
+    pages?: number
+    Total?: number
+    Page?: number
+    PageSize?: number
+    Pages?: number
+  }
+}
+
+export interface AgentAllocationUpdate {
+  allocated_concurrency: number
+  allocated_rpm: number
+}
+
+export interface AgentAllocationSummary {
+  total_concurrency: number
+  allocated_concurrency: number
+  remaining_concurrency: number
+  total_rpm: number
+  allocated_rpm: number
+  remaining_rpm: number
+}
+
+export interface AgentManagementSummary {
+  allocation: AgentAllocationSummary
+}
+
+export type AgentUpgradeTargetRole = 'agent_level1' | 'agent_level2' | 'enterprise'
+
+export type AgentGroupRateSource = 'public' | 'admin_exclusive' | 'delegated'
+
+export interface AgentGroupRate {
+  group: Group
+  effective_rate: number
+  can_delegate: boolean
+  source: AgentGroupRateSource
+}
+
+export interface AgentGroupDelegationRequest {
+  rate_multiplier: number
+  can_delegate: boolean
+}
+
+export interface AgentGroupDelegationResponse {
+  child_id: number
+  group_id: number
 }
 
 // ==================== Subscription Types ====================

@@ -3,6 +3,7 @@
  * Defines all application routes with lazy loading and navigation guards
  */
 
+import { h } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -12,6 +13,11 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveDocumentTitle } from './title'
+
+const AgentManagementPlaceholder = {
+  name: 'AgentManagementPlaceholder',
+  setup: () => () => h('div'),
+}
 
 /**
  * Route definitions with lazy loading
@@ -369,6 +375,56 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Custom Page',
       titleKey: 'customPage.title',
+    }
+  },
+
+  // ==================== Agent Management Routes ====================
+  {
+    path: '/agent',
+    redirect: '/agent/direct-users'
+  },
+  {
+    path: '/agent/direct-users',
+    name: 'AgentDirectUsers',
+    component: AgentManagementPlaceholder,
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Direct Users',
+      titleKey: 'nav.agentDirectUsers'
+    }
+  },
+  {
+    path: '/agent/direct-agents',
+    name: 'AgentDirectAgents',
+    component: AgentManagementPlaceholder,
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Direct Agents',
+      titleKey: 'nav.agentDirectAgents'
+    }
+  },
+  {
+    path: '/agent/direct-enterprises',
+    name: 'AgentDirectEnterprises',
+    component: AgentManagementPlaceholder,
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Direct Enterprises',
+      titleKey: 'nav.agentDirectEnterprises'
+    }
+  },
+  {
+    path: '/agent/groups',
+    name: 'AgentGroups',
+    component: AgentManagementPlaceholder,
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Groups and Rates',
+      titleKey: 'nav.agentGroups'
     }
   },
 
@@ -751,6 +807,7 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresAgentManagement = to.meta.requiresAgentManagement === true
 
   if (to.path === '/setup') {
     try {
@@ -807,6 +864,10 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  if (requiresAgentManagement && !authStore.canUseAgentManagement) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
+  }
 
   // Check payment requirement (internal payment system only)
   if (to.meta.requiresPayment) {

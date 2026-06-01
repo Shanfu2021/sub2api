@@ -9,6 +9,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
 import { useNavigationLoadingState, _resetNavigationLoadingInstance } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
+import appRouter from '@/router'
 
 // Mock 视图组件
 const MockDashboard = defineComponent({
@@ -474,5 +475,21 @@ describe('Navigation Integration Tests', () => {
 
       wrapper.unmount()
     })
+  })
+})
+
+describe('Agent Management Navigation', () => {
+  it('registers agent management routes behind agent-management meta', () => {
+    const agentRoutes = [
+      '/agent/direct-users',
+      '/agent/direct-agents',
+      '/agent/direct-enterprises',
+      '/agent/groups',
+    ]
+
+    for (const path of agentRoutes) {
+      const route = appRouter.getRoutes().find((candidate) => candidate.path === path)
+      expect(route?.meta.requiresAgentManagement).toBe(true)
+    }
   })
 })

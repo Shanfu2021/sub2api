@@ -51,6 +51,7 @@ vi.mock('@/api/auth', () => ({
 interface MockAuthState {
   isAuthenticated: boolean
   isAdmin: boolean
+  canUseAgentManagement?: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
@@ -67,6 +68,7 @@ function simulateGuard(
 ): string | null {
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
+  const requiresAgentManagement = toMeta.requiresAgentManagement === true
 
   if (toPath === '/setup' && authState.setupNeedsSetup === false) {
     return resolveCompletedSetupRedirectPath(authState.isAuthenticated, authState.isAdmin)
@@ -112,6 +114,10 @@ function simulateGuard(
   // 需要管理员但不是管理员
   if (requiresAdmin && !authState.isAdmin) {
     return '/dashboard'
+  }
+
+  if (requiresAgentManagement && !authState.canUseAgentManagement) {
+    return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
   }
 
   // 简易模式限制
@@ -252,6 +258,36 @@ describe('路由守卫逻辑', () => {
     it('访问用户页面允许通过', () => {
       const redirect = simulateGuard('/dashboard', {}, authState)
       expect(redirect).toBeNull()
+    })
+  })
+
+  describe('推广代理管理路由', () => {
+    it.each([
+      { name: '管理员', state: { isAuthenticated: true, isAdmin: true, canUseAgentManagement: true } },
+      { name: '一级代理', state: { isAuthenticated: true, isAdmin: false, canUseAgentManagement: true } },
+      { name: '二级代理', state: { isAuthenticated: true, isAdmin: false, canUseAgentManagement: true } },
+    ])('$name 可访问代理管理页面', ({ state }) => {
+      const authState: MockAuthState = {
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+        ...state,
+      }
+      const redirect = simulateGuard('/agent/direct-users', { requiresAgentManagement: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('普通用户访问代理管理页面会回到用户仪表盘', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        canUseAgentManagement: false,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/agent/direct-users', { requiresAgentManagement: true }, authState)
+      expect(redirect).toBe('/dashboard')
     })
   })
 
