@@ -29,10 +29,16 @@ type User struct {
 	PasswordHash string `json:"password_hash,omitempty"`
 	// Role holds the value of the "role" field.
 	Role string `json:"role,omitempty"`
+	// ParentUserID holds the value of the "parent_user_id" field.
+	ParentUserID *int64 `json:"parent_user_id,omitempty"`
 	// Balance holds the value of the "balance" field.
 	Balance float64 `json:"balance,omitempty"`
 	// Concurrency holds the value of the "concurrency" field.
 	Concurrency int `json:"concurrency,omitempty"`
+	// AllocatedConcurrency holds the value of the "allocated_concurrency" field.
+	AllocatedConcurrency int `json:"allocated_concurrency,omitempty"`
+	// AllocatedRpm holds the value of the "allocated_rpm" field.
+	AllocatedRpm int `json:"allocated_rpm,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Username holds the value of the "username" field.
@@ -239,7 +245,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged:
 			values[i] = new(sql.NullFloat64)
-		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
+		case user.FieldID, user.FieldParentUserID, user.FieldConcurrency, user.FieldAllocatedConcurrency, user.FieldAllocatedRpm, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
 		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
 			values[i] = new(sql.NullString)
@@ -303,6 +309,13 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Role = value.String
 			}
+		case user.FieldParentUserID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field parent_user_id", values[i])
+			} else if value.Valid {
+				_m.ParentUserID = new(int64)
+				*_m.ParentUserID = value.Int64
+			}
 		case user.FieldBalance:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field balance", values[i])
@@ -314,6 +327,18 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field concurrency", values[i])
 			} else if value.Valid {
 				_m.Concurrency = int(value.Int64)
+			}
+		case user.FieldAllocatedConcurrency:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field allocated_concurrency", values[i])
+			} else if value.Valid {
+				_m.AllocatedConcurrency = int(value.Int64)
+			}
+		case user.FieldAllocatedRpm:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field allocated_rpm", values[i])
+			} else if value.Valid {
+				_m.AllocatedRpm = int(value.Int64)
 			}
 		case user.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -536,11 +561,22 @@ func (_m *User) String() string {
 	builder.WriteString("role=")
 	builder.WriteString(_m.Role)
 	builder.WriteString(", ")
+	if v := _m.ParentUserID; v != nil {
+		builder.WriteString("parent_user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("balance=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Balance))
 	builder.WriteString(", ")
 	builder.WriteString("concurrency=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Concurrency))
+	builder.WriteString(", ")
+	builder.WriteString("allocated_concurrency=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllocatedConcurrency))
+	builder.WriteString(", ")
+	builder.WriteString("allocated_rpm=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllocatedRpm))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

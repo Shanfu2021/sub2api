@@ -996,7 +996,7 @@ WHERE id IN (`+strings.Join(placeholders, ",")+`)`,
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var (

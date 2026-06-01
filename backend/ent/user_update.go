@@ -108,6 +108,33 @@ func (_u *UserUpdate) SetNillableRole(v *string) *UserUpdate {
 	return _u
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (_u *UserUpdate) SetParentUserID(v int64) *UserUpdate {
+	_u.mutation.ResetParentUserID()
+	_u.mutation.SetParentUserID(v)
+	return _u
+}
+
+// SetNillableParentUserID sets the "parent_user_id" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableParentUserID(v *int64) *UserUpdate {
+	if v != nil {
+		_u.SetParentUserID(*v)
+	}
+	return _u
+}
+
+// AddParentUserID adds value to the "parent_user_id" field.
+func (_u *UserUpdate) AddParentUserID(v int64) *UserUpdate {
+	_u.mutation.AddParentUserID(v)
+	return _u
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (_u *UserUpdate) ClearParentUserID() *UserUpdate {
+	_u.mutation.ClearParentUserID()
+	return _u
+}
+
 // SetBalance sets the "balance" field.
 func (_u *UserUpdate) SetBalance(v float64) *UserUpdate {
 	_u.mutation.ResetBalance()
@@ -147,6 +174,48 @@ func (_u *UserUpdate) SetNillableConcurrency(v *int) *UserUpdate {
 // AddConcurrency adds value to the "concurrency" field.
 func (_u *UserUpdate) AddConcurrency(v int) *UserUpdate {
 	_u.mutation.AddConcurrency(v)
+	return _u
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (_u *UserUpdate) SetAllocatedConcurrency(v int) *UserUpdate {
+	_u.mutation.ResetAllocatedConcurrency()
+	_u.mutation.SetAllocatedConcurrency(v)
+	return _u
+}
+
+// SetNillableAllocatedConcurrency sets the "allocated_concurrency" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableAllocatedConcurrency(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetAllocatedConcurrency(*v)
+	}
+	return _u
+}
+
+// AddAllocatedConcurrency adds value to the "allocated_concurrency" field.
+func (_u *UserUpdate) AddAllocatedConcurrency(v int) *UserUpdate {
+	_u.mutation.AddAllocatedConcurrency(v)
+	return _u
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (_u *UserUpdate) SetAllocatedRpm(v int) *UserUpdate {
+	_u.mutation.ResetAllocatedRpm()
+	_u.mutation.SetAllocatedRpm(v)
+	return _u
+}
+
+// SetNillableAllocatedRpm sets the "allocated_rpm" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableAllocatedRpm(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetAllocatedRpm(*v)
+	}
+	return _u
+}
+
+// AddAllocatedRpm adds value to the "allocated_rpm" field.
+func (_u *UserUpdate) AddAllocatedRpm(v int) *UserUpdate {
+	_u.mutation.AddAllocatedRpm(v)
 	return _u
 }
 
@@ -991,6 +1060,15 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ParentUserID(); ok {
+		_spec.SetField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedParentUserID(); ok {
+		_spec.AddField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.ParentUserIDCleared() {
+		_spec.ClearField(user.FieldParentUserID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 	}
@@ -1002,6 +1080,18 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(user.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedConcurrency(); ok {
+		_spec.SetField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedConcurrency(); ok {
+		_spec.AddField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedRpm(); ok {
+		_spec.SetField(user.FieldAllocatedRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedRpm(); ok {
+		_spec.AddField(user.FieldAllocatedRpm, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -1757,6 +1847,33 @@ func (_u *UserUpdateOne) SetNillableRole(v *string) *UserUpdateOne {
 	return _u
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (_u *UserUpdateOne) SetParentUserID(v int64) *UserUpdateOne {
+	_u.mutation.ResetParentUserID()
+	_u.mutation.SetParentUserID(v)
+	return _u
+}
+
+// SetNillableParentUserID sets the "parent_user_id" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableParentUserID(v *int64) *UserUpdateOne {
+	if v != nil {
+		_u.SetParentUserID(*v)
+	}
+	return _u
+}
+
+// AddParentUserID adds value to the "parent_user_id" field.
+func (_u *UserUpdateOne) AddParentUserID(v int64) *UserUpdateOne {
+	_u.mutation.AddParentUserID(v)
+	return _u
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (_u *UserUpdateOne) ClearParentUserID() *UserUpdateOne {
+	_u.mutation.ClearParentUserID()
+	return _u
+}
+
 // SetBalance sets the "balance" field.
 func (_u *UserUpdateOne) SetBalance(v float64) *UserUpdateOne {
 	_u.mutation.ResetBalance()
@@ -1796,6 +1913,48 @@ func (_u *UserUpdateOne) SetNillableConcurrency(v *int) *UserUpdateOne {
 // AddConcurrency adds value to the "concurrency" field.
 func (_u *UserUpdateOne) AddConcurrency(v int) *UserUpdateOne {
 	_u.mutation.AddConcurrency(v)
+	return _u
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (_u *UserUpdateOne) SetAllocatedConcurrency(v int) *UserUpdateOne {
+	_u.mutation.ResetAllocatedConcurrency()
+	_u.mutation.SetAllocatedConcurrency(v)
+	return _u
+}
+
+// SetNillableAllocatedConcurrency sets the "allocated_concurrency" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableAllocatedConcurrency(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetAllocatedConcurrency(*v)
+	}
+	return _u
+}
+
+// AddAllocatedConcurrency adds value to the "allocated_concurrency" field.
+func (_u *UserUpdateOne) AddAllocatedConcurrency(v int) *UserUpdateOne {
+	_u.mutation.AddAllocatedConcurrency(v)
+	return _u
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (_u *UserUpdateOne) SetAllocatedRpm(v int) *UserUpdateOne {
+	_u.mutation.ResetAllocatedRpm()
+	_u.mutation.SetAllocatedRpm(v)
+	return _u
+}
+
+// SetNillableAllocatedRpm sets the "allocated_rpm" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableAllocatedRpm(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetAllocatedRpm(*v)
+	}
+	return _u
+}
+
+// AddAllocatedRpm adds value to the "allocated_rpm" field.
+func (_u *UserUpdateOne) AddAllocatedRpm(v int) *UserUpdateOne {
+	_u.mutation.AddAllocatedRpm(v)
 	return _u
 }
 
@@ -2670,6 +2829,15 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ParentUserID(); ok {
+		_spec.SetField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedParentUserID(); ok {
+		_spec.AddField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.ParentUserIDCleared() {
+		_spec.ClearField(user.FieldParentUserID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 	}
@@ -2681,6 +2849,18 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(user.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedConcurrency(); ok {
+		_spec.SetField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedConcurrency(); ok {
+		_spec.AddField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedRpm(); ok {
+		_spec.SetField(user.FieldAllocatedRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedRpm(); ok {
+		_spec.AddField(user.FieldAllocatedRpm, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)

@@ -27,10 +27,16 @@ const (
 	FieldPasswordHash = "password_hash"
 	// FieldRole holds the string denoting the role field in the database.
 	FieldRole = "role"
+	// FieldParentUserID holds the string denoting the parent_user_id field in the database.
+	FieldParentUserID = "parent_user_id"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldAllocatedConcurrency holds the string denoting the allocated_concurrency field in the database.
+	FieldAllocatedConcurrency = "allocated_concurrency"
+	// FieldAllocatedRpm holds the string denoting the allocated_rpm field in the database.
+	FieldAllocatedRpm = "allocated_rpm"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldUsername holds the string denoting the username field in the database.
@@ -198,8 +204,11 @@ var Columns = []string{
 	FieldEmail,
 	FieldPasswordHash,
 	FieldRole,
+	FieldParentUserID,
 	FieldBalance,
 	FieldConcurrency,
+	FieldAllocatedConcurrency,
+	FieldAllocatedRpm,
 	FieldStatus,
 	FieldUsername,
 	FieldNotes,
@@ -259,6 +268,10 @@ var (
 	DefaultBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
+	// DefaultAllocatedConcurrency holds the default value on creation for the "allocated_concurrency" field.
+	DefaultAllocatedConcurrency int
+	// DefaultAllocatedRpm holds the default value on creation for the "allocated_rpm" field.
+	DefaultAllocatedRpm int
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -325,6 +338,11 @@ func ByRole(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRole, opts...).ToFunc()
 }
 
+// ByParentUserID orders the results by the parent_user_id field.
+func ByParentUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldParentUserID, opts...).ToFunc()
+}
+
 // ByBalance orders the results by the balance field.
 func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalance, opts...).ToFunc()
@@ -333,6 +351,16 @@ func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+}
+
+// ByAllocatedConcurrency orders the results by the allocated_concurrency field.
+func ByAllocatedConcurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllocatedConcurrency, opts...).ToFunc()
+}
+
+// ByAllocatedRpm orders the results by the allocated_rpm field.
+func ByAllocatedRpm(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllocatedRpm, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

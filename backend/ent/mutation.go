@@ -38157,10 +38157,16 @@ type UserMutation struct {
 	email                         *string
 	password_hash                 *string
 	role                          *string
+	parent_user_id                *int64
+	addparent_user_id             *int64
 	balance                       *float64
 	addbalance                    *float64
 	concurrency                   *int
 	addconcurrency                *int
+	allocated_concurrency         *int
+	addallocated_concurrency      *int
+	allocated_rpm                 *int
+	addallocated_rpm              *int
 	status                        *string
 	username                      *string
 	notes                         *string
@@ -38551,6 +38557,76 @@ func (m *UserMutation) ResetRole() {
 	m.role = nil
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (m *UserMutation) SetParentUserID(i int64) {
+	m.parent_user_id = &i
+	m.addparent_user_id = nil
+}
+
+// ParentUserID returns the value of the "parent_user_id" field in the mutation.
+func (m *UserMutation) ParentUserID() (r int64, exists bool) {
+	v := m.parent_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldParentUserID returns the old "parent_user_id" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldParentUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldParentUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldParentUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldParentUserID: %w", err)
+	}
+	return oldValue.ParentUserID, nil
+}
+
+// AddParentUserID adds i to the "parent_user_id" field.
+func (m *UserMutation) AddParentUserID(i int64) {
+	if m.addparent_user_id != nil {
+		*m.addparent_user_id += i
+	} else {
+		m.addparent_user_id = &i
+	}
+}
+
+// AddedParentUserID returns the value that was added to the "parent_user_id" field in this mutation.
+func (m *UserMutation) AddedParentUserID() (r int64, exists bool) {
+	v := m.addparent_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (m *UserMutation) ClearParentUserID() {
+	m.parent_user_id = nil
+	m.addparent_user_id = nil
+	m.clearedFields[user.FieldParentUserID] = struct{}{}
+}
+
+// ParentUserIDCleared returns if the "parent_user_id" field was cleared in this mutation.
+func (m *UserMutation) ParentUserIDCleared() bool {
+	_, ok := m.clearedFields[user.FieldParentUserID]
+	return ok
+}
+
+// ResetParentUserID resets all changes to the "parent_user_id" field.
+func (m *UserMutation) ResetParentUserID() {
+	m.parent_user_id = nil
+	m.addparent_user_id = nil
+	delete(m.clearedFields, user.FieldParentUserID)
+}
+
 // SetBalance sets the "balance" field.
 func (m *UserMutation) SetBalance(f float64) {
 	m.balance = &f
@@ -38661,6 +38737,118 @@ func (m *UserMutation) AddedConcurrency() (r int, exists bool) {
 func (m *UserMutation) ResetConcurrency() {
 	m.concurrency = nil
 	m.addconcurrency = nil
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (m *UserMutation) SetAllocatedConcurrency(i int) {
+	m.allocated_concurrency = &i
+	m.addallocated_concurrency = nil
+}
+
+// AllocatedConcurrency returns the value of the "allocated_concurrency" field in the mutation.
+func (m *UserMutation) AllocatedConcurrency() (r int, exists bool) {
+	v := m.allocated_concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllocatedConcurrency returns the old "allocated_concurrency" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldAllocatedConcurrency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllocatedConcurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllocatedConcurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllocatedConcurrency: %w", err)
+	}
+	return oldValue.AllocatedConcurrency, nil
+}
+
+// AddAllocatedConcurrency adds i to the "allocated_concurrency" field.
+func (m *UserMutation) AddAllocatedConcurrency(i int) {
+	if m.addallocated_concurrency != nil {
+		*m.addallocated_concurrency += i
+	} else {
+		m.addallocated_concurrency = &i
+	}
+}
+
+// AddedAllocatedConcurrency returns the value that was added to the "allocated_concurrency" field in this mutation.
+func (m *UserMutation) AddedAllocatedConcurrency() (r int, exists bool) {
+	v := m.addallocated_concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAllocatedConcurrency resets all changes to the "allocated_concurrency" field.
+func (m *UserMutation) ResetAllocatedConcurrency() {
+	m.allocated_concurrency = nil
+	m.addallocated_concurrency = nil
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (m *UserMutation) SetAllocatedRpm(i int) {
+	m.allocated_rpm = &i
+	m.addallocated_rpm = nil
+}
+
+// AllocatedRpm returns the value of the "allocated_rpm" field in the mutation.
+func (m *UserMutation) AllocatedRpm() (r int, exists bool) {
+	v := m.allocated_rpm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllocatedRpm returns the old "allocated_rpm" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldAllocatedRpm(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllocatedRpm is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllocatedRpm requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllocatedRpm: %w", err)
+	}
+	return oldValue.AllocatedRpm, nil
+}
+
+// AddAllocatedRpm adds i to the "allocated_rpm" field.
+func (m *UserMutation) AddAllocatedRpm(i int) {
+	if m.addallocated_rpm != nil {
+		*m.addallocated_rpm += i
+	} else {
+		m.addallocated_rpm = &i
+	}
+}
+
+// AddedAllocatedRpm returns the value that was added to the "allocated_rpm" field in this mutation.
+func (m *UserMutation) AddedAllocatedRpm() (r int, exists bool) {
+	v := m.addallocated_rpm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAllocatedRpm resets all changes to the "allocated_rpm" field.
+func (m *UserMutation) ResetAllocatedRpm() {
+	m.allocated_rpm = nil
+	m.addallocated_rpm = nil
 }
 
 // SetStatus sets the "status" field.
@@ -40065,7 +40253,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -40084,11 +40272,20 @@ func (m *UserMutation) Fields() []string {
 	if m.role != nil {
 		fields = append(fields, user.FieldRole)
 	}
+	if m.parent_user_id != nil {
+		fields = append(fields, user.FieldParentUserID)
+	}
 	if m.balance != nil {
 		fields = append(fields, user.FieldBalance)
 	}
 	if m.concurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
+	}
+	if m.allocated_concurrency != nil {
+		fields = append(fields, user.FieldAllocatedConcurrency)
+	}
+	if m.allocated_rpm != nil {
+		fields = append(fields, user.FieldAllocatedRpm)
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
@@ -40155,10 +40352,16 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.PasswordHash()
 	case user.FieldRole:
 		return m.Role()
+	case user.FieldParentUserID:
+		return m.ParentUserID()
 	case user.FieldBalance:
 		return m.Balance()
 	case user.FieldConcurrency:
 		return m.Concurrency()
+	case user.FieldAllocatedConcurrency:
+		return m.AllocatedConcurrency()
+	case user.FieldAllocatedRpm:
+		return m.AllocatedRpm()
 	case user.FieldStatus:
 		return m.Status()
 	case user.FieldUsername:
@@ -40210,10 +40413,16 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldPasswordHash(ctx)
 	case user.FieldRole:
 		return m.OldRole(ctx)
+	case user.FieldParentUserID:
+		return m.OldParentUserID(ctx)
 	case user.FieldBalance:
 		return m.OldBalance(ctx)
 	case user.FieldConcurrency:
 		return m.OldConcurrency(ctx)
+	case user.FieldAllocatedConcurrency:
+		return m.OldAllocatedConcurrency(ctx)
+	case user.FieldAllocatedRpm:
+		return m.OldAllocatedRpm(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
 	case user.FieldUsername:
@@ -40295,6 +40504,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRole(v)
 		return nil
+	case user.FieldParentUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetParentUserID(v)
+		return nil
 	case user.FieldBalance:
 		v, ok := value.(float64)
 		if !ok {
@@ -40308,6 +40524,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetConcurrency(v)
+		return nil
+	case user.FieldAllocatedConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllocatedConcurrency(v)
+		return nil
+	case user.FieldAllocatedRpm:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllocatedRpm(v)
 		return nil
 	case user.FieldStatus:
 		v, ok := value.(string)
@@ -40422,11 +40652,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *UserMutation) AddedFields() []string {
 	var fields []string
+	if m.addparent_user_id != nil {
+		fields = append(fields, user.FieldParentUserID)
+	}
 	if m.addbalance != nil {
 		fields = append(fields, user.FieldBalance)
 	}
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
+	}
+	if m.addallocated_concurrency != nil {
+		fields = append(fields, user.FieldAllocatedConcurrency)
+	}
+	if m.addallocated_rpm != nil {
+		fields = append(fields, user.FieldAllocatedRpm)
 	}
 	if m.addbalance_notify_threshold != nil {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
@@ -40445,10 +40684,16 @@ func (m *UserMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case user.FieldParentUserID:
+		return m.AddedParentUserID()
 	case user.FieldBalance:
 		return m.AddedBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
+	case user.FieldAllocatedConcurrency:
+		return m.AddedAllocatedConcurrency()
+	case user.FieldAllocatedRpm:
+		return m.AddedAllocatedRpm()
 	case user.FieldBalanceNotifyThreshold:
 		return m.AddedBalanceNotifyThreshold()
 	case user.FieldTotalRecharged:
@@ -40464,6 +40709,13 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UserMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case user.FieldParentUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddParentUserID(v)
+		return nil
 	case user.FieldBalance:
 		v, ok := value.(float64)
 		if !ok {
@@ -40477,6 +40729,20 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrency(v)
+		return nil
+	case user.FieldAllocatedConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAllocatedConcurrency(v)
+		return nil
+	case user.FieldAllocatedRpm:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAllocatedRpm(v)
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		v, ok := value.(float64)
@@ -40510,6 +40776,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldDeletedAt) {
 		fields = append(fields, user.FieldDeletedAt)
 	}
+	if m.FieldCleared(user.FieldParentUserID) {
+		fields = append(fields, user.FieldParentUserID)
+	}
 	if m.FieldCleared(user.FieldTotpSecretEncrypted) {
 		fields = append(fields, user.FieldTotpSecretEncrypted)
 	}
@@ -40541,6 +40810,9 @@ func (m *UserMutation) ClearField(name string) error {
 	switch name {
 	case user.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case user.FieldParentUserID:
+		m.ClearParentUserID()
 		return nil
 	case user.FieldTotpSecretEncrypted:
 		m.ClearTotpSecretEncrypted()
@@ -40583,11 +40855,20 @@ func (m *UserMutation) ResetField(name string) error {
 	case user.FieldRole:
 		m.ResetRole()
 		return nil
+	case user.FieldParentUserID:
+		m.ResetParentUserID()
+		return nil
 	case user.FieldBalance:
 		m.ResetBalance()
 		return nil
 	case user.FieldConcurrency:
 		m.ResetConcurrency()
+		return nil
+	case user.FieldAllocatedConcurrency:
+		m.ResetAllocatedConcurrency()
+		return nil
+	case user.FieldAllocatedRpm:
+		m.ResetAllocatedRpm()
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()

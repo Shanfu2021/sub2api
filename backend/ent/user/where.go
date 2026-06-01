@@ -85,6 +85,11 @@ func Role(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRole, v))
 }
 
+// ParentUserID applies equality check predicate on the "parent_user_id" field. It's identical to ParentUserIDEQ.
+func ParentUserID(v int64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldParentUserID, v))
+}
+
 // Balance applies equality check predicate on the "balance" field. It's identical to BalanceEQ.
 func Balance(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalance, v))
@@ -93,6 +98,16 @@ func Balance(v float64) predicate.User {
 // Concurrency applies equality check predicate on the "concurrency" field. It's identical to ConcurrencyEQ.
 func Concurrency(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldConcurrency, v))
+}
+
+// AllocatedConcurrency applies equality check predicate on the "allocated_concurrency" field. It's identical to AllocatedConcurrencyEQ.
+func AllocatedConcurrency(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedRpm applies equality check predicate on the "allocated_rpm" field. It's identical to AllocatedRpmEQ.
+func AllocatedRpm(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAllocatedRpm, v))
 }
 
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
@@ -495,6 +510,56 @@ func RoleContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldRole, v))
 }
 
+// ParentUserIDEQ applies the EQ predicate on the "parent_user_id" field.
+func ParentUserIDEQ(v int64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldParentUserID, v))
+}
+
+// ParentUserIDNEQ applies the NEQ predicate on the "parent_user_id" field.
+func ParentUserIDNEQ(v int64) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldParentUserID, v))
+}
+
+// ParentUserIDIn applies the In predicate on the "parent_user_id" field.
+func ParentUserIDIn(vs ...int64) predicate.User {
+	return predicate.User(sql.FieldIn(FieldParentUserID, vs...))
+}
+
+// ParentUserIDNotIn applies the NotIn predicate on the "parent_user_id" field.
+func ParentUserIDNotIn(vs ...int64) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldParentUserID, vs...))
+}
+
+// ParentUserIDGT applies the GT predicate on the "parent_user_id" field.
+func ParentUserIDGT(v int64) predicate.User {
+	return predicate.User(sql.FieldGT(FieldParentUserID, v))
+}
+
+// ParentUserIDGTE applies the GTE predicate on the "parent_user_id" field.
+func ParentUserIDGTE(v int64) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldParentUserID, v))
+}
+
+// ParentUserIDLT applies the LT predicate on the "parent_user_id" field.
+func ParentUserIDLT(v int64) predicate.User {
+	return predicate.User(sql.FieldLT(FieldParentUserID, v))
+}
+
+// ParentUserIDLTE applies the LTE predicate on the "parent_user_id" field.
+func ParentUserIDLTE(v int64) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldParentUserID, v))
+}
+
+// ParentUserIDIsNil applies the IsNil predicate on the "parent_user_id" field.
+func ParentUserIDIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldParentUserID))
+}
+
+// ParentUserIDNotNil applies the NotNil predicate on the "parent_user_id" field.
+func ParentUserIDNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldParentUserID))
+}
+
 // BalanceEQ applies the EQ predicate on the "balance" field.
 func BalanceEQ(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalance, v))
@@ -573,6 +638,86 @@ func ConcurrencyLT(v int) predicate.User {
 // ConcurrencyLTE applies the LTE predicate on the "concurrency" field.
 func ConcurrencyLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldConcurrency, v))
+}
+
+// AllocatedConcurrencyEQ applies the EQ predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedConcurrencyNEQ applies the NEQ predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedConcurrencyIn applies the In predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldAllocatedConcurrency, vs...))
+}
+
+// AllocatedConcurrencyNotIn applies the NotIn predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldAllocatedConcurrency, vs...))
+}
+
+// AllocatedConcurrencyGT applies the GT predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedConcurrencyGTE applies the GTE predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedConcurrencyLT applies the LT predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedConcurrencyLTE applies the LTE predicate on the "allocated_concurrency" field.
+func AllocatedConcurrencyLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldAllocatedConcurrency, v))
+}
+
+// AllocatedRpmEQ applies the EQ predicate on the "allocated_rpm" field.
+func AllocatedRpmEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAllocatedRpm, v))
+}
+
+// AllocatedRpmNEQ applies the NEQ predicate on the "allocated_rpm" field.
+func AllocatedRpmNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldAllocatedRpm, v))
+}
+
+// AllocatedRpmIn applies the In predicate on the "allocated_rpm" field.
+func AllocatedRpmIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldAllocatedRpm, vs...))
+}
+
+// AllocatedRpmNotIn applies the NotIn predicate on the "allocated_rpm" field.
+func AllocatedRpmNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldAllocatedRpm, vs...))
+}
+
+// AllocatedRpmGT applies the GT predicate on the "allocated_rpm" field.
+func AllocatedRpmGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldAllocatedRpm, v))
+}
+
+// AllocatedRpmGTE applies the GTE predicate on the "allocated_rpm" field.
+func AllocatedRpmGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldAllocatedRpm, v))
+}
+
+// AllocatedRpmLT applies the LT predicate on the "allocated_rpm" field.
+func AllocatedRpmLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldAllocatedRpm, v))
+}
+
+// AllocatedRpmLTE applies the LTE predicate on the "allocated_rpm" field.
+func AllocatedRpmLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldAllocatedRpm, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
