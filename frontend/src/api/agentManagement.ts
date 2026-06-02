@@ -21,6 +21,8 @@ const BASE_PATH = '/agent-management'
 
 export interface AgentDirectChildrenQuery {
   search?: string
+  page?: number
+  page_size?: number
 }
 
 export async function getSummary(): Promise<AgentManagementSummary> {

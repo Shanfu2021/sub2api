@@ -170,6 +170,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, ErrServiceUnavailable
 	}
 	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, err
 	}
 
@@ -267,6 +268,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		return nil, nil, ErrServiceUnavailable
 	}
 	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, err
 	}
 

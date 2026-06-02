@@ -21,6 +21,7 @@ type fakeAgentManagementService struct {
 	createDirectUserCalls         int
 	listDirectUsersCalls          int
 	listSearch                    string
+	listQuery                     service.DirectChildrenQuery
 	createActorID                 int64
 	createInput                   service.CreateDirectUserInput
 	updateActorID                 int64
@@ -52,6 +53,7 @@ func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*s
 func (s *fakeAgentManagementService) ListDirectUsersWithQuery(_ context.Context, _ int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
 	s.listDirectUsersCalls++
 	s.listSearch = query.Search
+	s.listQuery = query
 	return &service.DirectChildrenResult{}, nil
 }
 
@@ -219,6 +221,21 @@ func TestAgentManagementHandlerPassesSearchToDirectUsers(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, 1, svc.listDirectUsersCalls)
 	require.Equal(t, "alice", svc.listSearch)
+}
+
+func TestAgentManagementHandlerPassesPaginationToDirectUsers(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/direct-users?page=3&page_size=50&search=alice", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listDirectUsersCalls)
+	require.Equal(t, "alice", svc.listQuery.Search)
+	require.Equal(t, 3, svc.listQuery.Pagination.Page)
+	require.Equal(t, 50, svc.listQuery.Pagination.PageSize)
 }
 
 func TestAgentManagementHandlerIncludesReadOnlyBalance(t *testing.T) {

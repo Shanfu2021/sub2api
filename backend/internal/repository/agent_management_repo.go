@@ -363,6 +363,10 @@ func (r *agentManagementRepository) DetachLevel1AgentAndMoveChildren(ctx context
 	defer func() { _ = tx.Rollback() }()
 	txCtx := dbent.NewTxContext(ctx, tx)
 	txClient := tx.Client()
+	exec := txAwareSQLExecutor(txCtx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
 
 	agent, err := txClient.User.Query().
 		Where(
@@ -400,6 +404,13 @@ func (r *agentManagementRepository) DetachLevel1AgentAndMoveChildren(ctx context
 		SetParentUserID(rootAdminID).
 		Save(txCtx); err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+
+	if err := r.cleanupAgentDelegatedGroups(txCtx, exec, agent.ID); err != nil {
+		return err
+	}
+	if _, err := exec.ExecContext(txCtx, `DELETE FROM agent_profiles WHERE user_id = $1`, agent.ID); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {

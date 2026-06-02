@@ -1908,6 +1908,38 @@ func TestRemoveDelegatedExclusiveGroupCascadesPastFirstPageOfDirectChildren(t *t
 	require.Len(t, userRepo.removedAllowedGroups, 1002)
 }
 
+func TestRemoveDelegatedExclusiveGroupCascadesToEnterpriseEmployees(t *testing.T) {
+	rootID := int64(1)
+	enterpriseID := int64(2)
+	employeeID := int64(3)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: enterpriseID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: enterpriseID, childID: employeeID, groupID: groupID, rateMultiplier: 1.5, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	require.NoError(t, svc.RemoveChildGroupDelegation(context.Background(), rootID, enterpriseID, groupID))
+
+	require.Empty(t, repo.groupDelegations)
+	require.Empty(t, repo.users[enterpriseID].AllowedGroups)
+	require.Empty(t, repo.users[employeeID].AllowedGroups)
+	require.ElementsMatch(t, []struct {
+		userID  int64
+		groupID int64
+	}{
+		{userID: enterpriseID, groupID: groupID},
+		{userID: employeeID, groupID: groupID},
+	}, userRepo.removedAllowedGroups)
+}
+
 func TestDelegatedExclusiveGroupHidesUpstreamRate(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)

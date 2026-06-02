@@ -341,7 +341,7 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="direct-child-search-submit"]').trigger('click')
     await flushPromises()
 
-    expect(listDirectUsers).toHaveBeenLastCalledWith({ search: 'alice' })
+    expect(listDirectUsers).toHaveBeenLastCalledWith({ search: 'alice', page: 1, page_size: 20 })
   })
 
   it('uses effective concurrency and RPM fields for direct ordinary users', async () => {

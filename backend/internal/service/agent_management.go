@@ -941,7 +941,7 @@ func (s *AgentManagementService) listAllDirectChildrenForCascade(ctx context.Con
 	const pageSize = 1000
 	var out []User
 	for page := 1; ; page++ {
-		children, result, err := s.repo.ListDirectChildren(ctx, parentID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: page, PageSize: pageSize})
+		children, result, err := s.repo.ListDirectChildren(ctx, parentID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2, RoleEmployee}, pagination.PaginationParams{Page: page, PageSize: pageSize})
 		if err != nil {
 			return nil, err
 		}

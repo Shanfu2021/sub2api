@@ -187,8 +187,8 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           :show-page-size-selector="false"
-          @update:page="pagination.page = $event"
-          @update:page-size="pagination.page_size = $event"
+          @update:page="changePage"
+          @update:page-size="changePageSize"
         />
       </template>
     </TablePageLayout>
@@ -535,7 +535,11 @@ function quotaFor(child: AgentManagedUser): AgentAllocationUpdate {
 }
 
 async function listChildren(): Promise<AgentDirectChildrenResponse> {
-  const query = activeSearch.value ? { search: activeSearch.value } : {}
+  const query = {
+    ...(activeSearch.value ? { search: activeSearch.value } : {}),
+    page: pagination.page,
+    page_size: pagination.page_size,
+  }
   if (props.kind === 'agents') return agentManagementAPI.listDirectAgents(query)
   if (props.kind === 'enterprises') return agentManagementAPI.listDirectEnterprises(query)
   return agentManagementAPI.listDirectUsers(query)
@@ -564,6 +568,18 @@ async function loadData() {
 
 async function applySearch() {
   activeSearch.value = searchDraft.value.trim()
+  pagination.page = 1
+  await loadData()
+}
+
+async function changePage(page: number) {
+  pagination.page = page
+  await loadData()
+}
+
+async function changePageSize(pageSize: number) {
+  pagination.page_size = pageSize
+  pagination.page = 1
   await loadData()
 }
 

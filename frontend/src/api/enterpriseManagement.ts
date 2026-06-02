@@ -16,6 +16,8 @@ const BASE_PATH = '/enterprise-management'
 
 export interface EnterpriseEmployeesQuery {
   search?: string
+  page?: number
+  page_size?: number
 }
 
 export async function getSummary(): Promise<EnterpriseManagementSummary> {

@@ -213,6 +213,15 @@ func (s *AgentManagementRepoSuite) TestDetachLevel1AgentKeepsAccountMovesChildre
 	directEnterprise := s.mustCreateAgentUser("direct-enterprise@test.com", service.RoleEnterprise, &level1.ID, 20, 200)
 	directLevel2 := s.mustCreateAgentUser("direct-level2@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
 	nestedUser := s.mustCreateAgentUser("nested-user@test.com", service.RoleUser, &directLevel2.ID, 5, 50)
+	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-detach-level1", true, 0.3)
+
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID, 1.8, true))
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(directUser.ID).
+		SetGroupID(exclusiveGroup.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.DetachLevel1AgentAndMoveChildren(s.ctx, level1.ID, root.ID))
 
@@ -248,6 +257,18 @@ func (s *AgentManagementRepoSuite) TestDetachLevel1AgentKeepsAccountMovesChildre
 	s.Require().NotNil(reloadedNested.ParentUserID)
 	s.Require().Equal(directLevel2.ID, *reloadedNested.ParentUserID)
 	s.Require().Equal(service.RoleUser, reloadedNested.Role)
+
+	delegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(delegation)
+	allowedCount, err := s.client.UserAllowedGroup.Query().
+		Where(userallowedgroup.UserIDEQ(directUser.ID), userallowedgroup.GroupIDEQ(exclusiveGroup.ID)).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(allowedCount)
+	profile, err := s.repo.GetAgentProfile(s.ctx, level1.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(profile)
 }
 
 func (s *AgentManagementRepoSuite) TestGroupDelegationRoundTripAndSoftDelete() {

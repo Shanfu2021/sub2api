@@ -134,8 +134,8 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           :show-page-size-selector="false"
-          @update:page="pagination.page = $event"
-          @update:page-size="pagination.page_size = $event"
+          @update:page="changePage"
+          @update:page-size="changePageSize"
         />
       </template>
     </TablePageLayout>
@@ -371,7 +371,11 @@ function syncDrafts(items: EnterpriseEmployee[]) {
 async function loadData() {
   loading.value = true
   try {
-    const query = activeSearch.value ? { search: activeSearch.value } : {}
+    const query = {
+      ...(activeSearch.value ? { search: activeSearch.value } : {}),
+      page: pagination.page,
+      page_size: pagination.page_size,
+    }
     const [summary, result] = await Promise.all([
       enterpriseManagementAPI.getSummary(),
       enterpriseManagementAPI.listEmployees(query),
@@ -389,6 +393,17 @@ async function loadData() {
 
 async function applySearch() {
   activeSearch.value = searchDraft.value.trim()
+  pagination.page = 1
+  await loadData()
+}
+
+async function changePage(page: number) {
+  pagination.page = page
+  await loadData()
+}
+
+async function changePageSize(pageSize: number) {
+  pagination.page_size = pageSize
   pagination.page = 1
   await loadData()
 }

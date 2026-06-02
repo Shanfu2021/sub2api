@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -19,6 +20,8 @@ type fakeEnterpriseManagementService struct {
 	setCalls    int
 	removeCalls int
 
+	listActorID int64
+	listQuery   service.DirectChildrenQuery
 	createActorID int64
 	createInput   service.EmployeeCreateInput
 	updateActorID int64
@@ -32,8 +35,18 @@ type fakeEnterpriseManagementService struct {
 	removeGroupID int64
 }
 
-func (s *fakeEnterpriseManagementService) ListEmployeesWithQuery(context.Context, int64, service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
-	return &service.DirectChildrenResult{}, nil
+func (s *fakeEnterpriseManagementService) ListEmployeesWithQuery(_ context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
+	s.listActorID = actorID
+	s.listQuery = query
+	return &service.DirectChildrenResult{
+		Users: []service.User{},
+		Pagination: &pagination.PaginationResult{
+			Total:    0,
+			Page:     query.Pagination.Page,
+			PageSize: query.Pagination.Limit(),
+			Pages:    0,
+		},
+	}, nil
 }
 
 func (s *fakeEnterpriseManagementService) CreateEmployee(_ context.Context, actorID int64, input service.EmployeeCreateInput) (*service.User, error) {
@@ -107,11 +120,28 @@ func newEnterpriseManagementHandlerTestRouter(svc *fakeEnterpriseManagementServi
 		c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 42})
 		c.Next()
 	})
+	r.GET("/employees", h.ListEmployees)
 	r.POST("/employees", h.CreateEmployee)
 	r.PUT("/employees/:id/allocation", h.UpdateEmployeeAllocation)
 	r.PUT("/employees/:id/groups/:group_id", h.SetEmployeeGroup)
 	r.DELETE("/employees/:id/groups/:group_id", h.RemoveEmployeeGroup)
 	return r
+}
+
+func TestEnterpriseManagementHandlerListEmployeesUsesPaginationQuery(t *testing.T) {
+	svc := &fakeEnterpriseManagementService{}
+	router := newEnterpriseManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/employees?page=3&page_size=50&search=employee", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), svc.listActorID)
+	require.Equal(t, 3, svc.listQuery.Pagination.Page)
+	require.Equal(t, 50, svc.listQuery.Pagination.PageSize)
+	require.Equal(t, "employee", svc.listQuery.Search)
+	require.Contains(t, rec.Body.String(), `"page":3`)
 }
 
 func TestEnterpriseManagementHandlerCreatesEmployeeWithBalance(t *testing.T) {

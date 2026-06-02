@@ -837,6 +837,47 @@ func TestRegisterWithAgentInvitationAppliesInviteGroupDefaults(t *testing.T) {
 	}{{userID: agentID, concurrency: 8, rpm: 80}}, agentRepo.setEffectiveQuotas)
 }
 
+func TestRegisterWithAgentInvitationRollsBackCreatedUserWhenInviteDefaultsFail(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	groupID := int64(20)
+	repo := &userRepoStub{
+		nextID:      108,
+		addGroupErr: errors.New("add group failed"),
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"agent@test.com": {ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {UserID: agentID, PoolConcurrency: 10, PoolRPM: 100, InviteDefaultConcurrency: 2, InviteDefaultRPM: 20},
+	}
+	agentRepo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: agentID, groupID: groupID, rateMultiplier: 2.4},
+	}
+	repo.onCreate = func(user *User) {
+		clone := *user
+		agentRepo.users[user.ID] = &clone
+	}
+	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "agent-group-fail@test.com", "password", "", "", "", "AGENTAFF")
+	require.Error(t, err)
+	require.Nil(t, user)
+	require.Equal(t, []int64{int64(108)}, repo.hardDeletedIDs)
+}
+
 func TestRegisterWithAgentInvitationRejectsWhenAgentInviteQuotaUnavailable(t *testing.T) {
 	rootID := int64(1)
 	agentID := int64(2)

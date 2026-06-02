@@ -431,6 +431,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
 	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		_ = s.userRepo.HardDelete(ctx, user.ID)
 		return "", nil, err
 	}
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
@@ -905,6 +906,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
 					if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+						_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 						return nil, nil, err
 					}
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
@@ -932,6 +934,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
 					if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+						_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 						return nil, nil, err
 					}
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")

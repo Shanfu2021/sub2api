@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -53,8 +54,15 @@ func (h *EnterpriseManagementHandler) ListEmployees(c *gin.Context) {
 	if !ok {
 		return
 	}
+	params := pagination.DefaultPagination()
+	if page, err := strconv.Atoi(strings.TrimSpace(c.Query("page"))); err == nil && page > 0 {
+		params.Page = page
+	}
+	if pageSize, err := strconv.Atoi(strings.TrimSpace(c.Query("page_size"))); err == nil && pageSize > 0 {
+		params.PageSize = pageSize
+	}
 	result, err := h.service.ListEmployeesWithQuery(c.Request.Context(), actorID, service.DirectChildrenQuery{
-		Pagination: pagination.DefaultPagination(),
+		Pagination: params,
 		Search:     normalizedQuerySearch(c.Query("search")),
 	})
 	if err != nil {

@@ -322,8 +322,15 @@ func (h *AgentManagementHandler) listDirectChildren(c *gin.Context, list func(co
 	if !ok {
 		return
 	}
+	params := pagination.DefaultPagination()
+	if page, err := strconv.Atoi(strings.TrimSpace(c.Query("page"))); err == nil && page > 0 {
+		params.Page = page
+	}
+	if pageSize, err := strconv.Atoi(strings.TrimSpace(c.Query("page_size"))); err == nil && pageSize > 0 {
+		params.PageSize = pageSize
+	}
 	result, err := list(c.Request.Context(), actorID, service.DirectChildrenQuery{
-		Pagination: pagination.DefaultPagination(),
+		Pagination: params,
 		Search:     normalizedQuerySearch(c.Query("search")),
 	})
 	if err != nil {

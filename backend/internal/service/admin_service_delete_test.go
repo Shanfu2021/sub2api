@@ -28,6 +28,7 @@ type userRepoStub struct {
 	usersByEmail       map[string]*User
 	getByEmailErr      error
 	onCreate           func(*User)
+	addGroupErr        error
 	addedAllowedGroups []struct {
 		userID  int64
 		groupID int64
@@ -187,6 +188,9 @@ func (s *userRepoStub) RemoveGroupFromUserAllowedGroups(ctx context.Context, use
 }
 
 func (s *userRepoStub) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
+	if s.addGroupErr != nil {
+		return s.addGroupErr
+	}
 	s.addedAllowedGroups = append(s.addedAllowedGroups, struct {
 		userID  int64
 		groupID int64
