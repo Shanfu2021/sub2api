@@ -639,12 +639,32 @@ func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context,
 	if err := s.repo.DeleteGroupDelegation(ctx, actor.ID, child.ID, groupID); err != nil {
 		return err
 	}
+	if err := s.removeGroupFromUserAndDelegatedDescendants(ctx, child.ID, groupID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx context.Context, userID int64, groupID int64) error {
 	if s.userRepo != nil {
-		if err := s.userRepo.RemoveGroupFromUserAllowedGroups(ctx, child.ID, groupID); err != nil {
+		if err := s.userRepo.RemoveGroupFromUserAllowedGroups(ctx, userID, groupID); err != nil {
 			return err
 		}
 	}
-	s.invalidateUser(ctx, child.ID)
+	s.invalidateUser(ctx, userID)
+
+	children, _, err := s.repo.ListDirectChildren(ctx, userID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 1000})
+	if err != nil {
+		return err
+	}
+	for i := range children {
+		if err := s.repo.DeleteGroupDelegation(ctx, userID, children[i].ID, groupID); err != nil {
+			return err
+		}
+		if err := s.removeGroupFromUserAndDelegatedDescendants(ctx, children[i].ID, groupID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

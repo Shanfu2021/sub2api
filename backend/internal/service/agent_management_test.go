@@ -1327,6 +1327,50 @@ func TestDelegateExclusiveGroupRequiresManagerAccess(t *testing.T) {
 	require.Equal(t, int64(20), userRepo.addedAllowedGroups[2].groupID)
 }
 
+func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	level2ID := int64(3)
+	ordinaryChildID := int64(4)
+	directUserID := int64(5)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: ordinaryChildID, Role: RoleUser, ParentUserID: &level2ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: level1ID, childID: level2ID, groupID: groupID, rateMultiplier: 1.8, canDelegate: true},
+		{managerID: level2ID, childID: ordinaryChildID, groupID: groupID, rateMultiplier: 2.1, canDelegate: false},
+		{managerID: level1ID, childID: directUserID, groupID: groupID, rateMultiplier: 1.9, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
+
+	require.NoError(t, svc.RemoveChildGroupDelegation(context.Background(), rootID, level1ID, groupID))
+
+	require.Empty(t, repo.groupDelegations)
+	require.Empty(t, repo.users[level1ID].AllowedGroups)
+	require.Empty(t, repo.users[level2ID].AllowedGroups)
+	require.Empty(t, repo.users[ordinaryChildID].AllowedGroups)
+	require.Empty(t, repo.users[directUserID].AllowedGroups)
+	require.ElementsMatch(t, []int64{level1ID, level2ID, ordinaryChildID, directUserID}, invalidator.userIDs)
+	require.ElementsMatch(t, []struct {
+		userID  int64
+		groupID int64
+	}{
+		{userID: level1ID, groupID: groupID},
+		{userID: level2ID, groupID: groupID},
+		{userID: ordinaryChildID, groupID: groupID},
+		{userID: directUserID, groupID: groupID},
+	}, userRepo.removedAllowedGroups)
+}
+
 func TestDelegatedExclusiveGroupHidesUpstreamRate(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
