@@ -178,6 +178,9 @@ func TestRegisterOAuthEmailAccountAcceptsAffiliateInvitationCode(t *testing.T) {
 		nil,
 	)
 	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+	attachAgentManagementForRegistrationTest(authService, userRepo, map[int64]AgentProfile{
+		agentID: finiteAgentInviteProfile(agentID),
+	})
 
 	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
 		context.Background(),
