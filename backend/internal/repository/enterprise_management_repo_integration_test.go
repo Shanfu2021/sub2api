@@ -1,3 +1,5 @@
+//go:build integration
+
 package repository
 
 import (
@@ -253,6 +255,7 @@ VALUES ($1, $2, $3, 1.25, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 	s.Require().False(exists)
 	s.Require().Equal(0, s.countRows("user_allowed_groups", "user_id = $1", employee.ID))
 	s.Require().Equal(0, s.countRows("agent_group_delegations", "child_user_id = $1", employee.ID))
+	s.Require().Equal(1, s.countRows("enterprise_employee_balance_logs", "employee_user_id = $1 AND reason = $2", employee.ID, "delete_employee"))
 
 	profile, err := s.repo.GetEnterpriseProfile(s.ctx, enterprise.ID)
 	s.Require().NoError(err)
@@ -266,28 +269,37 @@ VALUES ($1, $2, $3, 1.25, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 func (s *EnterpriseManagementRepoSuite) TestEnterpriseDisableEnableRestoresOnlyMarkedEmployees() {
 	enterprise := s.mustCreateEnterprise("enterprise-status@test.local", 100, service.StatusActive)
 	activeEmployee := s.mustCreateRepoEmployee(enterprise.ID, "employee-active@test.local", 5, 1, 10, service.StatusActive)
+	manuallyDisabledAfterCascade := s.mustCreateRepoEmployee(enterprise.ID, "employee-manual-after@test.local", 5, 1, 10, service.StatusActive)
 	disabledEmployee := s.mustCreateRepoEmployee(enterprise.ID, "employee-disabled@test.local", 5, 1, 10, service.StatusDisabled)
 
 	affected, err := s.repo.CascadeEnterpriseStatus(s.ctx, enterprise.ID, service.StatusDisabled)
 	s.Require().NoError(err)
 	s.Require().Contains(affected, enterprise.ID)
 	s.Require().Contains(affected, activeEmployee.ID)
+	s.Require().Contains(affected, manuallyDisabledAfterCascade.ID)
 	s.Require().NotContains(affected, disabledEmployee.ID)
 	s.Require().Equal(service.StatusDisabled, s.userStatus(enterprise.ID))
 	s.Require().Equal(service.StatusDisabled, s.userStatus(activeEmployee.ID))
+	s.Require().Equal(service.StatusDisabled, s.userStatus(manuallyDisabledAfterCascade.ID))
 	s.Require().Equal(service.StatusDisabled, s.userStatus(disabledEmployee.ID))
 	s.Require().True(s.employeeDisabledMarker(activeEmployee.ID))
+	s.Require().True(s.employeeDisabledMarker(manuallyDisabledAfterCascade.ID))
 	s.Require().False(s.employeeDisabledMarker(disabledEmployee.ID))
+
+	s.markEmployeeManuallyDisabledAfterEnterpriseCascade(manuallyDisabledAfterCascade.ID)
 
 	affected, err = s.repo.CascadeEnterpriseStatus(s.ctx, enterprise.ID, service.StatusActive)
 	s.Require().NoError(err)
 	s.Require().Contains(affected, enterprise.ID)
 	s.Require().Contains(affected, activeEmployee.ID)
+	s.Require().NotContains(affected, manuallyDisabledAfterCascade.ID)
 	s.Require().NotContains(affected, disabledEmployee.ID)
 	s.Require().Equal(service.StatusActive, s.userStatus(enterprise.ID))
 	s.Require().Equal(service.StatusActive, s.userStatus(activeEmployee.ID))
+	s.Require().Equal(service.StatusDisabled, s.userStatus(manuallyDisabledAfterCascade.ID))
 	s.Require().Equal(service.StatusDisabled, s.userStatus(disabledEmployee.ID))
 	s.Require().False(s.employeeDisabledMarker(activeEmployee.ID))
+	s.Require().False(s.employeeDisabledMarker(manuallyDisabledAfterCascade.ID))
 	s.Require().False(s.employeeDisabledMarker(disabledEmployee.ID))
 }
 
@@ -333,6 +345,22 @@ func (s *EnterpriseManagementRepoSuite) TestEnterpriseProfileUsageAndRecalculate
 	s.Require().NoError(err)
 	s.Require().Equal(0, reloaded.Concurrency)
 	s.Require().Equal(30, reloaded.RpmLimit)
+}
+
+func (s *EnterpriseManagementRepoSuite) TestFiniteEnterprisePoolExhaustionIsStoredAsZeroCapacity() {
+	enterprise := s.mustCreateEnterprise("enterprise-exhausted@test.local", 0, service.StatusActive)
+	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 5, 50))
+	s.mustCreateRepoEmployee(enterprise.ID, "employee-exhausted@test.local", 0, 5, 50, service.StatusActive)
+
+	s.Require().NoError(s.repo.RecalculateEnterpriseQuota(s.ctx, enterprise.ID))
+
+	reloaded, err := s.client.User.Get(s.ctx, enterprise.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(-1, reloaded.Concurrency)
+	s.Require().Equal(-1, reloaded.RpmLimit)
+	concurrency, rpm := service.EffectiveAPIUsageCapacity(userEntityToService(reloaded))
+	s.Require().Equal(0, concurrency)
+	s.Require().Equal(0, rpm)
 }
 
 func (s *EnterpriseManagementRepoSuite) TestHardDeleteEnterpriseWithEmployees() {
@@ -440,6 +468,19 @@ SELECT employee_disabled_by_enterprise FROM users WHERE id = $1`,
 		userID,
 	).Scan(&marker))
 	return marker
+}
+
+func (s *EnterpriseManagementRepoSuite) markEmployeeManuallyDisabledAfterEnterpriseCascade(userID int64) {
+	s.T().Helper()
+	_, err := s.db.ExecContext(s.ctx, `
+UPDATE users
+SET status = $2,
+    updated_at = CURRENT_TIMESTAMP + INTERVAL '1 minute'
+WHERE id = $1`,
+		userID,
+		service.StatusDisabled,
+	)
+	s.Require().NoError(err)
 }
 
 func (s *EnterpriseManagementRepoSuite) userExistsIncludingDeleted(userID int64) bool {

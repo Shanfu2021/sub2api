@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -26,6 +29,45 @@ type enterpriseManagementRepository struct {
 
 func NewEnterpriseManagementRepository(client *dbent.Client, sqlDB *sql.DB) service.EnterpriseManagementRepository {
 	return &enterpriseManagementRepository{client: client, sql: sqlDB}
+}
+
+func (r *enterpriseManagementRepository) ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
+	return r.ListDirectChildrenWithSearch(ctx, parentID, roles, params, "")
+}
+
+func (r *enterpriseManagementRepository) ListDirectChildrenWithSearch(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams, search string) ([]service.User, *pagination.PaginationResult, error) {
+	client := clientFromContext(ctx, r.client)
+	q := client.User.Query().
+		Where(dbuser.ParentUserIDEQ(parentID))
+	if len(roles) > 0 {
+		q = q.Where(dbuser.RoleIn(roles...))
+	}
+	search = strings.TrimSpace(search)
+	if search != "" {
+		q = q.Where(dbuser.Or(
+			dbuser.EmailContainsFold(search),
+			dbuser.UsernameContainsFold(search),
+		))
+	}
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	children, err := q.
+		Order(dbent.Desc(dbuser.FieldID)).
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	out := make([]service.User, 0, len(children))
+	for i := range children {
+		out = append(out, *userEntityToService(children[i]))
+	}
+	return out, paginationResultFromTotal(int64(total), params), nil
 }
 
 func (r *enterpriseManagementRepository) GetEnterpriseProfile(ctx context.Context, userID int64) (*service.EnterpriseProfile, error) {
@@ -447,6 +489,80 @@ WHERE id = $1
 	return uniqueInt64s(affected), nil
 }
 
+func (r *enterpriseManagementRepository) ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]service.AgentGroupDelegation, error) {
+	rows, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Query().
+		Where(dbagentgroupdelegation.ChildUserIDEQ(childID)).
+		WithGroup().
+		Order(dbent.Asc(dbagentgroupdelegation.FieldGroupID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.AgentGroupDelegation, 0, len(rows))
+	for i := range rows {
+		out = append(out, *agentGroupDelegationEntityToService(rows[i]))
+	}
+	return out, nil
+}
+
+func (r *enterpriseManagementRepository) GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*service.AgentGroupDelegation, error) {
+	row, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Query().
+		Where(
+			dbagentgroupdelegation.ManagerUserIDEQ(managerID),
+			dbagentgroupdelegation.ChildUserIDEQ(childID),
+			dbagentgroupdelegation.GroupIDEQ(groupID),
+			dbagentgroupdelegation.DeletedAtIsNil(),
+		).
+		WithGroup().
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return agentGroupDelegationEntityToService(row), nil
+}
+
+func (r *enterpriseManagementRepository) UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error {
+	client := clientFromContext(ctx, r.client)
+	updated, err := client.AgentGroupDelegation.Update().
+		Where(
+			dbagentgroupdelegation.ManagerUserIDEQ(managerID),
+			dbagentgroupdelegation.ChildUserIDEQ(childID),
+			dbagentgroupdelegation.GroupIDEQ(groupID),
+			dbagentgroupdelegation.DeletedAtIsNil(),
+		).
+		SetRateMultiplier(rateMultiplier).
+		SetCanDelegate(canDelegate).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated > 0 {
+		return nil
+	}
+	return client.AgentGroupDelegation.Create().
+		SetManagerUserID(managerID).
+		SetChildUserID(childID).
+		SetGroupID(groupID).
+		SetRateMultiplier(rateMultiplier).
+		SetCanDelegate(canDelegate).
+		Exec(ctx)
+}
+
+func (r *enterpriseManagementRepository) DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error {
+	_, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Delete().
+		Where(
+			dbagentgroupdelegation.ManagerUserIDEQ(managerID),
+			dbagentgroupdelegation.ChildUserIDEQ(childID),
+			dbagentgroupdelegation.GroupIDEQ(groupID),
+			dbagentgroupdelegation.DeletedAtIsNil(),
+		).
+		Exec(ctx)
+	return err
+}
+
 type enterpriseUserLock struct {
 	ID      int64
 	Role    string
@@ -529,8 +645,8 @@ func (r *enterpriseManagementRepository) recalculateEnterpriseQuota(ctx context.
 		return err
 	}
 	return r.setEnterpriseEffectiveQuota(ctx, enterpriseID,
-		repoQuotaRemaining(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency),
-		repoQuotaRemaining(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
+		enterpriseEffectiveRemainingForStorage(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency),
+		enterpriseEffectiveRemainingForStorage(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
 	)
 }
 
@@ -541,8 +657,8 @@ func (r *enterpriseManagementRepository) setEnterpriseEffectiveQuota(ctx context
 	}
 	res, err := exec.ExecContext(ctx, `
 UPDATE users
-SET concurrency = CASE WHEN $2 < 0 THEN 0 ELSE $2 END,
-    rpm_limit = CASE WHEN $3 < 0 THEN 0 ELSE $3 END,
+SET concurrency = $2,
+    rpm_limit = $3,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
   AND role = $4
@@ -761,17 +877,43 @@ SET status = $3,
 WHERE parent_user_id = $1
   AND role = $2
   AND employee_disabled_by_enterprise = TRUE
+  AND updated_at <= (
+      SELECT updated_at
+      FROM users
+      WHERE id = $1
+        AND role = $4
+        AND deleted_at IS NULL
+  )
   AND deleted_at IS NULL
 RETURNING id`,
 		enterpriseID,
 		service.RoleEmployee,
 		service.StatusActive,
+		service.RoleEnterprise,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanReturnedIDs(rows)
+	restored, err := scanReturnedIDs(rows)
+	if err != nil {
+		return nil, err
+	}
+	_, err = exec.ExecContext(ctx, `
+UPDATE users
+SET employee_disabled_by_enterprise = FALSE,
+    updated_at = CURRENT_TIMESTAMP
+WHERE parent_user_id = $1
+  AND role = $2
+  AND employee_disabled_by_enterprise = TRUE
+  AND deleted_at IS NULL`,
+		enterpriseID,
+		service.RoleEmployee,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return restored, nil
 }
 
 func validateEnterpriseAllocationTarget(target service.EmployeeAllocationUpdate) error {
@@ -796,6 +938,14 @@ func enterpriseAllocationSummary(profile *service.EnterpriseProfile, usage servi
 		UnlimitedConcurrency: profile.PoolConcurrency == 0 || usage.UnlimitedConcurrency,
 		UnlimitedRPM:         profile.PoolRPM == 0 || usage.UnlimitedRPM,
 	}
+}
+
+func enterpriseEffectiveRemainingForStorage(total int, allocated int, allocatedUnlimited bool) int {
+	remaining := repoQuotaRemaining(total, allocated, allocatedUnlimited)
+	if total > 0 && remaining == 0 {
+		return -1
+	}
+	return remaining
 }
 
 func scanReturnedIDs(rows *sql.Rows) ([]int64, error) {
