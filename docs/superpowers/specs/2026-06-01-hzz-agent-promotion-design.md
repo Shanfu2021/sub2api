@@ -161,7 +161,7 @@ Each managed account has assigned capacity:
 
 The existing user concurrency and RPM enforcement should use these assigned values for agent-managed accounts, or these fields should be kept synchronized with the existing enforcement fields if the official application already has them.
 
-Remaining capacity is calculated from direct-child allocations:
+For agents, remaining capacity is calculated from direct-child allocations:
 
 ```text
 remaining_concurrency = allocated_concurrency - sum(direct_children.allocated_concurrency)
@@ -176,7 +176,7 @@ new_child_allocation <= manager_remaining + old_child_allocation
 
 Allocation changes must be effective immediately for API usage. A manager's own usable concurrency/RPM is the remaining capacity after direct-child allocations.
 
-Admin root capacity is special. The root admin can assign initial capacity without being constrained by a parent allocation.
+Admin root capacity is special. The root admin is not a quota pool and does not distribute from the admin account's own concurrency or RPM fields. Admins can assign any non-negative concurrency/RPM values to direct children in the additive agent-management area. Summary responses should make this explicit, for example with an `unlimited_capacity` flag, and the frontend should not show admin users a remaining-capacity pool.
 
 ## Groups And Rates
 

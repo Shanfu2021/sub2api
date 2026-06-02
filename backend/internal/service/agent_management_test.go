@@ -454,6 +454,27 @@ func TestAgentManagementAdminAllocationIsUnconstrained(t *testing.T) {
 	require.Equal(t, 5000, summary.AllocatedRPM)
 }
 
+func TestAgentManagementAdminSummaryUsesUnlimitedCapacity(t *testing.T) {
+	adminID := int64(1)
+	childID := int64(10)
+	otherChildID := int64(11)
+	repo := newAgentManagementRepoStub(
+		&User{ID: adminID, Role: RoleAdmin, Concurrency: 5, RPMLimit: 50},
+		&User{ID: childID, Role: RoleUser, ParentUserID: &adminID, AllocatedConcurrency: 500, AllocatedRPM: 5000},
+		&User{ID: otherChildID, Role: RoleAgentLevel1, ParentUserID: &adminID, AllocatedConcurrency: 600, AllocatedRPM: 6000},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	summary, err := svc.GetSummary(context.Background(), adminID)
+	require.NoError(t, err)
+	require.True(t, summary.Allocation.UnlimitedCapacity)
+	require.Equal(t, 1100, summary.Allocation.AllocatedConcurrency)
+	require.Equal(t, 11000, summary.Allocation.AllocatedRPM)
+	require.GreaterOrEqual(t, summary.Allocation.RemainingConcurrency, 0)
+	require.GreaterOrEqual(t, summary.Allocation.RemainingRPM, 0)
+}
+
 func TestAgentManagementDeleteRules(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)

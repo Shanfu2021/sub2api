@@ -28,12 +28,13 @@ type AllocationUpdate struct {
 }
 
 type AllocationSummary struct {
-	TotalConcurrency     int `json:"total_concurrency"`
-	AllocatedConcurrency int `json:"allocated_concurrency"`
-	RemainingConcurrency int `json:"remaining_concurrency"`
-	TotalRPM             int `json:"total_rpm"`
-	AllocatedRPM         int `json:"allocated_rpm"`
-	RemainingRPM         int `json:"remaining_rpm"`
+	TotalConcurrency     int  `json:"total_concurrency"`
+	AllocatedConcurrency int  `json:"allocated_concurrency"`
+	RemainingConcurrency int  `json:"remaining_concurrency"`
+	TotalRPM             int  `json:"total_rpm"`
+	AllocatedRPM         int  `json:"allocated_rpm"`
+	RemainingRPM         int  `json:"remaining_rpm"`
+	UnlimitedCapacity    bool `json:"unlimited_capacity"`
 }
 
 type DirectChildrenResult struct {
@@ -127,14 +128,7 @@ func (s *AgentManagementService) GetSummary(ctx context.Context, actorID int64) 
 		return nil, err
 	}
 	return &AgentManagementSummary{
-		Allocation: AllocationSummary{
-			TotalConcurrency:     totalConcurrency,
-			AllocatedConcurrency: allocatedConcurrency,
-			RemainingConcurrency: totalConcurrency - allocatedConcurrency,
-			TotalRPM:             totalRPM,
-			AllocatedRPM:         allocatedRPM,
-			RemainingRPM:         totalRPM - allocatedRPM,
-		},
+		Allocation: buildAllocationSummary(actor, totalConcurrency, totalRPM, allocatedConcurrency, allocatedRPM),
 	}, nil
 }
 
@@ -166,14 +160,8 @@ func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID i
 
 	allocatedConcurrency += req.AllocatedConcurrency
 	allocatedRPM += req.AllocatedRPM
-	return &AllocationSummary{
-		TotalConcurrency:     totalConcurrency,
-		AllocatedConcurrency: allocatedConcurrency,
-		RemainingConcurrency: totalConcurrency - allocatedConcurrency,
-		TotalRPM:             totalRPM,
-		AllocatedRPM:         allocatedRPM,
-		RemainingRPM:         totalRPM - allocatedRPM,
-	}, nil
+	summary := buildAllocationSummary(actor, totalConcurrency, totalRPM, allocatedConcurrency, allocatedRPM)
+	return &summary, nil
 }
 
 func (s *AgentManagementService) UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, targetRole string) (*User, error) {
@@ -469,6 +457,25 @@ func managerCapacity(user *User) (concurrency int, rpm int) {
 		return user.Concurrency, user.RPMLimit
 	}
 	return user.AllocatedConcurrency, user.AllocatedRPM
+}
+
+func buildAllocationSummary(actor *User, totalConcurrency int, totalRPM int, allocatedConcurrency int, allocatedRPM int) AllocationSummary {
+	unlimitedCapacity := actor != nil && actor.Role == RoleAdmin
+	remainingConcurrency := totalConcurrency - allocatedConcurrency
+	remainingRPM := totalRPM - allocatedRPM
+	if unlimitedCapacity {
+		remainingConcurrency = 0
+		remainingRPM = 0
+	}
+	return AllocationSummary{
+		TotalConcurrency:     totalConcurrency,
+		AllocatedConcurrency: allocatedConcurrency,
+		RemainingConcurrency: remainingConcurrency,
+		TotalRPM:             totalRPM,
+		AllocatedRPM:         allocatedRPM,
+		RemainingRPM:         remainingRPM,
+		UnlimitedCapacity:    unlimitedCapacity,
+	}
 }
 
 func canUpgradeDirectUser(actorRole string, targetRole string) bool {

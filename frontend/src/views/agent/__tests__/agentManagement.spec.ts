@@ -173,6 +173,7 @@ describe('agent management pages', () => {
         total_rpm: 200,
         allocated_rpm: 30,
         remaining_rpm: 170,
+        unlimited_capacity: false,
       },
     })
     listDirectUsers.mockResolvedValue(makeChildrenResponse([makeChild()]))
@@ -185,6 +186,7 @@ describe('agent management pages', () => {
       total_rpm: 200,
       allocated_rpm: 50,
       remaining_rpm: 150,
+      unlimited_capacity: false,
     })
     upgradeChild.mockResolvedValue(makeChild({ role: 'agent_level1' }))
     deleteDirectChild.mockResolvedValue({ id: 12 })
@@ -239,6 +241,36 @@ describe('agent management pages', () => {
 
     expect(wrapper.get('[data-test="allocation-concurrency-12"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="allocation-rpm-12"]').exists()).toBe(true)
+  })
+
+  it('shows unlimited allocation status for admins instead of remaining quota badges', async () => {
+    getSummary.mockResolvedValue({
+      allocation: {
+        total_concurrency: 5,
+        allocated_concurrency: 500,
+        remaining_concurrency: 0,
+        total_rpm: 50,
+        allocated_rpm: 5000,
+        remaining_rpm: 0,
+        unlimited_capacity: true,
+      },
+    })
+
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agentManagement.direct.adminUnlimitedCapacity')
+    expect(wrapper.text()).not.toContain('agentManagement.direct.remainingConcurrency')
+    expect(wrapper.text()).not.toContain('agentManagement.direct.remainingRpm')
+  })
+
+  it('keeps remaining quota badges visible for agents', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agentManagement.direct.remainingConcurrency')
+    expect(wrapper.text()).toContain('agentManagement.direct.remainingRpm')
+    expect(wrapper.text()).not.toContain('agentManagement.direct.adminUnlimitedCapacity')
   })
 
   it.each([

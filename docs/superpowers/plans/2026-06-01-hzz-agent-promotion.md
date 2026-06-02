@@ -817,6 +817,78 @@ Expected: latest relevant workflow for `hzz` succeeds before starting the next m
 
 ---
 
+### Task 11: Admin Unlimited Allocation Summary And UI
+
+**Files:**
+- Modify: `backend/internal/service/agent_management.go`
+- Modify: `backend/internal/service/agent_management_test.go`
+- Modify: `frontend/src/types/index.ts`
+- Modify: `frontend/src/views/agent/AgentDirectChildrenView.vue`
+- Modify: `frontend/src/views/agent/__tests__/agentManagement.spec.ts`
+- Modify: `frontend/src/api/__tests__/agentManagement.spec.ts`
+- Modify: `frontend/src/i18n/locales/en.ts`
+- Modify: `frontend/src/i18n/locales/zh.ts`
+
+- [ ] **Step 1: Write failing backend and frontend tests**
+
+Add a service test proving admin summaries expose `unlimited_capacity=true`, keep child allocation totals visible, and do not return negative remaining capacity when admin child allocations exceed the admin account's own concurrency/RPM fields.
+
+Add page tests proving admins see an unlimited admin allocation state instead of remaining concurrency/RPM badges, while agents still see their remaining pool.
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run:
+
+```bash
+cd backend
+go test -tags unit ./internal/service -run TestAgentManagementAdminSummaryUsesUnlimitedCapacity -count=1
+```
+
+Expected: FAIL until the allocation summary type exposes the admin-unlimited flag.
+
+Run:
+
+```bash
+cd frontend
+pnpm vitest run src/views/agent/__tests__/agentManagement.spec.ts
+```
+
+Expected: FAIL until the direct-child page hides remaining-capacity badges for admins.
+
+- [ ] **Step 3: Implement backend summary semantics**
+
+Add `unlimited_capacity` to `AllocationSummary`. Set it to `true` for admins in `GetSummary` and `UpdateAllocation`. Keep admin allocation writes unconstrained. For admins, return non-negative remaining values and treat numeric total fields as compatibility data, not limits.
+
+- [ ] **Step 4: Implement frontend display semantics**
+
+Extend `AgentAllocationSummary` with `unlimited_capacity`. In `AgentDirectChildrenView.vue`, show an admin unlimited-allocation badge when the current user is admin or the summary has `unlimited_capacity=true`; otherwise keep the existing remaining concurrency/RPM badges.
+
+- [ ] **Step 5: Run focused tests and push**
+
+Run:
+
+```bash
+cd backend
+go test -tags unit ./internal/service -run 'TestAgentManagement(AdminSummaryUsesUnlimitedCapacity|AdminAllocationIsUnconstrained|AllocationCannotExceedRemaining)' -count=1
+```
+
+Run:
+
+```bash
+cd frontend
+pnpm vitest run src/views/agent/__tests__/agentManagement.spec.ts src/api/__tests__/agentManagement.spec.ts
+```
+
+Commit and push:
+
+```bash
+git add backend/internal/service/agent_management.go backend/internal/service/agent_management_test.go frontend/src/types/index.ts frontend/src/views/agent/AgentDirectChildrenView.vue frontend/src/views/agent/__tests__/agentManagement.spec.ts frontend/src/api/__tests__/agentManagement.spec.ts frontend/src/i18n/locales/en.ts frontend/src/i18n/locales/zh.ts docs/superpowers/specs/2026-06-01-hzz-agent-promotion-design.md docs/superpowers/plans/2026-06-01-hzz-agent-promotion.md
+git commit -m "fix: distinguish admin allocation capacity"
+git push origin hzz
+```
+
+---
+
 ## Self-Review Notes
 
 - Spec coverage: hierarchy, additive admin/agent surface, direct visibility, capabilities, upgrade rules, delete/detach rules, concurrency/RPM allocation, group/rate delegation, invitation ownership, backend/frontend shape, and tests are each covered by at least one task.

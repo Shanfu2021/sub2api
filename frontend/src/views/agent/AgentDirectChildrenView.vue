@@ -5,13 +5,19 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex min-w-0 flex-col gap-1">
             <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ title }}</h1>
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('agentManagement.direct.subtitle') }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ directSubtitle }}</p>
           </div>
           <div class="flex items-center gap-2">
-            <span class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+            <span
+              v-if="isAdminUnlimitedCapacity"
+              class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200"
+            >
+              {{ t('agentManagement.direct.adminUnlimitedCapacity') }}
+            </span>
+            <span v-else class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
               {{ t('agentManagement.direct.remainingConcurrency') }}: {{ allocation?.remaining_concurrency ?? '-' }}
             </span>
-            <span class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+            <span v-if="!isAdminUnlimitedCapacity" class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
               {{ t('agentManagement.direct.remainingRpm') }}: {{ allocation?.remaining_rpm ?? '-' }}
             </span>
             <button class="btn btn-secondary px-3" :disabled="loading" @click="loadData">
@@ -169,6 +175,17 @@ const upgradeTargets = computed<AgentUpgradeTargetRole[]>(() => {
   if (role === 'agent_level1') return ['agent_level2', 'enterprise']
   if (role === 'agent_level2') return ['enterprise']
   return []
+})
+
+const isAdminUnlimitedCapacity = computed(() => {
+  return authStore.user?.role === 'admin' || allocation.value?.unlimited_capacity === true
+})
+
+const directSubtitle = computed(() => {
+  if (isAdminUnlimitedCapacity.value) {
+    return t('agentManagement.direct.adminSubtitle')
+  }
+  return t('agentManagement.direct.subtitle')
 })
 
 function extractPagination(result: AgentDirectChildrenResponse) {

@@ -291,6 +291,7 @@ export interface AgentAllocationSummary {
   total_rpm: number
   allocated_rpm: number
   remaining_rpm: number
+  unlimited_capacity: boolean
 }
 
 export interface AgentManagementSummary {

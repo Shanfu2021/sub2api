@@ -43,6 +43,7 @@ describe('agent management api', () => {
       total_rpm: 1000,
       allocated_rpm: 60,
       remaining_rpm: 940,
+      unlimited_capacity: false,
     }
     const payload = { allocated_concurrency: 5, allocated_rpm: 60 }
     put.mockResolvedValue({ data: response })

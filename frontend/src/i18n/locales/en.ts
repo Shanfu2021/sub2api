@@ -618,12 +618,14 @@ export default {
   agentManagement: {
     direct: {
       subtitle: 'Manage direct relationships and distribute your available concurrency and RPM.',
+      adminSubtitle: 'Manage direct relationships and set child concurrency/RPM. Admin allocation does not consume the admin account quota.',
       role: 'Role',
       allocation: 'Allocation',
       allocatedConcurrency: 'Concurrency',
       allocatedRpm: 'RPM',
       remainingConcurrency: 'Remaining concurrency',
       remainingRpm: 'Remaining RPM',
+      adminUnlimitedCapacity: 'Admin allocation is not quota-limited',
       saveAllocation: 'Save allocation',
       allocationSaved: 'Allocation updated',
       allocationFailed: 'Failed to update allocation',

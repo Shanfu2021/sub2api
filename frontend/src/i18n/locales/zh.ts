@@ -617,12 +617,14 @@ export default {
   agentManagement: {
     direct: {
       subtitle: '管理直属关系，并分配你可用的并发和 RPM。',
+      adminSubtitle: '管理直属关系，并为下级设置并发和 RPM；管理员不消耗自身额度。',
       role: '角色',
       allocation: '额度分配',
       allocatedConcurrency: '并发',
       allocatedRpm: 'RPM',
       remainingConcurrency: '剩余并发',
       remainingRpm: '剩余 RPM',
+      adminUnlimitedCapacity: '管理员分配不受额度限制',
       saveAllocation: '保存分配',
       allocationSaved: '分配已更新',
       allocationFailed: '保存分配失败',
