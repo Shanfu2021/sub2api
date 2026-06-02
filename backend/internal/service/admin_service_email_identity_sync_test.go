@@ -69,6 +69,8 @@ func (s *emailSyncRepoStub) Update(_ context.Context, user *User) error {
 
 func (s *emailSyncRepoStub) Delete(context.Context, int64) error { return nil }
 
+func (s *emailSyncRepoStub) HardDelete(context.Context, int64) error { return nil }
+
 func (s *emailSyncRepoStub) GetUserAvatar(context.Context, int64) (*UserAvatar, error) {
 	return nil, fmt.Errorf("unexpected GetUserAvatar call")
 }

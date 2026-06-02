@@ -13,18 +13,20 @@ import (
 )
 
 type userRepoStub struct {
-	user          *User
-	getErr        error
-	createErr     error
-	deleteErr     error
-	exists        bool
-	existsErr     error
-	nextID        int64
-	created       []*User
-	updated       []*User
-	deletedIDs    []int64
-	usersByEmail  map[string]*User
-	getByEmailErr error
+	user           *User
+	getErr         error
+	createErr      error
+	deleteErr      error
+	exists         bool
+	existsErr      error
+	nextID         int64
+	created        []*User
+	updated        []*User
+	deletedIDs     []int64
+	hardDeletedIDs []int64
+	deleteContexts []context.Context
+	usersByEmail   map[string]*User
+	getByEmailErr  error
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -104,6 +106,13 @@ func (s *userRepoStub) Update(ctx context.Context, user *User) error {
 
 func (s *userRepoStub) Delete(ctx context.Context, id int64) error {
 	s.deletedIDs = append(s.deletedIDs, id)
+	s.deleteContexts = append(s.deleteContexts, ctx)
+	return s.deleteErr
+}
+
+func (s *userRepoStub) HardDelete(ctx context.Context, id int64) error {
+	s.hardDeletedIDs = append(s.hardDeletedIDs, id)
+	s.deleteContexts = append(s.deleteContexts, ctx)
 	return s.deleteErr
 }
 
@@ -195,6 +204,25 @@ func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
 
 func (s *userRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
 	return s.GetByID(ctx, id)
+}
+
+type agentUserDeletionCleanupRepoStub struct {
+	calls                []int64
+	affectedUserIDs      []int64
+	recalculatedAgentIDs []int64
+	err                  error
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error) {
+	if user != nil {
+		s.calls = append(s.calls, user.ID)
+	}
+	return s.affectedUserIDs, s.err
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RecalculateAgentQuota(_ context.Context, agentID int64) error {
+	s.recalculatedAgentIDs = append(s.recalculatedAgentIDs, agentID)
+	return s.err
 }
 
 type groupRepoStub struct {
@@ -526,13 +554,61 @@ func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, ex
 	return calls
 }
 
-func TestAdminService_DeleteUser_Success(t *testing.T) {
+func TestAdminService_DeleteUser_RegularUserHardDeletes(t *testing.T) {
 	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
 	svc := &adminServiceImpl{userRepo: repo}
 
 	err := svc.DeleteUser(context.Background(), 7)
 	require.NoError(t, err)
-	require.Equal(t, []int64{7}, repo.deletedIDs)
+	require.Empty(t, repo.deletedIDs)
+	require.Equal(t, []int64{7}, repo.hardDeletedIDs)
+}
+
+func TestAdminService_DeleteUser_RegularChildRecalculatesParentAgentQuota(t *testing.T) {
+	parentID := int64(3)
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser, ParentUserID: &parentID}}
+	cleanup := &agentUserDeletionCleanupRepoStub{}
+	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, repo.hardDeletedIDs)
+	require.Equal(t, []int64{3}, cleanup.recalculatedAgentIDs)
+}
+
+func TestAdminService_DeleteUser_EnterpriseUserHardDeletes(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 8, Role: RoleEnterprise}}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	err := svc.DeleteUser(context.Background(), 8)
+	require.NoError(t, err)
+	require.Empty(t, repo.deletedIDs)
+	require.Equal(t, []int64{8}, repo.hardDeletedIDs)
+}
+
+func TestAdminService_DeleteUser_AgentRehomesWithoutDeletingAccount(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleAgentLevel1}}
+	cleanup := &agentUserDeletionCleanupRepoStub{}
+	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, cleanup.calls)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
+}
+
+func TestAdminService_DeleteUser_AgentRehomeErrorSkipsDelete(t *testing.T) {
+	cleanupErr := errors.New("agent cleanup failed")
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleAgentLevel1}}
+	cleanup := &agentUserDeletionCleanupRepoStub{err: cleanupErr}
+	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.ErrorIs(t, err, cleanupErr)
+	require.Equal(t, []int64{7}, cleanup.calls)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
 }
 
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {
@@ -564,7 +640,8 @@ func TestAdminService_DeleteUser_DeleteError(t *testing.T) {
 
 	err := svc.DeleteUser(context.Background(), 9)
 	require.ErrorIs(t, err, deleteErr)
-	require.Equal(t, []int64{9}, repo.deletedIDs)
+	require.Empty(t, repo.deletedIDs)
+	require.Equal(t, []int64{9}, repo.hardDeletedIDs)
 }
 
 func TestAdminService_DeleteGroup_Success_WithCacheInvalidation(t *testing.T) {

@@ -777,6 +777,8 @@ func (s *emailBindUserRepoStub) Update(_ context.Context, user *service.User) er
 
 func (s *emailBindUserRepoStub) Delete(context.Context, int64) error { return nil }
 
+func (s *emailBindUserRepoStub) HardDelete(context.Context, int64) error { return nil }
+
 func (s *emailBindUserRepoStub) GetUserAvatar(context.Context, int64) (*service.UserAvatar, error) {
 	return nil, nil
 }

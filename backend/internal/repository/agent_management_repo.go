@@ -331,6 +331,182 @@ func (r *agentManagementRepository) DetachLevel1AgentAndMoveChildren(ctx context
 	return nil
 }
 
+func (r *agentManagementRepository) RehomeAgentForAdminUserDeletion(ctx context.Context, user *service.User) ([]int64, error) {
+	if user == nil || (user.Role != service.RoleAgentLevel1 && user.Role != service.RoleAgentLevel2) {
+		return nil, nil
+	}
+	rootAdmin, err := r.GetRootAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	client := clientFromContext(ctx, r.client)
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+
+	affected := map[int64]struct{}{user.ID: {}}
+	if user.ParentUserID != nil {
+		affected[*user.ParentUserID] = struct{}{}
+	}
+
+	childRows, err := client.User.Query().
+		Where(dbuser.ParentUserIDEQ(user.ID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, child := range childRows {
+		affected[child.ID] = struct{}{}
+	}
+
+	if user.Role == service.RoleAgentLevel1 {
+		if _, err := client.User.Update().
+			Where(
+				dbuser.ParentUserIDEQ(user.ID),
+				dbuser.RoleIn(service.RoleUser, service.RoleEnterprise),
+			).
+			SetParentUserID(rootAdmin.ID).
+			Save(ctx); err != nil {
+			return nil, err
+		}
+		if _, err := client.User.Update().
+			Where(
+				dbuser.ParentUserIDEQ(user.ID),
+				dbuser.RoleEQ(service.RoleAgentLevel2),
+			).
+			SetRole(service.RoleAgentLevel1).
+			SetParentUserID(rootAdmin.ID).
+			Save(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := r.cleanupAgentDelegatedGroups(ctx, exec, user.ID); err != nil {
+		return nil, err
+	}
+	if user.Role == service.RoleAgentLevel1 {
+		if _, err := exec.ExecContext(ctx, `DELETE FROM agent_profiles WHERE user_id = $1`, user.ID); err != nil {
+			return nil, err
+		}
+	}
+
+	targetRole := service.RoleUser
+	if user.Role == service.RoleAgentLevel2 {
+		targetRole = service.RoleAgentLevel1
+	}
+	update := client.User.UpdateOneID(user.ID).
+		SetRole(targetRole).
+		SetParentUserID(rootAdmin.ID)
+	if targetRole == service.RoleUser {
+		update = update.
+			SetAllocatedConcurrency(user.Concurrency).
+			SetAllocatedRpm(user.RPMLimit)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+
+	if user.ParentUserID != nil {
+		if parent, err := client.User.Get(ctx, *user.ParentUserID); err == nil && parent.Role != service.RoleAdmin && isAgentRole(parent.Role) {
+			totalConcurrency := parent.Concurrency
+			totalRPM := parent.RpmLimit
+			if profile, err := r.GetAgentProfile(ctx, parent.ID); err == nil && profile != nil {
+				totalConcurrency = profile.PoolConcurrency
+				totalRPM = profile.PoolRPM
+			}
+			usage, err := r.GetDirectChildQuotaUsage(ctx, parent.ID, nil)
+			if err != nil {
+				return nil, err
+			}
+			if err := r.SetEffectiveQuota(ctx, parent.ID, repoQuotaRemaining(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency), repoQuotaRemaining(totalRPM, usage.RPM, usage.UnlimitedRPM)); err != nil {
+				return nil, err
+			}
+		} else if err != nil && !dbent.IsNotFound(err) {
+			return nil, err
+		}
+	}
+
+	return int64Keys(affected), nil
+}
+
+func (r *agentManagementRepository) cleanupAgentDelegatedGroups(ctx context.Context, exec sqlQueryExecutor, agentID int64) error {
+	if _, err := exec.ExecContext(ctx, `
+WITH RECURSIVE lost(user_id, group_id) AS (
+    SELECT child_user_id, group_id
+    FROM agent_group_delegations
+    WHERE manager_user_id = $1 AND deleted_at IS NULL
+  UNION
+    SELECT child_user_id, group_id
+    FROM agent_group_delegations
+    WHERE child_user_id = $1 AND deleted_at IS NULL
+  UNION
+    SELECT agd.child_user_id, agd.group_id
+    FROM agent_group_delegations agd
+    JOIN lost l ON l.user_id = agd.manager_user_id AND l.group_id = agd.group_id
+    WHERE agd.deleted_at IS NULL
+)
+DELETE FROM user_allowed_groups uag
+USING lost
+WHERE uag.user_id = lost.user_id
+  AND uag.group_id = lost.group_id`, agentID); err != nil {
+		return err
+	}
+	_, err := exec.ExecContext(ctx, `
+WITH RECURSIVE lost(user_id, group_id) AS (
+    SELECT child_user_id, group_id
+    FROM agent_group_delegations
+    WHERE manager_user_id = $1 AND deleted_at IS NULL
+  UNION
+    SELECT child_user_id, group_id
+    FROM agent_group_delegations
+    WHERE child_user_id = $1 AND deleted_at IS NULL
+  UNION
+    SELECT agd.child_user_id, agd.group_id
+    FROM agent_group_delegations agd
+    JOIN lost l ON l.user_id = agd.manager_user_id AND l.group_id = agd.group_id
+    WHERE agd.deleted_at IS NULL
+)
+DELETE FROM agent_group_delegations agd
+USING lost
+WHERE agd.deleted_at IS NULL
+  AND (
+    agd.manager_user_id = $1
+    OR agd.child_user_id = $1
+    OR (agd.manager_user_id = lost.user_id AND agd.group_id = lost.group_id)
+    OR (agd.child_user_id = lost.user_id AND agd.group_id = lost.group_id)
+  )`, agentID)
+	return err
+}
+
+func (r *agentManagementRepository) RecalculateAgentQuota(ctx context.Context, agentID int64) error {
+	client := clientFromContext(ctx, r.client)
+	agent, err := client.User.Get(ctx, agentID)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if agent.Role == service.RoleAdmin || !isAgentRole(agent.Role) {
+		return nil
+	}
+	totalConcurrency := agent.Concurrency
+	totalRPM := agent.RpmLimit
+	if profile, err := r.GetAgentProfile(ctx, agent.ID); err == nil && profile != nil {
+		totalConcurrency = profile.PoolConcurrency
+		totalRPM = profile.PoolRPM
+	} else if err != nil {
+		return err
+	}
+	usage, err := r.GetDirectChildQuotaUsage(ctx, agent.ID, nil)
+	if err != nil {
+		return err
+	}
+	return r.SetEffectiveQuota(ctx, agent.ID, repoQuotaRemaining(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency), repoQuotaRemaining(totalRPM, usage.RPM, usage.UnlimitedRPM))
+}
+
 func (r *agentManagementRepository) ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]service.AgentGroupDelegation, error) {
 	rows, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Query().
 		Where(dbagentgroupdelegation.ChildUserIDEQ(childID)).
@@ -419,6 +595,32 @@ func agentGroupDelegationEntityToService(m *dbent.AgentGroupDelegation) *service
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)
+	}
+	return out
+}
+
+func isAgentRole(role string) bool {
+	return role == service.RoleAgentLevel1 || role == service.RoleAgentLevel2
+}
+
+func repoQuotaRemaining(total int, allocated int, allocatedUnlimited bool) int {
+	if total == 0 {
+		return 0
+	}
+	if allocatedUnlimited {
+		return 0
+	}
+	remaining := total - allocated
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func int64Keys(in map[int64]struct{}) []int64 {
+	out := make([]int64, 0, len(in))
+	for key := range in {
+		out = append(out, key)
 	}
 	return out
 }

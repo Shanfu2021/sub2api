@@ -375,6 +375,14 @@ func normalizeEmailAuthIdentitySubject(email string) string {
 }
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
+	return r.deleteUser(ctx, id, false)
+}
+
+func (r *userRepository) HardDelete(ctx context.Context, id int64) error {
+	return r.deleteUser(ctx, id, true)
+}
+
+func (r *userRepository) deleteUser(ctx context.Context, id int64, hard bool) error {
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
@@ -417,7 +425,11 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 		}
 	}
 
-	affected, err := txClient.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	deleteCtx := ctx
+	if hard {
+		deleteCtx = mixins.SkipSoftDelete(ctx)
+	}
+	affected, err := txClient.User.Delete().Where(dbuser.IDEQ(id)).Exec(deleteCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}

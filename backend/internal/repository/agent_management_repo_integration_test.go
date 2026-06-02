@@ -10,6 +10,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -278,4 +279,98 @@ func (s *AgentManagementRepoSuite) TestGroupDelegationRoundTripAndSoftDelete() {
 	list, err = s.repo.ListGroupDelegationsForChild(s.ctx, level1.ID)
 	s.Require().NoError(err)
 	s.Require().Empty(list)
+}
+
+func (s *AgentManagementRepoSuite) TestRehomeLevel1AgentForAdminUserDeletionKeepsAccountMovesChildrenAndClearsAgentData() {
+	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
+	level1 := s.mustCreateAgentUser("level1-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
+	directUser := s.mustCreateAgentUser("direct-user-delete@test.com", service.RoleUser, &level1.ID, 10, 100)
+	directLevel2 := s.mustCreateAgentUser("direct-level2-delete@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
+	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level1", true, 0.3)
+
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID, 1.8, true))
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(directUser.ID).
+		SetGroupID(exclusiveGroup.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	affected, err := s.repo.RehomeAgentForAdminUserDeletion(s.ctx, level1)
+	s.Require().NoError(err)
+	s.Require().Contains(affected, level1.ID)
+	s.Require().Contains(affected, directUser.ID)
+	s.Require().Contains(affected, directLevel2.ID)
+
+	reloadedLevel1, err := s.client.User.Get(s.ctx, level1.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.RoleUser, reloadedLevel1.Role)
+	s.Require().NotNil(reloadedLevel1.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedLevel1.ParentUserID)
+
+	reloadedUser, err := s.client.User.Get(s.ctx, directUser.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(reloadedUser.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedUser.ParentUserID)
+
+	reloadedLevel2, err := s.client.User.Get(s.ctx, directLevel2.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.RoleAgentLevel1, reloadedLevel2.Role)
+	s.Require().NotNil(reloadedLevel2.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedLevel2.ParentUserID)
+
+	profile, err := s.repo.GetAgentProfile(s.ctx, level1.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(profile)
+	delegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(delegation)
+	allowedCount, err := s.client.UserAllowedGroup.Query().
+		Where(userallowedgroup.UserIDEQ(directUser.ID), userallowedgroup.GroupIDEQ(exclusiveGroup.ID)).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(allowedCount)
+}
+
+func (s *AgentManagementRepoSuite) TestRehomeLevel2AgentForAdminUserDeletionPromotesToLevel1AndPreservesProfile() {
+	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
+	level1 := s.mustCreateAgentUser("level1-parent-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
+	level2 := s.mustCreateAgentUser("level2-delete@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
+	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level2", true, 0.3)
+
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level2.ID, 30, 300))
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID, 1.8, false))
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(level2.ID).
+		SetGroupID(exclusiveGroup.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	affected, err := s.repo.RehomeAgentForAdminUserDeletion(s.ctx, level2)
+	s.Require().NoError(err)
+	s.Require().Contains(affected, level1.ID)
+	s.Require().Contains(affected, level2.ID)
+
+	reloadedLevel2, err := s.client.User.Get(s.ctx, level2.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.RoleAgentLevel1, reloadedLevel2.Role)
+	s.Require().NotNil(reloadedLevel2.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedLevel2.ParentUserID)
+	s.Require().Equal(30, reloadedLevel2.AllocatedConcurrency)
+	s.Require().Equal(300, reloadedLevel2.AllocatedRpm)
+
+	profile, err := s.repo.GetAgentProfile(s.ctx, level2.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(profile)
+	s.Require().Equal(30, profile.PoolConcurrency)
+	s.Require().Equal(300, profile.PoolRPM)
+
+	delegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(delegation)
+	allowedCount, err := s.client.UserAllowedGroup.Query().
+		Where(userallowedgroup.UserIDEQ(level2.ID), userallowedgroup.GroupIDEQ(exclusiveGroup.ID)).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(allowedCount)
 }

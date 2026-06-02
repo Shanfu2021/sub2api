@@ -362,6 +362,39 @@ func (r *agentManagementRepoStub) DeleteGroupDelegation(_ context.Context, manag
 	return nil
 }
 
+func (r *agentManagementRepoStub) RehomeAgentForAdminUserDeletion(_ context.Context, user *User) ([]int64, error) {
+	if user == nil {
+		return nil, nil
+	}
+	root, err := r.GetRootAdmin(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	affected := []int64{user.ID}
+	if user.ParentUserID != nil {
+		affected = append(affected, *user.ParentUserID)
+	}
+	if user.Role == RoleAgentLevel1 {
+		if err := r.DetachLevel1AgentAndMoveChildren(context.Background(), user.ID, root.ID); err != nil {
+			return nil, err
+		}
+		for _, child := range r.users {
+			if child.ParentUserID != nil && *child.ParentUserID == root.ID {
+				affected = append(affected, child.ID)
+			}
+		}
+	} else if user.Role == RoleAgentLevel2 {
+		if err := r.SetRoleAndParent(context.Background(), user.ID, RoleAgentLevel1, &root.ID); err != nil {
+			return nil, err
+		}
+	}
+	return affected, nil
+}
+
+func (r *agentManagementRepoStub) RecalculateAgentQuota(context.Context, int64) error {
+	return nil
+}
+
 type agentManagementUserRepoStub struct {
 	*mockUserRepo
 	users map[int64]*User

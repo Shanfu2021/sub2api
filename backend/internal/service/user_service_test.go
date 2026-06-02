@@ -113,7 +113,8 @@ func (m *mockUserRepo) Update(ctx context.Context, user *User) error {
 	}
 	return nil
 }
-func (m *mockUserRepo) Delete(context.Context, int64) error { return nil }
+func (m *mockUserRepo) Delete(context.Context, int64) error     { return nil }
+func (m *mockUserRepo) HardDelete(context.Context, int64) error { return nil }
 func (m *mockUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*UserAvatar, error) {
 	if m.getAvatarFn != nil {
 		return m.getAvatarFn(ctx, userID)

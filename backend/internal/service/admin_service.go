@@ -526,24 +526,25 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	apiKeyRepo           APIKeyRepository
-	redeemCodeRepo       RedeemCodeRepository
-	userGroupRateRepo    UserGroupRateRepository
-	userRPMCache         UserRPMCache
-	billingCacheService  *BillingCacheService
-	proxyProber          ProxyExitInfoProber
-	proxyLatencyCache    ProxyLatencyCache
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	entClient            *dbent.Client // 用于开启数据库事务
-	settingService       *SettingService
-	defaultSubAssigner   DefaultSubscriptionAssigner
-	userSubRepo          UserSubscriptionRepository
-	privacyClientFactory PrivacyClientFactory
-	runtimeBlocker       AccountRuntimeBlocker
+	userRepo                 UserRepository
+	groupRepo                GroupRepository
+	accountRepo              AccountRepository
+	proxyRepo                ProxyRepository
+	apiKeyRepo               APIKeyRepository
+	redeemCodeRepo           RedeemCodeRepository
+	userGroupRateRepo        UserGroupRateRepository
+	agentDeletionCleanupRepo AgentUserDeletionCleanupRepository
+	userRPMCache             UserRPMCache
+	billingCacheService      *BillingCacheService
+	proxyProber              ProxyExitInfoProber
+	proxyLatencyCache        ProxyLatencyCache
+	authCacheInvalidator     APIKeyAuthCacheInvalidator
+	entClient                *dbent.Client // 用于开启数据库事务
+	settingService           *SettingService
+	defaultSubAssigner       DefaultSubscriptionAssigner
+	userSubRepo              UserSubscriptionRepository
+	privacyClientFactory     PrivacyClientFactory
+	runtimeBlocker           AccountRuntimeBlocker
 }
 
 type userGroupRateBatchReader interface {
@@ -559,6 +560,7 @@ func NewAdminService(
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
 	userGroupRateRepo UserGroupRateRepository,
+	agentDeletionCleanupRepo AgentUserDeletionCleanupRepository,
 	userRPMCache UserRPMCache,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -572,24 +574,25 @@ func NewAdminService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		accountRepo:          accountRepo,
-		proxyRepo:            proxyRepo,
-		apiKeyRepo:           apiKeyRepo,
-		redeemCodeRepo:       redeemCodeRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		userRPMCache:         userRPMCache,
-		billingCacheService:  billingCacheService,
-		proxyProber:          proxyProber,
-		proxyLatencyCache:    proxyLatencyCache,
-		authCacheInvalidator: authCacheInvalidator,
-		entClient:            entClient,
-		settingService:       settingService,
-		defaultSubAssigner:   defaultSubAssigner,
-		userSubRepo:          userSubRepo,
-		privacyClientFactory: privacyClientFactory,
-		runtimeBlocker:       runtimeBlocker,
+		userRepo:                 userRepo,
+		groupRepo:                groupRepo,
+		accountRepo:              accountRepo,
+		proxyRepo:                proxyRepo,
+		apiKeyRepo:               apiKeyRepo,
+		redeemCodeRepo:           redeemCodeRepo,
+		userGroupRateRepo:        userGroupRateRepo,
+		agentDeletionCleanupRepo: agentDeletionCleanupRepo,
+		userRPMCache:             userRPMCache,
+		billingCacheService:      billingCacheService,
+		proxyProber:              proxyProber,
+		proxyLatencyCache:        proxyLatencyCache,
+		authCacheInvalidator:     authCacheInvalidator,
+		entClient:                entClient,
+		settingService:           settingService,
+		defaultSubAssigner:       defaultSubAssigner,
+		userSubRepo:              userSubRepo,
+		privacyClientFactory:     privacyClientFactory,
+		runtimeBlocker:           runtimeBlocker,
 	}
 }
 
@@ -840,14 +843,69 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
-	if err := s.userRepo.Delete(ctx, id); err != nil {
+
+	if user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2 {
+		affectedUserIDs, err := s.rehomeDeletedAgentFromAdminUsers(ctx, user)
+		if err != nil {
+			return err
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
+	}
+
+	parentID := user.ParentUserID
+	if err := s.userRepo.HardDelete(ctx, id); err != nil {
 		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", id, err)
 		return err
 	}
-	if s.authCacheInvalidator != nil {
-		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
+	var affectedUserIDs []int64
+	if parentID != nil && s.agentDeletionCleanupRepo != nil {
+		if err := s.agentDeletionCleanupRepo.RecalculateAgentQuota(ctx, *parentID); err != nil {
+			return err
+		}
+		affectedUserIDs = append(affectedUserIDs, *parentID)
 	}
+	s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
 	return nil
+}
+
+func (s *adminServiceImpl) rehomeDeletedAgentFromAdminUsers(ctx context.Context, user *User) ([]int64, error) {
+	if s.agentDeletionCleanupRepo == nil {
+		return nil, ErrAgentManagementNotImplemented
+	}
+	opCtx := ctx
+	var tx *dbent.Tx
+	var err error
+	if s.entClient != nil {
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin agent rehome transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx = dbent.NewTxContext(ctx, tx)
+	}
+	affectedUserIDs, err := s.agentDeletionCleanupRepo.RehomeAgentForAdminUserDeletion(opCtx, user)
+	if err != nil {
+		return nil, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit agent rehome transaction: %w", err)
+		}
+	}
+	return affectedUserIDs, nil
+}
+
+func (s *adminServiceImpl) invalidateDeletedUserAuthCache(ctx context.Context, userID int64, affectedUserIDs []int64) {
+	if s.authCacheInvalidator == nil {
+		return
+	}
+	s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	for _, uid := range affectedUserIDs {
+		if uid != userID {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, uid)
+		}
+	}
 }
 
 func (s *adminServiceImpl) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {

@@ -162,6 +162,13 @@ type AgentManagementRepository interface {
 	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
 	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
+	RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
+	RecalculateAgentQuota(ctx context.Context, agentID int64) error
+}
+
+type AgentUserDeletionCleanupRepository interface {
+	RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
+	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
 
 type AgentManagementService struct {
