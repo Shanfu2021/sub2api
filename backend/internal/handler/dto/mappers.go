@@ -33,7 +33,7 @@ func UserFromServiceShallow(u *service.User) *User {
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
 		BalanceNotifyExtraEmails:   NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
 		TotalRecharged:             u.TotalRecharged,
-		Enterprise:                 EnterpriseContextFromService(u.Enterprise),
+		Enterprise:                 EnterpriseContextFromServiceForCurrentUser(u.Enterprise),
 		RPMLimit:                   u.RPMLimit,
 	}
 }
@@ -70,6 +70,28 @@ func EnterpriseContextFromService(in *service.EnterpriseContext) *EnterpriseCont
 	}
 }
 
+func EnterpriseContextFromServiceForCurrentUser(in *service.EnterpriseContext) any {
+	if in == nil {
+		return nil
+	}
+	if in.IsManager() {
+		return EnterpriseContextFromService(in)
+	}
+	return &EnterprisePublicContext{
+		TenantID:            in.TenantID,
+		TenantName:          in.TenantName,
+		TenantCode:          in.TenantCode,
+		TenantStatus:        in.TenantStatus,
+		PortalHost:          in.PortalHost,
+		MemberRole:          in.MemberRole,
+		MemberNote:          in.MemberNote,
+		JoinedVia:           in.JoinedVia,
+		JoinedSource:        in.JoinedSource,
+		SelfRechargeBlocked: in.SelfRechargeBlocked,
+		SelfRedeemBlocked:   in.SelfRedeemBlocked,
+	}
+}
+
 func UserFromService(u *service.User) *User {
 	if u == nil {
 		return nil
@@ -102,6 +124,7 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	if base == nil {
 		return nil
 	}
+	base.Enterprise = EnterpriseContextFromService(u.Enterprise)
 	return &AdminUser{
 		User:       *base,
 		Notes:      u.Notes,

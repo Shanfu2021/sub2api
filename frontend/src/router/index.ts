@@ -862,13 +862,19 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  if (to.path === '/enterprise' && !authStore.isAdmin && !!authStore.user?.enterprise && !authStore.isEnterpriseManager) {
+    next('/dashboard')
+    return
+  }
+
   if ((appStore.enterprisePortalEnabled || !!authStore.user?.enterprise) && !authStore.isAdmin) {
+    const enterpriseRedirectPath = authStore.isEnterpriseManager ? '/enterprise' : (authStore.user?.enterprise ? '/dashboard' : '/subscriptions')
     const enterpriseAllowedPrefixes = [
       '/dashboard',
       '/keys',
       '/usage',
       '/available-channels',
-      '/enterprise',
+      ...(authStore.isEnterpriseManager || !authStore.user?.enterprise ? ['/enterprise'] : []),
       '/subscriptions',
       '/profile',
       '/monitor',
@@ -877,7 +883,7 @@ router.beforeEach(async (to, _from, next) => {
       (path) => to.path === path || to.path.startsWith(`${path}/`)
     )
     if (!isAllowedEnterpriseRoute) {
-      next(authStore.user?.enterprise ? '/enterprise' : '/subscriptions')
+      next(enterpriseRedirectPath)
       return
     }
   }

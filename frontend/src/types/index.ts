@@ -63,7 +63,7 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
-export interface EnterpriseContext {
+export interface EnterprisePublicContext {
   tenant_id: number
   tenant_name: string
   tenant_code: string
@@ -73,6 +73,11 @@ export interface EnterpriseContext {
   member_note?: string | null
   joined_via?: string | null
   joined_source?: string | null
+  self_recharge_blocked: boolean
+  self_redeem_blocked: boolean
+}
+
+export interface EnterpriseContext extends EnterprisePublicContext {
   pricing_factor: number
   pricing_scope: 'all' | 'balance' | 'subscription' | string
   pricing_floor_factor: number
@@ -86,8 +91,6 @@ export interface EnterpriseContext {
   allowed_group_ids?: number[]
   group_rates?: Record<number, number>
   member_group_rates?: Record<number, number>
-  self_recharge_blocked: boolean
-  self_redeem_blocked: boolean
 }
 
 export interface EnterpriseGroupSummary {
@@ -134,7 +137,7 @@ export interface User {
   pricing_discount_label?: string | null
   pricing_discount_source?: string | null
   pricing_discount_scope?: 'all' | 'balance' | 'subscription' | null
-  enterprise?: EnterpriseContext | null
+  enterprise?: EnterpriseContext | EnterprisePublicContext | null
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string

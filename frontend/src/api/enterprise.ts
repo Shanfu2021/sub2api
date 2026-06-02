@@ -5,13 +5,14 @@ import type {
   EnterpriseInviteCode,
   EnterpriseLedgerEntry,
   EnterpriseMembership,
+  EnterprisePublicContext,
   EnterpriseTenant,
   PaginatedResponse,
   User,
 } from '@/types'
 
 export interface EnterpriseMeResponse {
-  enterprise: EnterpriseContext | null
+  enterprise: EnterpriseContext | EnterprisePublicContext | null
   tenant?: EnterpriseTenant | null
 }
 
@@ -20,8 +21,8 @@ export async function getMe(): Promise<EnterpriseMeResponse> {
   return data
 }
 
-export async function bindInviteCode(code: string): Promise<EnterpriseMembership> {
-  const { data } = await apiClient.post<EnterpriseMembership>('/enterprise/bind-invite', { code })
+export async function bindInviteCode(code: string): Promise<{ enterprise: EnterpriseContext | EnterprisePublicContext | null }> {
+  const { data } = await apiClient.post<{ enterprise: EnterpriseContext | EnterprisePublicContext | null }>('/enterprise/bind-invite', { code })
   return data
 }
 

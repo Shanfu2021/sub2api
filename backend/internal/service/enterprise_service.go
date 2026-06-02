@@ -715,15 +715,9 @@ func (s *EnterpriseService) ListTenantMembers(ctx context.Context, tenantID int6
 }
 
 func (s *EnterpriseService) ListMyGroupSummaries(ctx context.Context, managerUserID int64) ([]EnterpriseGroupSummary, *EnterpriseContext, error) {
-	enterprise, err := s.GetUserEnterpriseContext(ctx, managerUserID)
+	enterprise, err := s.GetManagerTenant(ctx, managerUserID)
 	if err != nil {
 		return nil, nil, err
-	}
-	if enterprise == nil || enterprise.TenantID <= 0 {
-		return nil, nil, ErrEnterpriseForbidden
-	}
-	if enterprise.TenantStatus != EnterpriseTenantStatusActive {
-		return nil, nil, ErrEnterpriseTenantDisabled
 	}
 	items, err := s.repo.ListTenantGroupSummaries(ctx, enterprise.TenantID)
 	return items, enterprise, err

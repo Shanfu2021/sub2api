@@ -663,6 +663,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   const isEnterprisePortal = appStore.enterprisePortalEnabled
   const hasEnterpriseMembership = !!authStore.user?.enterprise
+  const hasEnterpriseManagerAccess = authStore.isEnterpriseManager
   const restrictToEnterprise = isEnterprisePortal || hasEnterpriseMembership
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
@@ -673,7 +674,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon },
-    ...(hasEnterpriseMembership ? [{ path: '/enterprise', label: '企业空间', icon: FolderIcon }] : []),
+    ...(hasEnterpriseManagerAccess ? [{ path: '/enterprise', label: '企业空间', icon: FolderIcon }] : []),
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: () => !restrictToEnterprise && flagPayment() },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: () => !restrictToEnterprise && flagPayment() },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: () => !restrictToEnterprise },

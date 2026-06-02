@@ -91,13 +91,20 @@ func (h *EnterpriseHandler) GetMe(c *gin.Context) {
 		response.Success(c, gin.H{"enterprise": nil})
 		return
 	}
+	if !enterprise.IsManager() {
+		response.Success(c, gin.H{
+			"enterprise": dto.EnterpriseContextFromServiceForCurrentUser(enterprise),
+			"tenant":     nil,
+		})
+		return
+	}
 	tenant, err := h.enterpriseService.GetTenant(c.Request.Context(), enterprise.TenantID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, gin.H{
-		"enterprise": enterprise,
+		"enterprise": dto.EnterpriseContextFromService(enterprise),
 		"tenant":     tenant,
 	})
 }
@@ -113,12 +120,18 @@ func (h *EnterpriseHandler) BindInviteCode(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	item, err := h.enterpriseService.BindCurrentUserByInviteCode(c.Request.Context(), subject.UserID, req.Code)
+	if _, err := h.enterpriseService.BindCurrentUserByInviteCode(c.Request.Context(), subject.UserID, req.Code); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	enterprise, err := h.enterpriseService.GetUserEnterpriseContext(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, item)
+	response.Success(c, gin.H{
+		"enterprise": dto.EnterpriseContextFromServiceForCurrentUser(enterprise),
+	})
 }
 
 func (h *EnterpriseHandler) ListMembers(c *gin.Context) {

@@ -22,7 +22,7 @@
         </div>
       </section>
 
-      <template v-else>
+      <template v-else-if="managerEnterprise">
         <section class="grid gap-4 md:grid-cols-4">
           <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
             <div class="text-xs text-gray-500 dark:text-dark-300">企业名称</div>
@@ -45,7 +45,7 @@
                 {{ groupLabel(groupID) }} 成本 {{ tenantGroupFloor(groupID).toFixed(3) }}x / 默认 {{ tenantMemberDefaultRate(groupID).toFixed(3) }}x
               </span>
               <span v-if="!enterpriseGroupIDs.length" class="text-sm text-gray-500 dark:text-dark-300">
-                成本 {{ me.enterprise.pricing_floor_factor.toFixed(2) }}x / 默认 {{ tenantDefaultMemberRate.toFixed(2) }}x
+                成本 {{ enterpriseBaseFloorRate.toFixed(2) }}x / 默认 {{ tenantDefaultMemberRate.toFixed(2) }}x
               </span>
             </div>
             <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">成本是平台向企业结算价；默认是新成员不单独设置时的售价</div>
@@ -57,17 +57,12 @@
               总额 {{ enterpriseTotalBalance.toFixed(2) }} / 已消耗 {{ enterpriseSpentBalance.toFixed(2) }} / 授信 {{ enterpriseOverdraftLimit.toFixed(2) }}
             </div>
             <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
-              企业总并发 {{ me.enterprise.concurrency || '不限' }}
+              企业总并发 {{ managerEnterprise?.concurrency || '不限' }}
             </div>
           </div>
         </section>
 
-        <section v-if="me.enterprise.member_role !== 'manager'" class="rounded-2xl border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-800">
-          <div class="text-gray-700 dark:text-dark-200">当前账号是企业成员，暂无企业管理权限。</div>
-        </section>
-
-        <template v-else>
-          <section class="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <section class="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
             <div class="space-y-4">
               <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="mb-3 flex items-start justify-between gap-3">
@@ -314,8 +309,7 @@
                 </div>
               </div>
             </div>
-          </section>
-        </template>
+        </section>
       </template>
     </div>
   </AppLayout>
@@ -323,12 +317,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import enterpriseAPI, { type EnterpriseMeResponse } from '@/api/enterprise'
-import type { EnterpriseGroupSummary, EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership } from '@/types'
-import { useAppStore } from '@/stores'
+import type { EnterpriseContext, EnterpriseGroupSummary, EnterpriseInviteCode, EnterpriseLedgerEntry, EnterpriseMembership } from '@/types'
+import { useAppStore, useAuthStore } from '@/stores'
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
+const router = useRouter()
 const loading = ref(false)
 const submitting = ref(false)
 const bindCode = ref('')
@@ -346,6 +343,11 @@ const members = ref<EnterpriseMembership[]>([])
 const inviteCodes = ref<EnterpriseInviteCode[]>([])
 const ledger = ref<EnterpriseLedgerEntry[]>([])
 const groups = ref<EnterpriseGroupSummary[]>([])
+const managerEnterprise = computed(() => isFullEnterpriseContext(me.enterprise) ? me.enterprise : null)
+
+function isFullEnterpriseContext(value: EnterpriseMeResponse['enterprise']): value is EnterpriseContext {
+  return !!value && 'pricing_floor_factor' in value
+}
 
 const memberForm = reactive({
   email: '',
@@ -389,34 +391,35 @@ function formatDate(value?: string | null) {
 
 const enterpriseGroupIDs = computed(() => {
   const ids = new Set<number>()
-  for (const id of me.tenant?.allowed_group_ids || me.enterprise?.allowed_group_ids || []) {
+  const enterprise = managerEnterprise.value
+  for (const id of me.tenant?.allowed_group_ids || enterprise?.allowed_group_ids || []) {
     if (Number(id) > 0) ids.add(Number(id))
   }
-  for (const key of Object.keys(me.tenant?.group_rates || me.enterprise?.group_rates || {})) {
+  for (const key of Object.keys(me.tenant?.group_rates || enterprise?.group_rates || {})) {
     const id = Number(key)
     if (id > 0) ids.add(id)
   }
-  for (const key of Object.keys(me.tenant?.member_group_rates || me.enterprise?.member_group_rates || {})) {
+  for (const key of Object.keys(me.tenant?.member_group_rates || enterprise?.member_group_rates || {})) {
     const id = Number(key)
     if (id > 0) ids.add(id)
   }
   return [...ids].sort((a, b) => a - b)
 })
 
-const enterpriseTotalBalance = computed(() => Number(me.tenant?.balance_quota_total ?? me.enterprise?.balance_quota_total ?? 0))
-const enterpriseSpentBalance = computed(() => Number(me.tenant?.balance_quota_spent ?? me.enterprise?.balance_quota_spent ?? 0))
-const enterpriseOverdraftLimit = computed(() => Number(me.tenant?.balance_overdraft_limit ?? me.enterprise?.balance_overdraft_limit ?? 0))
+const enterpriseTotalBalance = computed(() => Number(me.tenant?.balance_quota_total ?? managerEnterprise.value?.balance_quota_total ?? 0))
+const enterpriseSpentBalance = computed(() => Number(me.tenant?.balance_quota_spent ?? managerEnterprise.value?.balance_quota_spent ?? 0))
+const enterpriseOverdraftLimit = computed(() => Number(me.tenant?.balance_overdraft_limit ?? managerEnterprise.value?.balance_overdraft_limit ?? 0))
 const enterpriseAvailableBalance = computed(() => enterpriseTotalBalance.value + enterpriseOverdraftLimit.value - enterpriseSpentBalance.value)
 const memberPages = computed(() => Math.max(1, Math.ceil(memberTotal.value / memberPageSize)))
-const enterpriseBaseFloorRate = computed(() => Number(me.enterprise?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1))
+const enterpriseBaseFloorRate = computed(() => Number(managerEnterprise.value?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1))
 const tenantDefaultMemberRate = computed(() => {
-  const value = Number(me.tenant?.member_default_pricing_factor ?? me.enterprise?.member_default_pricing_factor ?? 0)
+  const value = Number(me.tenant?.member_default_pricing_factor ?? managerEnterprise.value?.member_default_pricing_factor ?? 0)
   if (Number.isFinite(value) && value > 0) {
     return value
   }
   return enterpriseBaseFloorRate.value
 })
-const tenantDefaultMemberConcurrency = computed(() => Number(me.tenant?.member_default_concurrency ?? me.enterprise?.member_default_concurrency ?? 0) || 0)
+const tenantDefaultMemberConcurrency = computed(() => Number(me.tenant?.member_default_concurrency ?? managerEnterprise.value?.member_default_concurrency ?? 0) || 0)
 
 function groupLabel(groupID: number): string {
   const group = groups.value.find((item) => item.id === groupID)
@@ -424,7 +427,7 @@ function groupLabel(groupID: number): string {
 }
 
 function tenantGroupFloor(groupID: number): number {
-  const value = me.tenant?.group_rates?.[groupID] ?? me.enterprise?.group_rates?.[groupID]
+  const value = me.tenant?.group_rates?.[groupID] ?? managerEnterprise.value?.group_rates?.[groupID]
   if (Number.isFinite(Number(value)) && Number(value) > 0) {
     return Number(value)
   }
@@ -432,11 +435,11 @@ function tenantGroupFloor(groupID: number): number {
   if (Number.isFinite(Number(group?.rate_multiplier)) && Number(group?.rate_multiplier) > 0) {
     return Number(group?.rate_multiplier)
   }
-  return Number(me.enterprise?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1)
+  return Number(managerEnterprise.value?.pricing_floor_factor || me.tenant?.pricing_floor_factor || 1)
 }
 
 function tenantMemberDefaultRate(groupID: number): number {
-  const value = me.tenant?.member_group_rates?.[groupID] ?? me.enterprise?.member_group_rates?.[groupID]
+  const value = me.tenant?.member_group_rates?.[groupID] ?? managerEnterprise.value?.member_group_rates?.[groupID]
   if (Number.isFinite(Number(value)) && Number(value) > 0) {
     return Number(value)
   }
@@ -456,20 +459,25 @@ function buildGroupRatesPayload(rates: Record<number, number | undefined>): Reco
 }
 
 function syncPricingDefaultsForm() {
-  pricingDefaultsForm.member_default_pricing_factor = Number(me.tenant?.member_default_pricing_factor ?? me.enterprise?.member_default_pricing_factor ?? 0) || 0
+  pricingDefaultsForm.member_default_pricing_factor = Number(me.tenant?.member_default_pricing_factor ?? managerEnterprise.value?.member_default_pricing_factor ?? 0) || 0
   pricingDefaultsForm.member_default_concurrency = tenantDefaultMemberConcurrency.value
-  pricingDefaultsForm.member_group_rates = { ...(me.tenant?.member_group_rates || me.enterprise?.member_group_rates || {}) }
+  pricingDefaultsForm.member_group_rates = { ...(me.tenant?.member_group_rates || managerEnterprise.value?.member_group_rates || {}) }
 }
 
 async function loadMe() {
   const data = await enterpriseAPI.getMe()
   me.enterprise = data.enterprise || null
   me.tenant = data.tenant || null
+  if (me.enterprise?.member_role && me.enterprise.member_role !== 'manager') {
+    await authStore.refreshUser().catch(() => undefined)
+    await router.replace('/dashboard')
+    return
+  }
   syncPricingDefaultsForm()
 }
 
 async function loadMembers() {
-  if (me.enterprise?.member_role !== 'manager') return
+  if (!managerEnterprise.value) return
   const res = await enterpriseAPI.listMembers(memberPage.value, memberPageSize, { search: memberSearch.value.trim() || undefined })
   members.value = res.items.map((member) => ({
     ...member,
@@ -489,19 +497,19 @@ async function changeMemberPage(page: number) {
 }
 
 async function loadInviteCodes() {
-  if (me.enterprise?.member_role !== 'manager') return
+  if (!managerEnterprise.value) return
   const res = await enterpriseAPI.listInviteCodes(1, 100)
   inviteCodes.value = res.items
 }
 
 async function loadLedger() {
-  if (me.enterprise?.member_role !== 'manager') return
+  if (!managerEnterprise.value) return
   const res = await enterpriseAPI.listLedger(1, 100)
   ledger.value = res.items
 }
 
 async function loadGroups() {
-  if (!me.enterprise) return
+  if (!managerEnterprise.value) return
   groups.value = await enterpriseAPI.listGroups()
 }
 
@@ -509,6 +517,9 @@ async function loadAll() {
   loading.value = true
   try {
     await loadMe()
+    if (me.enterprise && !managerEnterprise.value) {
+      return
+    }
     await Promise.all([loadGroups(), loadMembers(), loadInviteCodes(), loadLedger()])
   } catch (error) {
     showError(error)

@@ -31,7 +31,7 @@ type User struct {
 	BalanceNotifyThreshold     *float64           `json:"balance_notify_threshold"`
 	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails"`
 	TotalRecharged             float64            `json:"total_recharged"`
-	Enterprise                 *EnterpriseContext `json:"enterprise,omitempty"`
+	Enterprise                 any                `json:"enterprise,omitempty"`
 
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制），仅在所用分组未设置 rpm_limit 时作为兜底生效。
 	RPMLimit int `json:"rpm_limit"`
@@ -65,6 +65,20 @@ type EnterpriseContext struct {
 	MemberGroupRates           map[int64]float64 `json:"member_group_rates,omitempty"`
 	SelfRechargeBlocked        bool              `json:"self_recharge_blocked"`
 	SelfRedeemBlocked          bool              `json:"self_redeem_blocked"`
+}
+
+type EnterprisePublicContext struct {
+	TenantID            int64  `json:"tenant_id"`
+	TenantName          string `json:"tenant_name"`
+	TenantCode          string `json:"tenant_code"`
+	TenantStatus        string `json:"tenant_status"`
+	PortalHost          string `json:"portal_host,omitempty"`
+	MemberRole          string `json:"member_role"`
+	MemberNote          string `json:"member_note,omitempty"`
+	JoinedVia           string `json:"joined_via,omitempty"`
+	JoinedSource        string `json:"joined_source,omitempty"`
+	SelfRechargeBlocked bool   `json:"self_recharge_blocked"`
+	SelfRedeemBlocked   bool   `json:"self_redeem_blocked"`
 }
 
 // AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。

@@ -54,7 +54,7 @@
       </button>
 
       <button
-        v-else
+        v-if="authStore.isEnterpriseManager"
         @click="router.push('/enterprise')"
         class="group flex w-full items-center gap-4 rounded-xl bg-gray-50 p-4 text-left transition-all duration-200 hover:bg-gray-100 dark:bg-dark-800/50 dark:hover:bg-dark-800"
       >
