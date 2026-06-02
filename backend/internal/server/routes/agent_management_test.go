@@ -44,6 +44,7 @@ func TestAgentManagementRoutesAreRegisteredUnderAuthenticatedUserRoutes(t *testi
 		{http.MethodPost, "/api/v1/agent-management/children/:id/upgrade"},
 		{http.MethodDelete, "/api/v1/agent-management/children/:id"},
 		{http.MethodGet, "/api/v1/agent-management/groups"},
+		{http.MethodGet, "/api/v1/agent-management/children/:id/groups"},
 		{http.MethodPut, "/api/v1/agent-management/children/:id/groups/:group_id"},
 		{http.MethodDelete, "/api/v1/agent-management/children/:id/groups/:group_id"},
 	} {

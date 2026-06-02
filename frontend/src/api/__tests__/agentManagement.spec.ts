@@ -110,4 +110,13 @@ describe('agent management api', () => {
       pool_rpm: 1000,
     })
   })
+
+  it('loads child group delegation options with assignment state', async () => {
+    const response = [{ group: { id: 7, name: 'Exclusive Retail' }, assigned: true }]
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.listChildGroupDelegationOptions(12)).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/children/12/groups')
+  })
 })

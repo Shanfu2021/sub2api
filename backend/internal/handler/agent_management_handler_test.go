@@ -30,6 +30,9 @@ type fakeAgentManagementService struct {
 	upgradeActorID        int64
 	upgradeChildID        int64
 	upgradeInput          service.AgentUpgradeInput
+	listChildGroupsCalls  int
+	listChildGroupsActor  int64
+	listChildGroupsChild  int64
 }
 
 func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*service.DirectChildrenResult, error) {
@@ -121,6 +124,23 @@ func (s *fakeAgentManagementService) ListMyGroups(context.Context, int64) ([]ser
 	return []service.AgentGroupRate{}, nil
 }
 
+func (s *fakeAgentManagementService) ListChildGroupDelegationOptions(_ context.Context, actorID int64, childID int64) ([]service.ChildGroupDelegationOption, error) {
+	s.listChildGroupsCalls++
+	s.listChildGroupsActor = actorID
+	s.listChildGroupsChild = childID
+	return []service.ChildGroupDelegationOption{
+		{
+			Group:               service.Group{ID: 20, Name: "exclusive", RateMultiplier: 1.5, IsExclusive: true, Status: service.StatusActive},
+			EffectiveRate:       1.5,
+			CanDelegate:         true,
+			Source:              "delegated",
+			Assigned:            true,
+			ChildRateMultiplier: 2.4,
+			ChildCanDelegate:    false,
+		},
+	}, nil
+}
+
 func (s *fakeAgentManagementService) SetChildGroupDelegation(context.Context, int64, int64, int64, service.ChildGroupDelegationInput) error {
 	return nil
 }
@@ -141,6 +161,7 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	r.PUT("/children/:id/allocation", h.UpdateAllocation)
 	r.POST("/children/:id/upgrade", h.UpgradeDirectUser)
 	r.POST("/direct-users", h.CreateDirectUser)
+	r.GET("/children/:id/groups", h.ListChildGroupDelegationOptions)
 	return r
 }
 
@@ -283,6 +304,24 @@ func TestAgentManagementHandlerCreatesDirectUserWithAuthenticatedUser(t *testing
 		AllocatedConcurrency: 5,
 		AllocatedRPM:         60,
 	}, svc.createInput)
+}
+
+func TestAgentManagementHandlerListsChildGroupDelegationOptions(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/children/7/groups", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listChildGroupsCalls)
+	require.Equal(t, int64(42), svc.listChildGroupsActor)
+	require.Equal(t, int64(7), svc.listChildGroupsChild)
+	require.Contains(t, rec.Body.String(), `"assigned":true`)
+	require.Contains(t, rec.Body.String(), `"child_rate_multiplier":2.4`)
+	require.Contains(t, rec.Body.String(), `"child_can_delegate":false`)
+	require.NotContains(t, rec.Body.String(), `"rate_multiplier":0.3`)
 }
 
 func TestAgentManagementHandlerRejectsBalanceOnDirectUserCreate(t *testing.T) {

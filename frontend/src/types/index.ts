@@ -344,6 +344,12 @@ export interface AgentGroupRate {
   source: AgentGroupRateSource
 }
 
+export interface AgentChildGroupDelegationOption extends AgentGroupRate {
+  assigned: boolean
+  child_rate_multiplier: number
+  child_can_delegate: boolean
+}
+
 export interface AgentGroupDelegationRequest {
   rate_multiplier: number
   can_delegate: boolean

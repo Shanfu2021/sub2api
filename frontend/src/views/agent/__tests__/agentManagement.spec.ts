@@ -5,7 +5,7 @@ import DirectUsersView from '@/views/agent/DirectUsersView.vue'
 import DirectAgentsView from '@/views/agent/DirectAgentsView.vue'
 import DirectEnterprisesView from '@/views/agent/DirectEnterprisesView.vue'
 import MyGroupsView from '@/views/agent/MyGroupsView.vue'
-import type { AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, Group, User, UserRole } from '@/types'
+import type { AgentChildGroupDelegationOption, AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, Group, User, UserRole } from '@/types'
 
 const {
   getCurrentUser,
@@ -19,6 +19,7 @@ const {
   upgradeChild,
   deleteDirectChild,
   listGroups,
+  listChildGroupDelegationOptions,
   setChildGroupDelegation,
   removeChildGroupDelegation,
   showError,
@@ -35,6 +36,7 @@ const {
   upgradeChild: vi.fn(),
   deleteDirectChild: vi.fn(),
   listGroups: vi.fn(),
+  listChildGroupDelegationOptions: vi.fn(),
   setChildGroupDelegation: vi.fn(),
   removeChildGroupDelegation: vi.fn(),
   showError: vi.fn(),
@@ -53,6 +55,7 @@ vi.mock('@/api/agentManagement', () => ({
     upgradeChild,
     deleteDirectChild,
     listGroups,
+    listChildGroupDelegationOptions,
     setChildGroupDelegation,
     removeChildGroupDelegation,
   },
@@ -191,6 +194,19 @@ function makeAgentGroupRate(overrides: Partial<AgentGroupRate> = {}): AgentGroup
   }
 }
 
+function makeChildGroupOption(overrides: Partial<AgentChildGroupDelegationOption> = {}): AgentChildGroupDelegationOption {
+  return {
+    group: makeGroup(),
+    effective_rate: 2.4,
+    can_delegate: true,
+    source: 'delegated',
+    assigned: true,
+    child_rate_multiplier: 2.8,
+    child_can_delegate: false,
+    ...overrides,
+  }
+}
+
 function makeChildrenResponse(items: AgentManagedUser[]): AgentDirectChildrenResponse {
   return {
     items,
@@ -268,6 +284,7 @@ describe('agent management pages', () => {
     upgradeChild.mockResolvedValue(makeChild({ role: 'agent_level1' }))
     deleteDirectChild.mockResolvedValue({ id: 12 })
     listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listChildGroupDelegationOptions.mockResolvedValue([makeChildGroupOption()])
     setChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     removeChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
   })
@@ -535,51 +552,57 @@ describe('agent management pages', () => {
     })
   })
 
-  it('lets managers delegate a group rate to a direct child', async () => {
+  it('loads child group assignment state and updates a checked group', async () => {
     const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
     await flushPromises()
 
     await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
     await flushPromises()
 
-    expect(listGroups).toHaveBeenCalled()
+    expect(listChildGroupDelegationOptions).toHaveBeenCalledWith(12)
+    expect(listGroups).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Exclusive Retail')
     expect(wrapper.text()).not.toContain('1.7')
+    expect((wrapper.get('[data-test="group-assigned-7"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="group-rate-7"]').element as HTMLInputElement).value).toBe('2.8')
 
-    await wrapper.get('[data-test="group-rate-7"]').setValue('2.8')
+    await wrapper.get('[data-test="group-rate-7"]').setValue('3.1')
     await wrapper.get('[data-test="group-can-delegate-7"]').setValue(true)
     await wrapper.get('[data-test="save-group-7"]').trigger('click')
     await flushPromises()
 
     expect(setChildGroupDelegation).toHaveBeenCalledWith(12, 7, {
-      rate_multiplier: 2.8,
+      rate_multiplier: 3.1,
       can_delegate: true,
     })
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.delegationSaved')
   })
 
-  it('lets managers reclaim a delegated group from a direct child', async () => {
+  it('reclaims a group when it is unchecked and saved', async () => {
     const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
     await flushPromises()
 
     await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-test="remove-group-7"]').trigger('click')
+    await wrapper.get('[data-test="group-assigned-7"]').setValue(false)
+    await wrapper.get('[data-test="save-group-7"]').trigger('click')
     await flushPromises()
 
     expect(removeChildGroupDelegation).toHaveBeenCalledWith(12, 7)
+    expect(setChildGroupDelegation).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.delegationRemoved')
   })
 
   it('only offers child group delegation for groups the manager can delegate', async () => {
-    listGroups.mockResolvedValue([
-      makeAgentGroupRate({
+    listChildGroupDelegationOptions.mockResolvedValue([
+      makeChildGroupOption({
         group: makeGroup({ id: 4, name: 'Public Shared', rate_multiplier: 1, is_exclusive: false }),
         effective_rate: 1,
         can_delegate: false,
         source: 'public',
+        assigned: false,
       }),
-      makeAgentGroupRate(),
+      makeChildGroupOption(),
     ])
     const wrapper = mountAgentView(DirectEnterprisesView, 'agent_level1')
     await flushPromises()

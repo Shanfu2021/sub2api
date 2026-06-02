@@ -19,6 +19,7 @@ func RegisterAgentManagementRoutes(authenticated *gin.RouterGroup, h *handler.Ha
 		agentManagement.POST("/children/:id/upgrade", h.AgentManagement.UpgradeDirectUser)
 		agentManagement.DELETE("/children/:id", h.AgentManagement.DeleteDirectChild)
 		agentManagement.GET("/groups", h.AgentManagement.ListMyGroups)
+		agentManagement.GET("/children/:id/groups", h.AgentManagement.ListChildGroupDelegationOptions)
 		agentManagement.PUT("/children/:id/groups/:group_id", h.AgentManagement.SetChildGroupDelegation)
 		agentManagement.DELETE("/children/:id/groups/:group_id", h.AgentManagement.RemoveChildGroupDelegation)
 	}

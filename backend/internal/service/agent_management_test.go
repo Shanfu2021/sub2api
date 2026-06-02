@@ -1300,6 +1300,38 @@ func TestAgentGroupsAdminSeesExclusiveGroupsAsDelegable(t *testing.T) {
 	require.Equal(t, "admin_exclusive", byID[20].Source)
 }
 
+func TestChildGroupDelegationOptionsShowsAssignedStateForDirectChild(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	level2ID := int64(3)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: level1ID, childID: level2ID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(
+		Group{ID: 10, Name: "public", RateMultiplier: 1.2, Status: StatusActive},
+		Group{ID: 20, Name: "exclusive", RateMultiplier: 0.3, IsExclusive: true, Status: StatusActive},
+	)
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	options, err := svc.ListChildGroupDelegationOptions(context.Background(), level1ID, level2ID)
+	require.NoError(t, err)
+
+	require.Len(t, options, 1)
+	require.Equal(t, int64(20), options[0].Group.ID)
+	require.Equal(t, 1.5, options[0].EffectiveRate)
+	require.True(t, options[0].CanDelegate)
+	require.True(t, options[0].Assigned)
+	require.Equal(t, 2.4, options[0].ChildRateMultiplier)
+	require.False(t, options[0].ChildCanDelegate)
+}
+
 func TestDelegateExclusiveGroupRequiresManagerAccess(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)

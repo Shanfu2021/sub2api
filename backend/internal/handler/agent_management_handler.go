@@ -31,6 +31,7 @@ type agentManagementService interface {
 	UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, input service.AgentUpgradeInput) (*service.User, error)
 	DeleteDirectChild(ctx context.Context, actorID int64, childID int64) error
 	ListMyGroups(ctx context.Context, actorID int64) ([]service.AgentGroupRate, error)
+	ListChildGroupDelegationOptions(ctx context.Context, actorID int64, childID int64) ([]service.ChildGroupDelegationOption, error)
 	SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input service.ChildGroupDelegationInput) error
 	RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error
 }
@@ -189,6 +190,27 @@ func (h *AgentManagementHandler) ListMyGroups(c *gin.Context) {
 	out := make([]agentGroupRateResponse, 0, len(groups))
 	for i := range groups {
 		out = append(out, agentGroupRateFromService(groups[i]))
+	}
+	response.Success(c, out)
+}
+
+func (h *AgentManagementHandler) ListChildGroupDelegationOptions(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	childID, ok := parsePositiveID(c, "id", "Invalid child ID")
+	if !ok {
+		return
+	}
+	options, err := h.service.ListChildGroupDelegationOptions(c.Request.Context(), actorID, childID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]childGroupDelegationOptionResponse, 0, len(options))
+	for i := range options {
+		out = append(out, childGroupDelegationOptionFromService(options[i]))
 	}
 	response.Success(c, out)
 }
@@ -367,6 +389,16 @@ type agentGroupRateResponse struct {
 	Source        string     `json:"source"`
 }
 
+type childGroupDelegationOptionResponse struct {
+	Group               *dto.Group `json:"group"`
+	EffectiveRate       float64    `json:"effective_rate"`
+	CanDelegate         bool       `json:"can_delegate"`
+	Source              string     `json:"source"`
+	Assigned            bool       `json:"assigned"`
+	ChildRateMultiplier float64    `json:"child_rate_multiplier"`
+	ChildCanDelegate    bool       `json:"child_can_delegate"`
+}
+
 func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 	if u == nil {
 		return agentManagedUserResponse{}
@@ -408,5 +440,17 @@ func agentGroupRateFromService(in service.AgentGroupRate) agentGroupRateResponse
 		EffectiveRate: in.EffectiveRate,
 		CanDelegate:   in.CanDelegate,
 		Source:        in.Source,
+	}
+}
+
+func childGroupDelegationOptionFromService(in service.ChildGroupDelegationOption) childGroupDelegationOptionResponse {
+	return childGroupDelegationOptionResponse{
+		Group:               dto.GroupFromServiceShallow(&in.Group),
+		EffectiveRate:       in.EffectiveRate,
+		CanDelegate:         in.CanDelegate,
+		Source:              in.Source,
+		Assigned:            in.Assigned,
+		ChildRateMultiplier: in.ChildRateMultiplier,
+		ChildCanDelegate:    in.ChildCanDelegate,
 	}
 }

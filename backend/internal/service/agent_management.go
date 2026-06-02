@@ -118,6 +118,16 @@ type AgentGroupRate struct {
 	Source        string  `json:"source"`
 }
 
+type ChildGroupDelegationOption struct {
+	Group               Group   `json:"group"`
+	EffectiveRate       float64 `json:"effective_rate"`
+	CanDelegate         bool    `json:"can_delegate"`
+	Source              string  `json:"source"`
+	Assigned            bool    `json:"assigned"`
+	ChildRateMultiplier float64 `json:"child_rate_multiplier"`
+	ChildCanDelegate    bool    `json:"child_can_delegate"`
+}
+
 type AgentGroupDelegation struct {
 	ID             int64
 	ManagerUserID  int64
@@ -586,6 +596,56 @@ func (s *AgentManagementService) ListMyGroups(ctx context.Context, actorID int64
 			CanDelegate:   delegations[i].CanDelegate,
 			Source:        "delegated",
 		})
+	}
+	return out, nil
+}
+
+func (s *AgentManagementService) ListChildGroupDelegationOptions(ctx context.Context, actorID int64, childID int64) ([]ChildGroupDelegationOption, error) {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	child, err := s.requireDirectChild(ctx, actor, childID)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := s.ListMyGroups(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	delegations, err := s.repo.ListGroupDelegationsForChild(ctx, child.ID)
+	if err != nil {
+		return nil, err
+	}
+	assignedByGroupID := make(map[int64]AgentGroupDelegation, len(delegations))
+	for i := range delegations {
+		if delegations[i].ManagerUserID != actor.ID {
+			continue
+		}
+		assignedByGroupID[delegations[i].GroupID] = delegations[i]
+	}
+
+	out := make([]ChildGroupDelegationOption, 0, len(groups))
+	for i := range groups {
+		if !groups[i].Group.IsExclusive || !groups[i].CanDelegate {
+			continue
+		}
+		group := groups[i].Group
+		group.RateMultiplier = groups[i].EffectiveRate
+		option := ChildGroupDelegationOption{
+			Group:               group,
+			EffectiveRate:       groups[i].EffectiveRate,
+			CanDelegate:         groups[i].CanDelegate,
+			Source:              groups[i].Source,
+			ChildRateMultiplier: groups[i].EffectiveRate,
+			ChildCanDelegate:    false,
+		}
+		if delegation, ok := assignedByGroupID[groups[i].Group.ID]; ok {
+			option.Assigned = true
+			option.ChildRateMultiplier = delegation.RateMultiplier
+			option.ChildCanDelegate = delegation.CanDelegate
+		}
+		out = append(out, option)
 	}
 	return out, nil
 }

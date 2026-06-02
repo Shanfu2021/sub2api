@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   AgentAllocationSummary,
+  AgentChildGroupDelegationOption,
   AgentDirectChildrenResponse,
   AgentDirectUserCreateRequest,
   AgentGroupDelegationRequest,
@@ -70,6 +71,11 @@ export async function listGroups(): Promise<AgentGroupRate[]> {
   return data
 }
 
+export async function listChildGroupDelegationOptions(childId: number): Promise<AgentChildGroupDelegationOption[]> {
+  const { data } = await apiClient.get<AgentChildGroupDelegationOption[]>(`${BASE_PATH}/children/${childId}/groups`)
+  return data
+}
+
 export async function setChildGroupDelegation(
   childId: number,
   groupId: number,
@@ -100,6 +106,7 @@ export const agentManagementAPI = {
   upgradeChild,
   deleteDirectChild,
   listGroups,
+  listChildGroupDelegationOptions,
   setChildGroupDelegation,
   removeChildGroupDelegation,
 }
