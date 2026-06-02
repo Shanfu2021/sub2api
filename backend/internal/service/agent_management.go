@@ -180,12 +180,12 @@ type AgentManagementRepository interface {
 	ListInviteGroupDefaults(ctx context.Context, agentID int64) ([]AgentInviteGroupDefault, error)
 	UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error
 	DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error
-	RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
+	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
 	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
 
 type AgentUserDeletionCleanupRepository interface {
-	RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
+	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
 	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
 

@@ -502,15 +502,26 @@ const directSubtitle = computed(() => {
   return t('agentManagement.direct.subtitle')
 })
 
-const deleteDialogIsTrueDelete = computed(() => isTrueDeleteDirectChild(deleteDialog.child))
-const deleteDialogTitle = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteDirectTitle') : t('agentManagement.direct.deleteChildTitle'))
+const deleteDialogKind = computed(() => deleteKind(deleteDialog.child))
+const deleteDialogTitle = computed(() => {
+  if (deleteDialogKind.value === 'admin_user') return t('agentManagement.direct.deleteUserTitle')
+  if (deleteDialogKind.value === 'admin_agent') return t('agentManagement.direct.deleteAgentTitle')
+  if (deleteDialogKind.value === 'admin_enterprise') return t('agentManagement.direct.deleteEnterpriseTitle')
+  return t('agentManagement.direct.deleteChildTitle')
+})
 const deleteDialogMessage = computed(() => {
   const email = deleteDialog.child?.email || ''
-  return deleteDialogIsTrueDelete.value
-    ? t('agentManagement.direct.deleteDirectConfirm', { email })
-    : t('agentManagement.direct.deleteChildConfirm', { email })
+  if (deleteDialogKind.value === 'admin_user') return t('agentManagement.direct.deleteUserConfirm', { email })
+  if (deleteDialogKind.value === 'admin_agent') return t('agentManagement.direct.deleteAgentConfirm', { email })
+  if (deleteDialogKind.value === 'admin_enterprise') return t('agentManagement.direct.deleteEnterpriseConfirm', { email })
+  return t('agentManagement.direct.deleteChildConfirm', { email })
 })
-const deleteDialogConfirmText = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteDirect') : t('agentManagement.direct.deleteChild'))
+const deleteDialogConfirmText = computed(() => {
+  if (deleteDialogKind.value === 'admin_user') return t('agentManagement.direct.deleteUser')
+  if (deleteDialogKind.value === 'admin_agent') return t('agentManagement.direct.deleteAgent')
+  if (deleteDialogKind.value === 'admin_enterprise') return t('agentManagement.direct.deleteEnterprise')
+  return t('agentManagement.direct.deleteChild')
+})
 const upgradeDialogTitle = computed(() => t('agentManagement.direct.upgradeTitle'))
 const upgradeDialogMessage = computed(() => t('agentManagement.direct.upgradeConfirm', {
   email: upgradeDialog.child?.email || '',
@@ -967,12 +978,22 @@ function askDelete(child: AgentManagedUser) {
   deleteDialog.show = true
 }
 
-function isTrueDeleteDirectChild(child: AgentManagedUser | null): boolean {
-  return isAdmin.value && !!child && (child.role === 'user' || child.role === 'agent_level1' || child.role === 'enterprise')
+type DeleteKind = 'admin_user' | 'admin_agent' | 'admin_enterprise' | 'rehome'
+
+function deleteKind(child: AgentManagedUser | null): DeleteKind {
+  if (!isAdmin.value || !child) return 'rehome'
+  if (child.role === 'user') return 'admin_user'
+  if (child.role === 'agent_level1') return 'admin_agent'
+  if (child.role === 'enterprise') return 'admin_enterprise'
+  return 'rehome'
 }
 
 function deleteActionLabel(child: AgentManagedUser): string {
-  return isTrueDeleteDirectChild(child) ? t('agentManagement.direct.deleteDirect') : t('agentManagement.direct.deleteChild')
+  const kind = deleteKind(child)
+  if (kind === 'admin_user') return t('agentManagement.direct.deleteUser')
+  if (kind === 'admin_agent') return t('agentManagement.direct.deleteAgent')
+  if (kind === 'admin_enterprise') return t('agentManagement.direct.deleteEnterprise')
+  return t('agentManagement.direct.deleteChild')
 }
 
 async function confirmDelete() {
@@ -982,7 +1003,7 @@ async function confirmDelete() {
   savingChildId.value = child.id
   try {
     await agentManagementAPI.deleteDirectChild(child.id)
-    appStore.showSuccess(isTrueDeleteDirectChild(child) ? t('agentManagement.direct.directDeleted') : t('agentManagement.direct.childDeleted'))
+    appStore.showSuccess(deleteKind(child) !== 'rehome' ? t('agentManagement.direct.directDeleted') : t('agentManagement.direct.childDeleted'))
     await loadData()
   } catch (error) {
     appStore.showError((error as { message?: string }).message || t('agentManagement.direct.deleteChildFailed'))

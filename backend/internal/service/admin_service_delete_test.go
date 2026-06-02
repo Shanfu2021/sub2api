@@ -250,7 +250,7 @@ type agentUserDeletionCleanupRepoStub struct {
 	err                  error
 }
 
-func (s *agentUserDeletionCleanupRepoStub) RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error) {
+func (s *agentUserDeletionCleanupRepoStub) DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error) {
 	if user != nil {
 		s.calls = append(s.calls, user.ID)
 	}
@@ -698,7 +698,7 @@ func TestAdminService_UpdateUser_EnterpriseStatusCascadesToEmployees(t *testing.
 	require.ElementsMatch(t, []int64{8, 9, 10}, cache.userIDs)
 }
 
-func TestAdminService_DeleteUser_AgentRehomesWithoutDeletingAccount(t *testing.T) {
+func TestAdminService_DeleteUser_AgentUsesCleanupRepositoryForTrueDelete(t *testing.T) {
 	repo := &userRepoStub{user: &User{ID: 7, Role: RoleAgentLevel1}}
 	cleanup := &agentUserDeletionCleanupRepoStub{}
 	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
@@ -710,7 +710,7 @@ func TestAdminService_DeleteUser_AgentRehomesWithoutDeletingAccount(t *testing.T
 	require.Empty(t, repo.hardDeletedIDs)
 }
 
-func TestAdminService_DeleteUser_AgentRehomeErrorSkipsDelete(t *testing.T) {
+func TestAdminService_DeleteUser_AgentCleanupErrorSkipsGenericDelete(t *testing.T) {
 	cleanupErr := errors.New("agent cleanup failed")
 	repo := &userRepoStub{user: &User{ID: 7, Role: RoleAgentLevel1}}
 	cleanup := &agentUserDeletionCleanupRepoStub{err: cleanupErr}

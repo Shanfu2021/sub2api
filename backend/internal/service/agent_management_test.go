@@ -493,7 +493,7 @@ func (r *agentManagementRepoStub) DeleteInviteGroupDefault(_ context.Context, ag
 	return nil
 }
 
-func (r *agentManagementRepoStub) RehomeAgentForAdminUserDeletion(_ context.Context, user *User) ([]int64, error) {
+func (r *agentManagementRepoStub) DeleteAgentForAdminUserDeletion(_ context.Context, user *User) ([]int64, error) {
 	if user == nil {
 		return nil, nil
 	}

@@ -469,7 +469,7 @@ func (r *agentManagementRepository) deleteAgentAccountRows(ctx context.Context, 
 	return nil
 }
 
-func (r *agentManagementRepository) RehomeAgentForAdminUserDeletion(ctx context.Context, user *service.User) ([]int64, error) {
+func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.Context, user *service.User) ([]int64, error) {
 	if user == nil || (user.Role != service.RoleAgentLevel1 && user.Role != service.RoleAgentLevel2) {
 		return nil, nil
 	}
@@ -499,51 +499,55 @@ func (r *agentManagementRepository) RehomeAgentForAdminUserDeletion(ctx context.
 		affected[child.ID] = struct{}{}
 	}
 
-	if user.Role == service.RoleAgentLevel1 {
-		if _, err := client.User.Update().
-			Where(
-				dbuser.ParentUserIDEQ(user.ID),
-				dbuser.RoleIn(service.RoleUser, service.RoleEnterprise),
-			).
-			SetParentUserID(rootAdmin.ID).
-			Save(ctx); err != nil {
-			return nil, err
-		}
-		if _, err := client.User.Update().
-			Where(
-				dbuser.ParentUserIDEQ(user.ID),
-				dbuser.RoleEQ(service.RoleAgentLevel2),
-			).
-			SetRole(service.RoleAgentLevel1).
-			SetParentUserID(rootAdmin.ID).
-			Save(ctx); err != nil {
-			return nil, err
-		}
+	if _, err := client.User.Update().
+		Where(
+			dbuser.ParentUserIDEQ(user.ID),
+			dbuser.RoleIn(service.RoleUser, service.RoleEnterprise),
+		).
+		SetParentUserID(rootAdmin.ID).
+		Save(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := client.User.Update().
+		Where(
+			dbuser.ParentUserIDEQ(user.ID),
+			dbuser.RoleEQ(service.RoleAgentLevel2),
+		).
+		SetRole(service.RoleAgentLevel1).
+		SetParentUserID(rootAdmin.ID).
+		Save(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := client.User.Update().
+		Where(
+			dbuser.ParentUserIDEQ(user.ID),
+			dbuser.RoleEQ(service.RoleAgentLevel1),
+		).
+		SetParentUserID(rootAdmin.ID).
+		Save(ctx); err != nil {
+		return nil, err
 	}
 
 	if err := r.cleanupAgentDelegatedGroups(ctx, exec, user.ID); err != nil {
 		return nil, err
 	}
-	if user.Role == service.RoleAgentLevel1 {
-		if _, err := exec.ExecContext(ctx, `DELETE FROM agent_profiles WHERE user_id = $1`, user.ID); err != nil {
-			return nil, err
-		}
+	if err := r.deleteAgentAccountRows(ctx, exec, user.ID); err != nil {
+		return nil, err
 	}
-
-	targetRole := service.RoleUser
-	if user.Role == service.RoleAgentLevel2 {
-		targetRole = service.RoleAgentLevel1
+	if _, err := exec.ExecContext(ctx, `UPDATE usage_cleanup_tasks SET created_by = $2 WHERE created_by = $1`, user.ID, rootAdmin.ID); err != nil {
+		return nil, err
 	}
-	update := client.User.UpdateOneID(user.ID).
-		SetRole(targetRole).
-		SetParentUserID(rootAdmin.ID)
-	if targetRole == service.RoleUser {
-		update = update.
-			SetAllocatedConcurrency(user.Concurrency).
-			SetAllocatedRpm(user.RPMLimit)
-	}
-	if _, err := update.Save(ctx); err != nil {
+	deleted, err := client.User.Delete().
+		Where(
+			dbuser.IDEQ(user.ID),
+			dbuser.RoleIn(service.RoleAgentLevel1, service.RoleAgentLevel2),
+		).
+		Exec(mixins.SkipSoftDelete(ctx))
+	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if deleted == 0 {
+		return nil, service.ErrUserNotFound
 	}
 
 	if user.ParentUserID != nil {

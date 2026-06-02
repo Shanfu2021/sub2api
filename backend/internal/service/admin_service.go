@@ -857,7 +857,7 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	}
 
 	if user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2 {
-		affectedUserIDs, err := s.rehomeDeletedAgentFromAdminUsers(ctx, user)
+		affectedUserIDs, err := s.deleteAgentFromAdminUsers(ctx, user)
 		if err != nil {
 			return err
 		}
@@ -902,7 +902,7 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *adminServiceImpl) rehomeDeletedAgentFromAdminUsers(ctx context.Context, user *User) ([]int64, error) {
+func (s *adminServiceImpl) deleteAgentFromAdminUsers(ctx context.Context, user *User) ([]int64, error) {
 	if s.agentDeletionCleanupRepo == nil {
 		return nil, ErrAgentManagementNotImplemented
 	}
@@ -912,18 +912,18 @@ func (s *adminServiceImpl) rehomeDeletedAgentFromAdminUsers(ctx context.Context,
 	if s.entClient != nil {
 		tx, err = s.entClient.Tx(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("begin agent rehome transaction: %w", err)
+			return nil, fmt.Errorf("begin agent delete transaction: %w", err)
 		}
 		defer func() { _ = tx.Rollback() }()
 		opCtx = dbent.NewTxContext(ctx, tx)
 	}
-	affectedUserIDs, err := s.agentDeletionCleanupRepo.RehomeAgentForAdminUserDeletion(opCtx, user)
+	affectedUserIDs, err := s.agentDeletionCleanupRepo.DeleteAgentForAdminUserDeletion(opCtx, user)
 	if err != nil {
 		return nil, err
 	}
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("commit agent rehome transaction: %w", err)
+			return nil, fmt.Errorf("commit agent delete transaction: %w", err)
 		}
 	}
 	return affectedUserIDs, nil

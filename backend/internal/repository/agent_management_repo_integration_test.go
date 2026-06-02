@@ -339,7 +339,7 @@ VALUES ($1, $2, $3)`,
 	_, err = integrationDB.ExecContext(s.ctx, `
 INSERT INTO usage_cleanup_tasks (status, filters, created_by, deleted_rows, created_at, updated_at)
 VALUES ($1, '{}'::jsonb, $2, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-		"completed",
+		"succeeded",
 		level1.ID,
 	)
 	s.Require().NoError(err)
@@ -404,7 +404,7 @@ func (s *AgentManagementRepoSuite) TestGroupDelegationRoundTripAndSoftDelete() {
 	s.Require().Empty(list)
 }
 
-func (s *AgentManagementRepoSuite) TestRehomeLevel1AgentForAdminUserDeletionKeepsAccountMovesChildrenAndClearsAgentData() {
+func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentForAdminUserDeletionDeletesAccountMovesChildrenAndClearsAgentData() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	directUser := s.mustCreateAgentUser("direct-user-delete@test.com", service.RoleUser, &level1.ID, 10, 100)
@@ -419,17 +419,17 @@ func (s *AgentManagementRepoSuite) TestRehomeLevel1AgentForAdminUserDeletionKeep
 		Save(s.ctx)
 	s.Require().NoError(err)
 
-	affected, err := s.repo.RehomeAgentForAdminUserDeletion(s.ctx, level1)
+	affected, err := s.repo.DeleteAgentForAdminUserDeletion(s.ctx, level1)
 	s.Require().NoError(err)
 	s.Require().Contains(affected, level1.ID)
 	s.Require().Contains(affected, directUser.ID)
 	s.Require().Contains(affected, directLevel2.ID)
 
-	reloadedLevel1, err := s.client.User.Get(s.ctx, level1.ID)
+	level1Exists, err := s.client.User.Query().
+		Where(user.IDEQ(level1.ID)).
+		Exist(mixins.SkipSoftDelete(s.ctx))
 	s.Require().NoError(err)
-	s.Require().Equal(service.RoleUser, reloadedLevel1.Role)
-	s.Require().NotNil(reloadedLevel1.ParentUserID)
-	s.Require().Equal(root.ID, *reloadedLevel1.ParentUserID)
+	s.Require().False(level1Exists)
 
 	reloadedUser, err := s.client.User.Get(s.ctx, directUser.ID)
 	s.Require().NoError(err)
@@ -455,12 +455,15 @@ func (s *AgentManagementRepoSuite) TestRehomeLevel1AgentForAdminUserDeletionKeep
 	s.Require().Zero(allowedCount)
 }
 
-func (s *AgentManagementRepoSuite) TestRehomeLevel2AgentForAdminUserDeletionPromotesToLevel1AndPreservesProfile() {
+func (s *AgentManagementRepoSuite) TestDeleteLevel2AgentForAdminUserDeletionDeletesAccountAndReturnsParentQuota() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
-	level1 := s.mustCreateAgentUser("level1-parent-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
+	level1 := s.mustCreateAgentUser("level1-parent-delete@test.com", service.RoleAgentLevel1, &root.ID, 70, 700)
 	level2 := s.mustCreateAgentUser("level2-delete@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
+	directUser := s.mustCreateAgentUser("direct-user-under-level2-delete@test.com", service.RoleUser, &level2.ID, 10, 100)
+	siblingUser := s.mustCreateAgentUser("sibling-user-under-level1-delete@test.com", service.RoleUser, &level1.ID, 20, 200)
 	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level2", true, 0.3)
 
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
 	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level2.ID, 30, 300))
 	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID, 1.8, false))
 	_, err := s.client.UserAllowedGroup.Create().
@@ -469,24 +472,35 @@ func (s *AgentManagementRepoSuite) TestRehomeLevel2AgentForAdminUserDeletionProm
 		Save(s.ctx)
 	s.Require().NoError(err)
 
-	affected, err := s.repo.RehomeAgentForAdminUserDeletion(s.ctx, level2)
+	affected, err := s.repo.DeleteAgentForAdminUserDeletion(s.ctx, level2)
 	s.Require().NoError(err)
 	s.Require().Contains(affected, level1.ID)
 	s.Require().Contains(affected, level2.ID)
+	s.Require().Contains(affected, directUser.ID)
 
-	reloadedLevel2, err := s.client.User.Get(s.ctx, level2.ID)
+	level2Exists, err := s.client.User.Query().
+		Where(user.IDEQ(level2.ID)).
+		Exist(mixins.SkipSoftDelete(s.ctx))
 	s.Require().NoError(err)
-	s.Require().Equal(service.RoleAgentLevel1, reloadedLevel2.Role)
-	s.Require().NotNil(reloadedLevel2.ParentUserID)
-	s.Require().Equal(root.ID, *reloadedLevel2.ParentUserID)
-	s.Require().Equal(30, reloadedLevel2.AllocatedConcurrency)
-	s.Require().Equal(300, reloadedLevel2.AllocatedRpm)
+	s.Require().False(level2Exists)
 
 	profile, err := s.repo.GetAgentProfile(s.ctx, level2.ID)
 	s.Require().NoError(err)
-	s.Require().NotNil(profile)
-	s.Require().Equal(30, profile.PoolConcurrency)
-	s.Require().Equal(300, profile.PoolRPM)
+	s.Require().Nil(profile)
+
+	reloadedDirectUser, err := s.client.User.Get(s.ctx, directUser.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(reloadedDirectUser.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedDirectUser.ParentUserID)
+
+	reloadedLevel1, err := s.client.User.Get(s.ctx, level1.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(80, reloadedLevel1.Concurrency)
+	s.Require().Equal(800, reloadedLevel1.RpmLimit)
+	reloadedSiblingUser, err := s.client.User.Get(s.ctx, siblingUser.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(reloadedSiblingUser.ParentUserID)
+	s.Require().Equal(level1.ID, *reloadedSiblingUser.ParentUserID)
 
 	delegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID)
 	s.Require().NoError(err)
