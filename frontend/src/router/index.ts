@@ -862,7 +862,7 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
-  if (to.path === '/enterprise' && !authStore.isAdmin && !!authStore.user?.enterprise && !authStore.isEnterpriseManager) {
+  if ((to.path === '/enterprise' || to.path.startsWith('/enterprise/')) && !authStore.isAdmin && !!authStore.user?.enterprise && !authStore.isEnterpriseManager) {
     next('/dashboard')
     return
   }

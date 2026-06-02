@@ -15,6 +15,10 @@
 - 线上二进制路径：`/opt/sub2api/sub2api`
 - 线上数据目录：`/opt/sub2api/data`
 - 线上配置文件：`/opt/sub2api/config.yaml`
+- 企业简洁版域名：`https://pro.ise.it.com`
+- 企业简洁版 systemd 服务：`sub2api-enterprise.service`
+- 企业简洁版二进制路径：`/opt/sub2api-enterprise/sub2api`
+- 企业简洁版数据目录：`/opt/sub2api-enterprise/data`
 
 - 数据库：
   - host: `127.0.0.1`
@@ -56,6 +60,15 @@ export GITHUB_TOKEN="你的 PAT"
 ```bash
 export SERVICE_NAME="sub2api.service"
 export INSTALL_PATH="/opt/sub2api/sub2api"
+export INSTALL_USER="sub2api"
+export INSTALL_GROUP="sub2api"
+```
+
+企业简洁版实例是独立服务，部署时需要覆盖这些变量：
+
+```bash
+export SERVICE_NAME="sub2api-enterprise.service"
+export INSTALL_PATH="/opt/sub2api-enterprise/sub2api"
 export INSTALL_USER="sub2api"
 export INSTALL_GROUP="sub2api"
 ```
@@ -366,6 +379,22 @@ tools/release_helper.sh wait-run "$RUN_ID"
 
 # 7. 部署当前 HEAD 对应构建
 HEAD_SHA=$(git rev-parse HEAD)
+tools/deploy_latest.sh shanfu-prod "$HEAD_SHA"
+```
+
+如果本次改动影响前端、用户权限或公共页面，需要同时部署主站和企业简洁版：
+
+```bash
+HEAD_SHA=$(git rev-parse HEAD)
+
+# 主站 api.ise.it.com / 5899
+tools/deploy_latest.sh shanfu-prod "$HEAD_SHA"
+
+# 企业简洁版 pro.ise.it.com / 5789
+SERVICE_NAME="sub2api-enterprise.service" \
+INSTALL_PATH="/opt/sub2api-enterprise/sub2api" \
+INSTALL_USER="sub2api" \
+INSTALL_GROUP="sub2api" \
 tools/deploy_latest.sh shanfu-prod "$HEAD_SHA"
 ```
 

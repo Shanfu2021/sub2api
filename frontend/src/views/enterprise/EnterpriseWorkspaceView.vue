@@ -343,10 +343,10 @@ const members = ref<EnterpriseMembership[]>([])
 const inviteCodes = ref<EnterpriseInviteCode[]>([])
 const ledger = ref<EnterpriseLedgerEntry[]>([])
 const groups = ref<EnterpriseGroupSummary[]>([])
-const managerEnterprise = computed(() => isFullEnterpriseContext(me.enterprise) ? me.enterprise : null)
+const managerEnterprise = computed(() => isManagerEnterpriseContext(me.enterprise) ? me.enterprise : null)
 
-function isFullEnterpriseContext(value: EnterpriseMeResponse['enterprise']): value is EnterpriseContext {
-  return !!value && 'pricing_floor_factor' in value
+function isManagerEnterpriseContext(value: EnterpriseMeResponse['enterprise']): value is EnterpriseContext {
+  return !!value && value.member_role === 'manager' && 'pricing_floor_factor' in value
 }
 
 const memberForm = reactive({
