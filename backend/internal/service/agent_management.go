@@ -203,10 +203,10 @@ type AgentManagementService struct {
 
 func NewAgentManagementService(repo AgentManagementRepository, userRepo UserRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *AgentManagementService {
 	return &AgentManagementService{
-		repo:                   repo,
-		userRepo:               userRepo,
-		groupRepo:              groupRepo,
-		authCacheInvalidator:   authCacheInvalidator,
+		repo:                 repo,
+		userRepo:             userRepo,
+		groupRepo:            groupRepo,
+		authCacheInvalidator: authCacheInvalidator,
 	}
 }
 
