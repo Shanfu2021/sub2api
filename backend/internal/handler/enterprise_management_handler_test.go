@@ -20,8 +20,8 @@ type fakeEnterpriseManagementService struct {
 	setCalls    int
 	removeCalls int
 
-	listActorID int64
-	listQuery   service.DirectChildrenQuery
+	listActorID   int64
+	listQuery     service.DirectChildrenQuery
 	createActorID int64
 	createInput   service.EmployeeCreateInput
 	updateActorID int64
@@ -141,7 +141,7 @@ func TestEnterpriseManagementHandlerListEmployeesUsesPaginationQuery(t *testing.
 	require.Equal(t, 3, svc.listQuery.Pagination.Page)
 	require.Equal(t, 50, svc.listQuery.Pagination.PageSize)
 	require.Equal(t, "employee", svc.listQuery.Search)
-	require.Contains(t, rec.Body.String(), `"page":3`)
+	require.Contains(t, rec.Body.String(), `"Page":3`)
 }
 
 func TestEnterpriseManagementHandlerCreatesEmployeeWithBalance(t *testing.T) {
