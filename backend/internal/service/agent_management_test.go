@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"testing"
 
@@ -110,7 +111,17 @@ func (r *agentManagementRepoStub) ListDirectChildren(_ context.Context, parentID
 		}
 		out = append(out, *user)
 	}
-	return out, &pagination.PaginationResult{Total: int64(len(out)), Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	total := len(out)
+	out = paginateServiceSlice(out, params)
+	pages := 0
+	if total > 0 {
+		pages = total / params.Limit()
+		if total%params.Limit() > 0 {
+			pages++
+		}
+	}
+	return out, &pagination.PaginationResult{Total: int64(total), Page: params.Page, PageSize: params.Limit(), Pages: pages}, nil
 }
 
 func (r *agentManagementRepoStub) ListDirectChildrenWithSearch(_ context.Context, parentID int64, roles []string, params pagination.PaginationParams, search string) ([]User, *pagination.PaginationResult, error) {
@@ -134,7 +145,20 @@ func (r *agentManagementRepoStub) ListDirectChildrenWithSearch(_ context.Context
 		}
 		out = append(out, *user)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, &pagination.PaginationResult{Total: int64(len(out)), Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
+}
+
+func paginateServiceSlice[T any](items []T, params pagination.PaginationParams) []T {
+	offset := params.Offset()
+	if offset >= len(items) {
+		return []T{}
+	}
+	end := offset + params.Limit()
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end]
 }
 
 func (r *agentManagementRepoStub) SumDirectChildAllocations(_ context.Context, parentID int64, excludeChildID *int64) (int, int, error) {
@@ -1423,6 +1447,33 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.Contains(t, invalidator.userIDs, level2UnderDetachedAgentID)
 }
 
+func TestAgentManagementDeletingLevel1AgentInvalidatesChildrenPastFirstPage(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	users := []*User{
+		{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	}
+	for i := int64(0); i < 1001; i++ {
+		users = append(users, &User{
+			ID:           100 + i,
+			Role:         RoleUser,
+			ParentUserID: &level1ID,
+			Status:       StatusActive,
+		})
+	}
+	repo := newAgentManagementRepoStub(users...)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
+
+	require.NoError(t, svc.DeleteDirectChild(context.Background(), rootID, level1ID))
+
+	require.Equal(t, rootID, *repo.users[1100].ParentUserID)
+	require.Contains(t, invalidator.userIDs, level1ID)
+	require.Contains(t, invalidator.userIDs, int64(1100))
+}
+
 func TestAgentManagementDeletingLevel2AgentRecalculatesLevel1Quota(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
@@ -1778,6 +1829,83 @@ func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T)
 		{userID: level2ID, groupID: groupID},
 		{userID: ordinaryChildID, groupID: groupID},
 	}, userRepo.removedAllowedGroups)
+}
+
+func TestDisablingChildGroupDelegationRemovesInviteDefaultForChildAgent(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	level2ID := int64(3)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: level1ID, childID: level2ID, groupID: groupID, rateMultiplier: 1.8, canDelegate: false},
+	}
+	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: level1ID, groupID: groupID, rateMultiplier: 1.7},
+		{managerID: level2ID, groupID: groupID, rateMultiplier: 2.1},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), rootID, level1ID, groupID, ChildGroupDelegationInput{RateMultiplier: 1.5, CanDelegate: false}))
+
+	require.Empty(t, repo.inviteGroupDefaults)
+	require.ElementsMatch(t, []agentGroupDelegationRecord{
+		{managerID: level1ID, groupID: groupID},
+		{managerID: level2ID, groupID: groupID},
+	}, repo.deletedInviteDefaults)
+}
+
+func TestRemoveDelegatedExclusiveGroupCascadesPastFirstPageOfDirectChildren(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	groupID := int64(20)
+	users := []*User{
+		{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+	}
+	for i := int64(0); i < 1001; i++ {
+		users = append(users, &User{
+			ID:             100 + i,
+			Role:           RoleUser,
+			ParentUserID:   &level1ID,
+			AllowedGroups:  []int64{groupID},
+			Status:         StatusActive,
+			Email:          "child@example.com",
+			Username:       "child",
+			Concurrency:    1,
+			RPMLimit:       1,
+		})
+	}
+	repo := newAgentManagementRepoStub(users...)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+	}
+	for i := int64(0); i < 1001; i++ {
+		repo.groupDelegations = append(repo.groupDelegations, agentGroupDelegationRecord{
+			managerID:      level1ID,
+			childID:        100 + i,
+			groupID:        groupID,
+			rateMultiplier: 1.8,
+			canDelegate:    false,
+		})
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	require.NoError(t, svc.RemoveChildGroupDelegation(context.Background(), rootID, level1ID, groupID))
+
+	require.Empty(t, repo.groupDelegations)
+	require.Empty(t, repo.users[level1ID].AllowedGroups)
+	require.Empty(t, repo.users[1100].AllowedGroups)
+	require.Len(t, userRepo.removedAllowedGroups, 1002)
 }
 
 func TestDelegatedExclusiveGroupHidesUpstreamRate(t *testing.T) {

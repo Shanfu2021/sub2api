@@ -541,7 +541,10 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 	}
 
 	if actor.Role == RoleAdmin && child.Role == RoleAgentLevel1 {
-		directChildren, _, _ := s.repo.ListDirectChildren(ctx, child.ID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 1000})
+		directChildren, listErr := s.listAllDirectChildrenForCascade(ctx, child.ID)
+		if listErr != nil {
+			return listErr
+		}
 		if err := s.repo.DetachLevel1AgentAndMoveChildren(ctx, child.ID, rootAdmin.ID); err != nil {
 			return err
 		}
@@ -732,6 +735,9 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 	}
 	s.invalidateUser(ctx, child.ID)
 	if existing != nil && existing.CanDelegate && !input.CanDelegate {
+		if err := s.repo.DeleteInviteGroupDefault(ctx, child.ID, groupID); err != nil {
+			return err
+		}
 		if err := s.removeDelegatedGroupFromDescendants(ctx, child.ID, groupID); err != nil {
 			return err
 		}
@@ -889,7 +895,7 @@ func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx 
 	}
 	s.invalidateUser(ctx, userID)
 
-	children, _, err := s.repo.ListDirectChildren(ctx, userID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 1000})
+	children, err := s.listAllDirectChildrenForCascade(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -916,7 +922,7 @@ func isAgentManagerRoleForInviteDefaults(ctx context.Context, repo UserRepositor
 }
 
 func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context.Context, managerID int64, groupID int64) error {
-	children, _, err := s.repo.ListDirectChildren(ctx, managerID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 1000})
+	children, err := s.listAllDirectChildrenForCascade(ctx, managerID)
 	if err != nil {
 		return err
 	}
@@ -929,6 +935,22 @@ func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context
 		}
 	}
 	return nil
+}
+
+func (s *AgentManagementService) listAllDirectChildrenForCascade(ctx context.Context, parentID int64) ([]User, error) {
+	const pageSize = 1000
+	var out []User
+	for page := 1; ; page++ {
+		children, result, err := s.repo.ListDirectChildren(ctx, parentID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: page, PageSize: pageSize})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, children...)
+		if len(children) == 0 || result == nil || page >= result.Pages {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (s *AgentManagementService) ResolveInvitationParent(ctx context.Context, inviterID int64) (*int64, error) {

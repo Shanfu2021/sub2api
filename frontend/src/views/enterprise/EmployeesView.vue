@@ -489,10 +489,6 @@ async function createEmployee() {
 
 async function saveAllocation(employee: EnterpriseEmployee) {
   const draft = draftFor(employee)
-  if (exceedsRemainingAllocation(draft)) {
-    appStore.showError(t('enterpriseManagement.employees.insufficientAllocation'))
-    return
-  }
   savingEmployeeId.value = employee.id
   try {
     allocation.value = await enterpriseManagementAPI.updateEmployeeAllocation(employee.id, {
