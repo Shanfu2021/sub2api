@@ -296,6 +296,7 @@ export default {
     total: '总计',
     balance: '余额',
     available: '可用',
+    unlimited: '无限制',
     copiedToClipboard: '已复制到剪贴板',
     copied: '已复制',
     copyFailed: '复制失败',
@@ -692,6 +693,19 @@ export default {
   enterpriseManagement: {
     employees: {
       subtitle: '管理员或代理分配给企业的余额、并发和 RPM，可以继续分配给员工。',
+      create: '创建员工',
+      created: '员工已创建',
+      createFailed: '创建员工失败',
+      deleted: '员工已删除，余额和额度已返还',
+      deleteTitle: '删除员工',
+      deleteConfirm: "确定删除员工 '{email}' 吗？余额和额度会返还给企业。",
+      deleteFailed: '删除员工失败',
+      groupsTitle: "员工分组：{email}",
+      emptyGroups: '暂无可分配给员工的专属分组',
+      groupSaved: '员工分组已保存',
+      groupRemoved: '员工分组已移除',
+      groupFailed: '保存员工分组失败',
+      insufficientAllocation: '剩余并发或 RPM 不足，不能分配',
       loadFailed: '加载员工失败'
     },
     groups: {

@@ -296,6 +296,7 @@ export default {
     total: 'Total',
     balance: 'Balance',
     available: 'Available',
+    unlimited: 'Unlimited',
     copiedToClipboard: 'Copied to clipboard',
     copied: 'Copied',
     copyFailed: 'Failed to copy',
@@ -693,6 +694,19 @@ export default {
   enterpriseManagement: {
     employees: {
       subtitle: 'Balances, concurrency, and RPM assigned to the enterprise can be distributed to employees.',
+      create: 'Create employee',
+      created: 'Employee created',
+      createFailed: 'Failed to create employee',
+      deleted: 'Employee deleted. Balance and allocation were returned.',
+      deleteTitle: 'Delete employee',
+      deleteConfirm: "Delete employee '{email}'? Balance and allocation will be returned to the enterprise.",
+      deleteFailed: 'Failed to delete employee',
+      groupsTitle: 'Employee groups: {email}',
+      emptyGroups: 'No exclusive groups are available for employees',
+      groupSaved: 'Employee group saved',
+      groupRemoved: 'Employee group removed',
+      groupFailed: 'Failed to save employee group',
+      insufficientAllocation: 'Remaining concurrency or RPM is not enough to allocate',
       loadFailed: 'Failed to load employees'
     },
     groups: {
