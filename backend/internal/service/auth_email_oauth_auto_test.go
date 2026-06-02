@@ -96,7 +96,7 @@ func TestEmailOAuthAuto_AffiliateInvitationKeepsOfficialInviterBinding(t *testin
 		usersByEmail: map[string]*User{
 			"admin@example.com":    {ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
 			"agent@example.com":    {ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-			"ordinary@example.com": {ID: ordinaryID, Email: "ordinary@example.com", Role: RoleUser, ParentUserID: &agentID, Status: StatusActive},
+			"ordinary@example.com": {ID: ordinaryID, Email: "ordinary@example.com", Role: RoleUser, ParentUserID: &agentID, Concurrency: 1, RPMLimit: 1, Status: StatusActive},
 		},
 	}
 	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": ordinaryID}}
@@ -113,7 +113,7 @@ func TestEmailOAuthAuto_AffiliateInvitationKeepsOfficialInviterBinding(t *testin
 	agentRepo := newAgentManagementRepoStub(
 		&User{ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
 		&User{ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: ordinaryID, Email: "ordinary@example.com", Role: RoleUser, ParentUserID: &agentID, Status: StatusActive},
+		&User{ID: ordinaryID, Email: "ordinary@example.com", Role: RoleUser, ParentUserID: &agentID, Concurrency: 1, RPMLimit: 1, Status: StatusActive},
 	)
 	agentRepo.agentProfiles = map[int64]AgentProfile{
 		agentID: finiteAgentInviteProfile(agentID),

@@ -55,14 +55,6 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	}, nil
 }
 
-func (s *AuthService) validateOAuthRegistrationInvitation(ctx context.Context, invitationCode string) (*RedeemCode, error) {
-	resolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, "", false)
-	if err != nil {
-		return nil, err
-	}
-	return resolution.RedeemCode, nil
-}
-
 // VerifyOAuthEmailCode verifies the locally entered email verification code for
 // third-party signup and binding flows. This is intentionally independent from
 // the global registration email verification toggle.
