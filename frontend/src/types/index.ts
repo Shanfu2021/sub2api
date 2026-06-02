@@ -260,6 +260,8 @@ export interface AgentManagedUser {
   rpm_limit: number
   allocated_concurrency: number
   allocated_rpm: number
+  pool_concurrency: number
+  pool_rpm: number
   status: 'active' | 'disabled'
   created_at: string
   updated_at: string
@@ -280,8 +282,8 @@ export interface AgentDirectChildrenResponse {
 }
 
 export interface AgentAllocationUpdate {
-  allocated_concurrency: number
-  allocated_rpm: number
+  concurrency: number
+  rpm: number
 }
 
 export interface AgentDirectUserCreateRequest {
@@ -307,6 +309,12 @@ export interface AgentManagementSummary {
 }
 
 export type AgentUpgradeTargetRole = 'agent_level1' | 'agent_level2' | 'enterprise'
+
+export interface AgentUpgradeRequest {
+  target_role: AgentUpgradeTargetRole
+  pool_concurrency?: number
+  pool_rpm?: number
+}
 
 export type AgentGroupRateSource = 'public' | 'admin_exclusive' | 'delegated'
 

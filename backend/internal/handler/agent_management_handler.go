@@ -304,6 +304,8 @@ type agentManagedUserResponse struct {
 	RPMLimit             int    `json:"rpm_limit"`
 	AllocatedConcurrency int    `json:"allocated_concurrency"`
 	AllocatedRPM         int    `json:"allocated_rpm"`
+	PoolConcurrency      int    `json:"pool_concurrency"`
+	PoolRPM              int    `json:"pool_rpm"`
 	Status               string `json:"status"`
 	CreatedAt            string `json:"created_at"`
 	UpdatedAt            string `json:"updated_at"`
@@ -320,6 +322,12 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 	if u == nil {
 		return agentManagedUserResponse{}
 	}
+	poolConcurrency := 0
+	poolRPM := 0
+	if u.AgentProfile != nil {
+		poolConcurrency = u.AgentProfile.PoolConcurrency
+		poolRPM = u.AgentProfile.PoolRPM
+	}
 	return agentManagedUserResponse{
 		ID:                   u.ID,
 		Email:                u.Email,
@@ -330,6 +338,8 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		RPMLimit:             u.RPMLimit,
 		AllocatedConcurrency: u.AllocatedConcurrency,
 		AllocatedRPM:         u.AllocatedRPM,
+		PoolConcurrency:      poolConcurrency,
+		PoolRPM:              poolRPM,
 		Status:               u.Status,
 		CreatedAt:            u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:            u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),

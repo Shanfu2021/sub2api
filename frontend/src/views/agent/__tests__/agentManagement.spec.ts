@@ -129,6 +129,8 @@ function makeChild(overrides: Partial<AgentManagedUser> = {}): AgentManagedUser 
     parent_user_id: 1,
     concurrency: 10,
     rpm_limit: 100,
+    pool_concurrency: 0,
+    pool_rpm: 0,
     allocated_concurrency: 3,
     allocated_rpm: 30,
     status: 'active',
@@ -252,6 +254,39 @@ describe('agent management pages', () => {
     expect(wrapper.get('[data-test="allocation-rpm-12"]').exists()).toBe(true)
   })
 
+  it('uses effective concurrency and RPM fields for direct ordinary users', async () => {
+    listDirectUsers.mockResolvedValue(makeChildrenResponse([
+      makeChild({ concurrency: 10, rpm_limit: 120, allocated_concurrency: 0, allocated_rpm: 0 }),
+    ]))
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('10')
+    expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('120')
+  })
+
+  it('uses pool fields for direct agents', async () => {
+    listDirectAgents.mockResolvedValue(makeChildrenResponse([
+      makeChild({ role: 'agent_level2', concurrency: 5, rpm_limit: 50, pool_concurrency: 30, pool_rpm: 300 }),
+    ]))
+    const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('30')
+    expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('300')
+  })
+
+  it('uses effective concurrency and RPM fields for direct enterprises', async () => {
+    listDirectEnterprises.mockResolvedValue(makeChildrenResponse([
+      makeChild({ role: 'enterprise', concurrency: 18, rpm_limit: 190, allocated_concurrency: 0, allocated_rpm: 0 }),
+    ]))
+    const wrapper = mountAgentView(DirectEnterprisesView, 'admin')
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('18')
+    expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('190')
+  })
+
   it('opens a modal and creates direct users from the direct users page', async () => {
     const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
     await flushPromises()
@@ -366,6 +401,37 @@ describe('agent management pages', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-test^="upgrade-"]').exists()).toBe(false)
+  })
+
+  it('sends the row draft as pool quota when upgrading a direct user to an agent', async () => {
+    listDirectUsers.mockResolvedValue(makeChildrenResponse([
+      makeChild({ concurrency: 10, rpm_limit: 120, allocated_concurrency: 0, allocated_rpm: 0 }),
+    ]))
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="allocation-concurrency-12"]').setValue('80')
+    await wrapper.get('[data-test="allocation-rpm-12"]').setValue('900')
+    await wrapper.get('[data-test="upgrade-agent_level1-12"]').trigger('click')
+    await flushPromises()
+
+    expect(upgradeChild).toHaveBeenCalledWith(12, {
+      target_role: 'agent_level1',
+      pool_concurrency: 80,
+      pool_rpm: 900,
+    })
+  })
+
+  it('does not send pool fields when upgrading a direct user to enterprise', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="upgrade-enterprise-12"]').trigger('click')
+    await flushPromises()
+
+    expect(upgradeChild).toHaveBeenCalledWith(12, {
+      target_role: 'enterprise',
+    })
   })
 
   it('renders effective group rates without upstream cost fields', async () => {

@@ -64,6 +64,9 @@ type User struct {
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
+
+	// AgentProfile is populated only by agent-management list responses.
+	AgentProfile *AgentProfile
 }
 
 func (u *User) IsAdmin() bool {

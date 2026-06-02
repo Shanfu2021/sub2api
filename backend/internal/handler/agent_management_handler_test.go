@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,17 +63,19 @@ func (s *fakeAgentManagementService) CreateDirectUser(_ context.Context, actorID
 }
 
 func (s *fakeAgentManagementService) UpdateAllocation(_ context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error) {
+	concurrency := req.RequestedConcurrency()
+	rpm := req.RequestedRPM()
 	s.updateAllocationCalls++
 	s.updateActorID = actorID
 	s.updateChildID = childID
 	s.updateAllocation = req
 	return &service.AllocationSummary{
 		TotalConcurrency:     20,
-		AllocatedConcurrency: req.AllocatedConcurrency,
-		RemainingConcurrency: 20 - req.AllocatedConcurrency,
+		AllocatedConcurrency: concurrency,
+		RemainingConcurrency: 20 - concurrency,
 		TotalRPM:             200,
-		AllocatedRPM:         req.AllocatedRPM,
-		RemainingRPM:         200 - req.AllocatedRPM,
+		AllocatedRPM:         rpm,
+		RemainingRPM:         200 - rpm,
 	}, nil
 }
 
@@ -137,8 +140,8 @@ func TestAgentManagementHandlerRoutesUseAuthenticatedUser(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPut, "/children/7/allocation", strings.NewReader(`{
 		"actor_id": 999,
-		"allocated_concurrency": 5,
-		"allocated_rpm": 60
+		"concurrency": 5,
+		"rpm": 60
 	}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -148,6 +151,26 @@ func TestAgentManagementHandlerRoutesUseAuthenticatedUser(t *testing.T) {
 	require.Equal(t, 1, svc.updateAllocationCalls)
 	require.Equal(t, int64(42), svc.updateActorID)
 	require.Equal(t, int64(7), svc.updateChildID)
+	require.NotNil(t, svc.updateAllocation.Concurrency)
+	require.NotNil(t, svc.updateAllocation.RPM)
+	require.Equal(t, 5, *svc.updateAllocation.Concurrency)
+	require.Equal(t, 60, *svc.updateAllocation.RPM)
+}
+
+func TestAgentManagementHandlerAcceptsLegacyAllocationPayload(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/children/7/allocation", strings.NewReader(`{
+		"allocated_concurrency": 5,
+		"allocated_rpm": 60
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.updateAllocationCalls)
 	require.Equal(t, service.AllocationUpdate{AllocatedConcurrency: 5, AllocatedRPM: 60}, svc.updateAllocation)
 }
 
@@ -218,4 +241,21 @@ func TestAgentManagementHandlerUpgradePayload(t *testing.T) {
 		PoolConcurrency: 100,
 		PoolRPM:         1000,
 	}, svc.upgradeInput)
+}
+
+func TestAgentManagedUserResponseIncludesAgentProfilePool(t *testing.T) {
+	userID := int64(12)
+	got := agentManagedUserFromService(&service.User{
+		ID:           userID,
+		Email:        "agent@example.com",
+		Role:         service.RoleAgentLevel2,
+		Concurrency:  5,
+		RPMLimit:     50,
+		AgentProfile: &service.AgentProfile{UserID: userID, PoolConcurrency: 30, PoolRPM: 300},
+	})
+
+	payload, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(payload), `"pool_concurrency":30`)
+	require.Contains(t, string(payload), `"pool_rpm":300`)
 }

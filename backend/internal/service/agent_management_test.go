@@ -596,6 +596,36 @@ func TestAgentManagementDirectUsersUseEffectiveQuotaFields(t *testing.T) {
 	require.Equal(t, 0, result.Users[0].AllocatedRPM)
 }
 
+func TestAgentManagementDirectAgentsIncludeProfilePool(t *testing.T) {
+	rootID := int64(1)
+	childAgentID := int64(10)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{
+			ID:           childAgentID,
+			Role:         RoleAgentLevel1,
+			ParentUserID: &rootID,
+			Concurrency:  5,
+			RPMLimit:     50,
+			Status:       StatusActive,
+		},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		childAgentID: {UserID: childAgentID, PoolConcurrency: 30, PoolRPM: 300},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.ListDirectAgents(context.Background(), rootID)
+	require.NoError(t, err)
+	require.Len(t, result.Users, 1)
+	require.NotNil(t, result.Users[0].AgentProfile)
+	require.Equal(t, 30, result.Users[0].AgentProfile.PoolConcurrency)
+	require.Equal(t, 300, result.Users[0].AgentProfile.PoolRPM)
+	require.Equal(t, 5, result.Users[0].Concurrency)
+	require.Equal(t, 50, result.Users[0].RPMLimit)
+}
+
 func TestAgentManagementAgentPoolControlsManagerCapacity(t *testing.T) {
 	rootID := int64(1)
 	managerID := int64(2)

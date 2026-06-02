@@ -23,8 +23,10 @@ var (
 )
 
 type AllocationUpdate struct {
-	AllocatedConcurrency int `json:"allocated_concurrency"`
-	AllocatedRPM         int `json:"allocated_rpm"`
+	AllocatedConcurrency int  `json:"allocated_concurrency"`
+	AllocatedRPM         int  `json:"allocated_rpm"`
+	Concurrency          *int `json:"concurrency,omitempty"`
+	RPM                  *int `json:"rpm,omitempty"`
 }
 
 type AgentProfile struct {
@@ -205,7 +207,9 @@ func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID i
 }
 
 func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID int64, childID int64, req AllocationUpdate) (*AllocationSummary, error) {
-	if req.AllocatedConcurrency < 0 || req.AllocatedRPM < 0 {
+	requestedConcurrency := req.RequestedConcurrency()
+	requestedRPM := req.RequestedRPM()
+	if requestedConcurrency < 0 || requestedRPM < 0 {
 		return nil, ErrAgentManagementInvalidAllocation
 	}
 	actor, err := s.requireManager(ctx, actorID)
@@ -225,10 +229,10 @@ func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID i
 	if err != nil {
 		return nil, err
 	}
-	if actor.Role != RoleAdmin && (req.AllocatedConcurrency > totalConcurrency-allocatedConcurrency || req.AllocatedRPM > totalRPM-allocatedRPM) {
+	if actor.Role != RoleAdmin && (requestedConcurrency > totalConcurrency-allocatedConcurrency || requestedRPM > totalRPM-allocatedRPM) {
 		return nil, ErrAgentManagementAllocationExceeded
 	}
-	if err := s.repo.SetEffectiveQuota(ctx, child.ID, req.AllocatedConcurrency, req.AllocatedRPM); err != nil {
+	if err := s.repo.SetEffectiveQuota(ctx, child.ID, requestedConcurrency, requestedRPM); err != nil {
 		return nil, err
 	}
 	s.invalidateUser(ctx, child.ID)
@@ -238,8 +242,8 @@ func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID i
 		}
 	}
 
-	allocatedConcurrency += req.AllocatedConcurrency
-	allocatedRPM += req.AllocatedRPM
+	allocatedConcurrency += requestedConcurrency
+	allocatedRPM += requestedRPM
 	summary := buildAllocationSummary(actor, totalConcurrency, totalRPM, allocatedConcurrency, allocatedRPM)
 	return &summary, nil
 }
@@ -510,6 +514,16 @@ func (s *AgentManagementService) listDirectChildrenForActor(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	for i := range users {
+		if !isAgentManagerRole(users[i].Role) || users[i].Role == RoleAdmin {
+			continue
+		}
+		profile, err := s.repo.GetAgentProfile(ctx, users[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		users[i].AgentProfile = profile
+	}
 	return &DirectChildrenResult{Users: users, Pagination: page}, nil
 }
 
@@ -631,6 +645,20 @@ func buildAllocationSummary(actor *User, totalConcurrency int, totalRPM int, all
 		RemainingRPM:         remainingRPM,
 		UnlimitedCapacity:    unlimitedCapacity,
 	}
+}
+
+func (u AllocationUpdate) RequestedConcurrency() int {
+	if u.Concurrency != nil {
+		return *u.Concurrency
+	}
+	return u.AllocatedConcurrency
+}
+
+func (u AllocationUpdate) RequestedRPM() int {
+	if u.RPM != nil {
+		return *u.RPM
+	}
+	return u.AllocatedRPM
 }
 
 func canUpgradeDirectUser(actorRole string, targetRole string) bool {

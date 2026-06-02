@@ -59,8 +59,8 @@
                   class="input h-9"
                   type="number"
                   min="0"
-                  :value="draftFor(row).allocated_concurrency"
-                  @input="updateDraft(row.id, 'allocated_concurrency', ($event.target as HTMLInputElement).value)"
+                  :value="draftFor(row).concurrency"
+                  @input="updateDraft(row.id, 'concurrency', ($event.target as HTMLInputElement).value)"
                 />
               </label>
               <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
@@ -70,8 +70,8 @@
                   class="input h-9"
                   type="number"
                   min="0"
-                  :value="draftFor(row).allocated_rpm"
-                  @input="updateDraft(row.id, 'allocated_rpm', ($event.target as HTMLInputElement).value)"
+                  :value="draftFor(row).rpm"
+                  @input="updateDraft(row.id, 'rpm', ($event.target as HTMLInputElement).value)"
                 />
               </label>
             </div>
@@ -221,10 +221,20 @@ function extractPagination(result: AgentDirectChildrenResponse) {
 
 function syncDrafts(items: AgentManagedUser[]) {
   for (const child of items) {
-    drafts[child.id] = {
-      allocated_concurrency: child.allocated_concurrency,
-      allocated_rpm: child.allocated_rpm,
+    drafts[child.id] = quotaFor(child)
+  }
+}
+
+function quotaFor(child: AgentManagedUser): AgentAllocationUpdate {
+  if (props.kind === 'agents') {
+    return {
+      concurrency: child.pool_concurrency || 0,
+      rpm: child.pool_rpm || 0,
     }
+  }
+  return {
+    concurrency: child.concurrency || 0,
+    rpm: child.rpm_limit || 0,
   }
 }
 
@@ -254,10 +264,7 @@ async function loadData() {
 
 function draftFor(child: AgentManagedUser): AgentAllocationUpdate {
   if (!drafts[child.id]) {
-    drafts[child.id] = {
-      allocated_concurrency: child.allocated_concurrency,
-      allocated_rpm: child.allocated_rpm,
-    }
+    drafts[child.id] = quotaFor(child)
   }
   return drafts[child.id]
 }
@@ -265,7 +272,7 @@ function draftFor(child: AgentManagedUser): AgentAllocationUpdate {
 function updateDraft(childId: number, key: keyof AgentAllocationUpdate, rawValue: string) {
   const parsed = Math.max(0, Number.parseInt(rawValue || '0', 10) || 0)
   drafts[childId] = {
-    ...(drafts[childId] || { allocated_concurrency: 0, allocated_rpm: 0 }),
+    ...(drafts[childId] || { concurrency: 0, rpm: 0 }),
     [key]: parsed,
   }
 }
@@ -315,7 +322,17 @@ async function saveAllocation(child: AgentManagedUser) {
 async function upgrade(child: AgentManagedUser, targetRole: AgentUpgradeTargetRole) {
   savingChildId.value = child.id
   try {
-    await agentManagementAPI.upgradeChild(child.id, targetRole)
+    const payload = { target_role: targetRole }
+    if (targetRole === 'agent_level1' || targetRole === 'agent_level2') {
+      const quota = draftFor(child)
+      await agentManagementAPI.upgradeChild(child.id, {
+        ...payload,
+        pool_concurrency: quota.concurrency,
+        pool_rpm: quota.rpm,
+      })
+    } else {
+      await agentManagementAPI.upgradeChild(child.id, payload)
+    }
     appStore.showSuccess(t('agentManagement.direct.upgradeSaved'))
     await loadData()
   } catch (error) {

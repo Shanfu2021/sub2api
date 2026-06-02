@@ -8,7 +8,7 @@ import type {
   AgentGroupRate,
   AgentManagedUser,
   AgentManagementSummary,
-  AgentUpgradeTargetRole,
+  AgentUpgradeRequest,
   AgentAllocationUpdate
 } from '@/types'
 
@@ -44,10 +44,8 @@ export async function updateAllocation(childId: number, payload: AgentAllocation
   return data
 }
 
-export async function upgradeChild(childId: number, targetRole: AgentUpgradeTargetRole): Promise<AgentManagedUser> {
-  const { data } = await apiClient.post<AgentManagedUser>(`${BASE_PATH}/children/${childId}/upgrade`, {
-    target_role: targetRole,
-  })
+export async function upgradeChild(childId: number, payload: AgentUpgradeRequest): Promise<AgentManagedUser> {
+  const { data } = await apiClient.post<AgentManagedUser>(`${BASE_PATH}/children/${childId}/upgrade`, payload)
   return data
 }
 

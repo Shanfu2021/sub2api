@@ -45,7 +45,7 @@ describe('agent management api', () => {
       remaining_rpm: 940,
       unlimited_capacity: false,
     }
-    const payload = { allocated_concurrency: 5, allocated_rpm: 60 }
+    const payload = { concurrency: 5, rpm: 60 }
     put.mockResolvedValue({ data: response })
 
     await expect(agentManagementAPI.updateAllocation(12, payload)).resolves.toEqual(response)
@@ -73,10 +73,16 @@ describe('agent management api', () => {
     const upgraded = { id: 12, role: 'agent_level1' }
     post.mockResolvedValue({ data: upgraded })
 
-    await expect(agentManagementAPI.upgradeChild(12, 'agent_level1')).resolves.toEqual(upgraded)
+    await expect(agentManagementAPI.upgradeChild(12, {
+      target_role: 'agent_level1',
+      pool_concurrency: 100,
+      pool_rpm: 1000,
+    })).resolves.toEqual(upgraded)
 
     expect(post).toHaveBeenCalledWith('/agent-management/children/12/upgrade', {
       target_role: 'agent_level1',
+      pool_concurrency: 100,
+      pool_rpm: 1000,
     })
   })
 })
