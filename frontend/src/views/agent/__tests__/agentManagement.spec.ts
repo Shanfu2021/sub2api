@@ -111,6 +111,16 @@ const DataTableStub = {
     </div>
   `,
 }
+const ConfirmDialogStub = {
+  props: ['show', 'title', 'message', 'confirmText', 'danger'],
+  emits: ['confirm', 'cancel'],
+  template: `
+    <div v-if="show" data-test="confirm-dialog">
+      <button data-test="confirm-dialog-confirm" @click="$emit('confirm')">confirm</button>
+      <button data-test="confirm-dialog-cancel" @click="$emit('cancel')">cancel</button>
+    </div>
+  `,
+}
 
 function makeUser(role: UserRole): User {
   return {
@@ -226,7 +236,7 @@ function mountAgentView(component: unknown, role: UserRole = 'admin') {
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
         Pagination: true,
-        ConfirmDialog: true,
+        ConfirmDialog: ConfirmDialogStub,
         BaseDialog: { template: '<div v-if="show"><slot /><slot name="footer" /></div>', props: ['show'] },
         Select: true,
         Icon: true,
@@ -533,6 +543,10 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="upgrade-agent_level1-12"]').trigger('click')
     await flushPromises()
 
+    expect(upgradeChild).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="confirm-dialog-confirm"]').trigger('click')
+    await flushPromises()
+
     expect(upgradeChild).toHaveBeenCalledWith(12, {
       target_role: 'agent_level1',
       pool_concurrency: 80,
@@ -545,6 +559,10 @@ describe('agent management pages', () => {
     await flushPromises()
 
     await wrapper.get('[data-test="upgrade-enterprise-12"]').trigger('click')
+    await flushPromises()
+
+    expect(upgradeChild).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="confirm-dialog-confirm"]').trigger('click')
     await flushPromises()
 
     expect(upgradeChild).toHaveBeenCalledWith(12, {

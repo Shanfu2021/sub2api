@@ -179,6 +179,9 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
 	}
+	if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+		s.bindOAuthAffiliate(ctx, user.ID, invitationResolution.BindCode)
+	}
 	return tokenPair, user, nil
 }
 
@@ -276,6 +279,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
+	}
+	if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+		s.bindOAuthAffiliate(ctx, user.ID, invitationResolution.BindCode)
 	}
 	return tokenPair, user, nil
 }

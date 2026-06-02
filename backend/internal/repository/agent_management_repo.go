@@ -8,6 +8,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -355,7 +356,7 @@ func (r *agentManagementRepository) SetAllocation(ctx context.Context, userID in
 	return translatePersistenceError(err, service.ErrUserNotFound, nil)
 }
 
-func (r *agentManagementRepository) DetachLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error {
+func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return err
@@ -399,22 +400,71 @@ func (r *agentManagementRepository) DetachLevel1AgentAndMoveChildren(ctx context
 		return err
 	}
 
-	if _, err := txClient.User.UpdateOneID(agent.ID).
-		SetRole(service.RoleUser).
-		SetParentUserID(rootAdminID).
-		Save(txCtx); err != nil {
-		return translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-
 	if err := r.cleanupAgentDelegatedGroups(txCtx, exec, agent.ID); err != nil {
 		return err
 	}
-	if _, err := exec.ExecContext(txCtx, `DELETE FROM agent_profiles WHERE user_id = $1`, agent.ID); err != nil {
+	if err := r.deleteAgentAccountRows(txCtx, exec, agent.ID); err != nil {
 		return err
+	}
+	if _, err := exec.ExecContext(txCtx, `UPDATE usage_cleanup_tasks SET created_by = $2 WHERE created_by = $1`, agent.ID, rootAdminID); err != nil {
+		return err
+	}
+	deleted, err := txClient.User.Delete().
+		Where(
+			dbuser.IDEQ(agent.ID),
+			dbuser.RoleEQ(service.RoleAgentLevel1),
+		).
+		Exec(mixins.SkipSoftDelete(txCtx))
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return service.ErrUserNotFound
 	}
 
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (r *agentManagementRepository) deleteAgentAccountRows(ctx context.Context, exec sqlQueryExecutor, userID int64) error {
+	statements := []string{
+		`UPDATE user_affiliates SET inviter_id = NULL, updated_at = NOW() WHERE inviter_id = $1`,
+		`UPDATE redeem_codes SET used_by = NULL WHERE used_by = $1`,
+		`UPDATE pending_auth_sessions SET target_user_id = NULL WHERE target_user_id = $1`,
+		`UPDATE user_subscriptions SET assigned_by = NULL WHERE assigned_by = $1`,
+		`DELETE FROM identity_adoption_decisions WHERE identity_id IN (SELECT id FROM auth_identities WHERE user_id = $1)`,
+		`DELETE FROM auth_identity_channels WHERE identity_id IN (SELECT id FROM auth_identities WHERE user_id = $1)`,
+		`DELETE FROM auth_identities WHERE user_id = $1`,
+		`DELETE FROM agent_profiles WHERE user_id = $1`,
+		`DELETE FROM agent_invite_group_defaults WHERE agent_user_id = $1`,
+		`DELETE FROM enterprise_profiles WHERE user_id = $1`,
+		`DELETE FROM enterprise_employee_balance_logs WHERE enterprise_user_id = $1 OR employee_user_id = $1 OR operator_user_id = $1`,
+		`DELETE FROM user_allowed_groups WHERE user_id = $1`,
+		`DELETE FROM user_group_rate_multipliers WHERE user_id = $1`,
+		`DELETE FROM user_attribute_values WHERE user_id = $1`,
+		`DELETE FROM user_platform_quotas WHERE user_id = $1`,
+		`DELETE FROM announcement_reads WHERE user_id = $1`,
+		`DELETE FROM promo_code_usages WHERE user_id = $1`,
+		`DELETE FROM user_affiliate_ledger WHERE user_id = $1`,
+		`UPDATE user_affiliate_ledger SET source_user_id = NULL WHERE source_user_id = $1`,
+		`UPDATE user_affiliate_ledger SET source_order_id = NULL WHERE source_order_id IN (SELECT id FROM payment_orders WHERE user_id = $1)`,
+		`DELETE FROM user_affiliates WHERE user_id = $1`,
+		`DELETE FROM billing_usage_entries WHERE user_id = $1 OR api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)`,
+		`DELETE FROM usage_billing_dedup_archive WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)`,
+		`DELETE FROM usage_billing_dedup WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)`,
+		`DELETE FROM usage_logs WHERE user_id = $1 OR api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)`,
+		`DELETE FROM usage_dashboard_hourly_users WHERE user_id = $1`,
+		`DELETE FROM usage_dashboard_daily_users WHERE user_id = $1`,
+		`DELETE FROM api_keys WHERE user_id = $1`,
+		`DELETE FROM user_subscriptions WHERE user_id = $1`,
+		`DELETE FROM payment_orders WHERE user_id = $1`,
+	}
+	for _, statement := range statements {
+		if _, err := exec.ExecContext(ctx, statement, userID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

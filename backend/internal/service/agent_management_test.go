@@ -44,7 +44,7 @@ type agentManagementRepoStub struct {
 		role     string
 		parentID *int64
 	}
-	detachLevel1Calls []struct {
+	deleteLevel1Calls []struct {
 		agentID     int64
 		rootAdminID int64
 	}
@@ -52,6 +52,23 @@ type agentManagementRepoStub struct {
 	inviteGroupDefaults   []agentGroupDelegationRecord
 	upsertInviteDefaults  []agentGroupDelegationRecord
 	deletedInviteDefaults []agentGroupDelegationRecord
+}
+
+type agentEnterpriseCleanupRepoStub struct {
+	hardDeletedEnterpriseIDs []int64
+	affectedUserIDsByID     map[int64][]int64
+	err                     error
+}
+
+func (r *agentEnterpriseCleanupRepoStub) HardDeleteEnterpriseWithEmployees(_ context.Context, enterpriseID int64) ([]int64, error) {
+	r.hardDeletedEnterpriseIDs = append(r.hardDeletedEnterpriseIDs, enterpriseID)
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.affectedUserIDsByID != nil {
+		return append([]int64(nil), r.affectedUserIDsByID[enterpriseID]...), nil
+	}
+	return []int64{enterpriseID}, nil
 }
 
 func newAgentManagementRepoStub(users ...*User) *agentManagementRepoStub {
@@ -346,13 +363,12 @@ func (r *agentManagementRepoStub) SetAllocation(_ context.Context, userID int64,
 	return nil
 }
 
-func (r *agentManagementRepoStub) DetachLevel1AgentAndMoveChildren(_ context.Context, agentID int64, rootAdminID int64) error {
-	r.detachLevel1Calls = append(r.detachLevel1Calls, struct {
+func (r *agentManagementRepoStub) DeleteLevel1AgentAndMoveChildren(_ context.Context, agentID int64, rootAdminID int64) error {
+	r.deleteLevel1Calls = append(r.deleteLevel1Calls, struct {
 		agentID     int64
 		rootAdminID int64
 	}{agentID: agentID, rootAdminID: rootAdminID})
-	agent, ok := r.users[agentID]
-	if !ok {
+	if _, ok := r.users[agentID]; !ok {
 		return ErrUserNotFound
 	}
 	for _, child := range r.users {
@@ -364,8 +380,7 @@ func (r *agentManagementRepoStub) DetachLevel1AgentAndMoveChildren(_ context.Con
 			child.Role = RoleAgentLevel1
 		}
 	}
-	agent.Role = RoleUser
-	agent.ParentUserID = &rootAdminID
+	delete(r.users, agentID)
 	return nil
 }
 
@@ -491,13 +506,19 @@ func (r *agentManagementRepoStub) RehomeAgentForAdminUserDeletion(_ context.Cont
 		affected = append(affected, *user.ParentUserID)
 	}
 	if user.Role == RoleAgentLevel1 {
-		if err := r.DetachLevel1AgentAndMoveChildren(context.Background(), user.ID, root.ID); err != nil {
-			return nil, err
-		}
 		for _, child := range r.users {
-			if child.ParentUserID != nil && *child.ParentUserID == root.ID {
-				affected = append(affected, child.ID)
+			if child.ParentUserID == nil || *child.ParentUserID != user.ID {
+				continue
 			}
+			child.ParentUserID = &root.ID
+			if child.Role == RoleAgentLevel2 {
+				child.Role = RoleAgentLevel1
+			}
+			affected = append(affected, child.ID)
+		}
+		if stored, ok := r.users[user.ID]; ok {
+			stored.Role = RoleUser
+			stored.ParentUserID = &root.ID
 		}
 	} else if user.Role == RoleAgentLevel2 {
 		if err := r.SetRoleAndParent(context.Background(), user.ID, RoleAgentLevel1, &root.ID); err != nil {
@@ -516,6 +537,7 @@ type agentManagementUserRepoStub struct {
 	users map[int64]*User
 
 	deletedUserIDs     []int64
+	hardDeletedUserIDs []int64
 	addedAllowedGroups []struct {
 		userID  int64
 		groupID int64
@@ -540,6 +562,15 @@ func (r *agentManagementUserRepoStub) Delete(_ context.Context, id int64) error 
 		return ErrUserNotFound
 	}
 	r.deletedUserIDs = append(r.deletedUserIDs, id)
+	delete(r.users, id)
+	return nil
+}
+
+func (r *agentManagementUserRepoStub) HardDelete(_ context.Context, id int64) error {
+	if _, ok := r.users[id]; !ok {
+		return ErrUserNotFound
+	}
+	r.hardDeletedUserIDs = append(r.hardDeletedUserIDs, id)
 	delete(r.users, id)
 	return nil
 }
@@ -1399,27 +1430,41 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	level2ID := int64(3)
 	level1DirectUserID := int64(10)
 	adminDirectUserID := int64(11)
+	adminDirectEnterpriseID := int64(12)
+	adminEnterpriseEmployeeID := int64(13)
 	level1UnderAdminID := int64(20)
-	userUnderDetachedAgentID := int64(21)
-	level2UnderDetachedAgentID := int64(22)
+	userUnderDeletedAgentID := int64(21)
+	level2UnderDeletedAgentID := int64(22)
 	users := []*User{
 		{ID: rootID, Role: RoleAdmin},
 		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID},
 		{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID},
 		{ID: level1DirectUserID, Role: RoleUser, ParentUserID: &level1ID},
 		{ID: adminDirectUserID, Role: RoleUser, ParentUserID: &rootID},
+		{ID: adminDirectEnterpriseID, Role: RoleEnterprise, ParentUserID: &rootID},
+		{ID: adminEnterpriseEmployeeID, Role: RoleEmployee, ParentUserID: &adminDirectEnterpriseID},
 		{ID: level1UnderAdminID, Role: RoleAgentLevel1, ParentUserID: &rootID},
-		{ID: userUnderDetachedAgentID, Role: RoleUser, ParentUserID: &level1UnderAdminID},
-		{ID: level2UnderDetachedAgentID, Role: RoleAgentLevel2, ParentUserID: &level1UnderAdminID},
+		{ID: userUnderDeletedAgentID, Role: RoleUser, ParentUserID: &level1UnderAdminID},
+		{ID: level2UnderDeletedAgentID, Role: RoleAgentLevel2, ParentUserID: &level1UnderAdminID},
 	}
 	repo := newAgentManagementRepoStub(users...)
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
+	enterpriseCleanup := &agentEnterpriseCleanupRepoStub{
+		affectedUserIDsByID: map[int64][]int64{
+			adminDirectEnterpriseID: {adminDirectEnterpriseID, adminEnterpriseEmployeeID},
+		},
+	}
 	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
+	svc.SetEnterpriseCleanupRepository(enterpriseCleanup)
 
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), rootID, adminDirectUserID))
-	require.Equal(t, []int64{adminDirectUserID}, userRepo.deletedUserIDs)
+	require.Empty(t, userRepo.deletedUserIDs)
+	require.Equal(t, []int64{adminDirectUserID}, userRepo.hardDeletedUserIDs)
 	require.NotContains(t, repo.users, adminDirectUserID)
+
+	require.NoError(t, svc.DeleteDirectChild(context.Background(), rootID, adminDirectEnterpriseID))
+	require.Equal(t, []int64{adminDirectEnterpriseID}, enterpriseCleanup.hardDeletedEnterpriseIDs)
 
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, level1DirectUserID))
 	require.Equal(t, rootID, *repo.users[level1DirectUserID].ParentUserID)
@@ -1430,21 +1475,22 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.Equal(t, RoleAgentLevel1, repo.users[level2ID].Role)
 
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), rootID, level1UnderAdminID))
-	require.Len(t, repo.detachLevel1Calls, 1)
-	require.Equal(t, level1UnderAdminID, repo.detachLevel1Calls[0].agentID)
-	require.Equal(t, rootID, repo.detachLevel1Calls[0].rootAdminID)
-	require.Equal(t, rootID, *repo.users[level1UnderAdminID].ParentUserID)
-	require.Equal(t, RoleUser, repo.users[level1UnderAdminID].Role)
-	require.Equal(t, rootID, *repo.users[userUnderDetachedAgentID].ParentUserID)
-	require.Equal(t, RoleUser, repo.users[userUnderDetachedAgentID].Role)
-	require.Equal(t, rootID, *repo.users[level2UnderDetachedAgentID].ParentUserID)
-	require.Equal(t, RoleAgentLevel1, repo.users[level2UnderDetachedAgentID].Role)
+	require.Len(t, repo.deleteLevel1Calls, 1)
+	require.Equal(t, level1UnderAdminID, repo.deleteLevel1Calls[0].agentID)
+	require.Equal(t, rootID, repo.deleteLevel1Calls[0].rootAdminID)
+	require.NotContains(t, repo.users, level1UnderAdminID)
+	require.Equal(t, rootID, *repo.users[userUnderDeletedAgentID].ParentUserID)
+	require.Equal(t, RoleUser, repo.users[userUnderDeletedAgentID].Role)
+	require.Equal(t, rootID, *repo.users[level2UnderDeletedAgentID].ParentUserID)
+	require.Equal(t, RoleAgentLevel1, repo.users[level2UnderDeletedAgentID].Role)
 	require.Contains(t, invalidator.userIDs, adminDirectUserID)
+	require.Contains(t, invalidator.userIDs, adminDirectEnterpriseID)
+	require.Contains(t, invalidator.userIDs, adminEnterpriseEmployeeID)
 	require.Contains(t, invalidator.userIDs, level1DirectUserID)
 	require.Contains(t, invalidator.userIDs, level2ID)
 	require.Contains(t, invalidator.userIDs, level1UnderAdminID)
-	require.Contains(t, invalidator.userIDs, userUnderDetachedAgentID)
-	require.Contains(t, invalidator.userIDs, level2UnderDetachedAgentID)
+	require.Contains(t, invalidator.userIDs, userUnderDeletedAgentID)
+	require.Contains(t, invalidator.userIDs, level2UnderDeletedAgentID)
 }
 
 func TestAgentManagementDeletingLevel1AgentInvalidatesChildrenPastFirstPage(t *testing.T) {

@@ -941,6 +941,10 @@ func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user.ParentUserID)
 	require.Equal(t, level2ID, *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 102, inviterID: ordinaryID}}, affiliateRepo.bindCalls)
 }
 
 func TestRegisterAssignsParentToRootAdminWhenNoAgentInChain(t *testing.T) {
@@ -965,6 +969,10 @@ func TestRegisterAssignsParentToRootAdminWhenNoAgentInChain(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user.ParentUserID)
 	require.Equal(t, rootID, *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 103, inviterID: ordinaryID}}, affiliateRepo.bindCalls)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {

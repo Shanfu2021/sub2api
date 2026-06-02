@@ -81,6 +81,22 @@ func ProvideAuthService(
 	return svc
 }
 
+func ProvideAgentManagementService(
+	repo AgentManagementRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository,
+) *AgentManagementService {
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, authCacheInvalidator)
+	svc.SetEnterpriseCleanupRepository(enterpriseCleanupRepo)
+	return svc
+}
+
+func ProvideAgentEnterpriseDeletionCleanupRepository(repo EnterpriseManagementRepository) AgentEnterpriseDeletionCleanupRepository {
+	return repo
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -530,7 +546,8 @@ var ProviderSet = wire.NewSet(
 	// Core services
 	ProvideAuthService,
 	NewUserService,
-	NewAgentManagementService,
+	ProvideAgentManagementService,
+	ProvideAgentEnterpriseDeletionCleanupRepository,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	NewGroupService,

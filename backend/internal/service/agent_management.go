@@ -172,7 +172,7 @@ type AgentManagementRepository interface {
 	SetParent(ctx context.Context, userID int64, parentID *int64) error
 	SetRoleAndParent(ctx context.Context, userID int64, role string, parentID *int64) error
 	SetAllocation(ctx context.Context, userID int64, concurrency int, rpm int) error
-	DetachLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error
+	DeleteLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error
 	ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]AgentGroupDelegation, error)
 	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
@@ -189,20 +189,29 @@ type AgentUserDeletionCleanupRepository interface {
 	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
 
+type AgentEnterpriseDeletionCleanupRepository interface {
+	HardDeleteEnterpriseWithEmployees(ctx context.Context, enterpriseID int64) ([]int64, error)
+}
+
 type AgentManagementService struct {
-	repo                 AgentManagementRepository
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	authCacheInvalidator APIKeyAuthCacheInvalidator
+	repo                   AgentManagementRepository
+	userRepo               UserRepository
+	groupRepo              GroupRepository
+	authCacheInvalidator   APIKeyAuthCacheInvalidator
+	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository
 }
 
 func NewAgentManagementService(repo AgentManagementRepository, userRepo UserRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *AgentManagementService {
 	return &AgentManagementService{
-		repo:                 repo,
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		authCacheInvalidator: authCacheInvalidator,
+		repo:                   repo,
+		userRepo:               userRepo,
+		groupRepo:              groupRepo,
+		authCacheInvalidator:   authCacheInvalidator,
 	}
+}
+
+func (s *AgentManagementService) SetEnterpriseCleanupRepository(repo AgentEnterpriseDeletionCleanupRepository) {
+	s.enterpriseCleanupRepo = repo
 }
 
 func (s *AgentManagementService) ListDirectUsers(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
@@ -545,7 +554,7 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 		if listErr != nil {
 			return listErr
 		}
-		if err := s.repo.DetachLevel1AgentAndMoveChildren(ctx, child.ID, rootAdmin.ID); err != nil {
+		if err := s.repo.DeleteLevel1AgentAndMoveChildren(ctx, child.ID, rootAdmin.ID); err != nil {
 			return err
 		}
 		s.invalidateUser(ctx, child.ID)
@@ -565,10 +574,24 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 		return nil
 	}
 	if actor.Role == RoleAdmin && child.Role == RoleUser {
-		if err := s.userRepo.Delete(ctx, child.ID); err != nil {
+		if err := s.userRepo.HardDelete(ctx, child.ID); err != nil {
 			return err
 		}
 		s.invalidateUser(ctx, child.ID)
+		return nil
+	}
+	if actor.Role == RoleAdmin && child.Role == RoleEnterprise {
+		if s.enterpriseCleanupRepo == nil {
+			return ErrAgentManagementNotImplemented
+		}
+		affectedUserIDs, err := s.enterpriseCleanupRepo.HardDeleteEnterpriseWithEmployees(ctx, child.ID)
+		if err != nil {
+			return err
+		}
+		s.invalidateUser(ctx, child.ID)
+		for i := range affectedUserIDs {
+			s.invalidateUser(ctx, affectedUserIDs[i])
+		}
 		return nil
 	}
 	if child.Role == RoleUser || child.Role == RoleEnterprise {

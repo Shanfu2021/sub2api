@@ -221,6 +221,28 @@ func (s *EnterpriseManagementRepoSuite) TestUpdateEmployeeAllocationMovesOnlyBal
 	s.Require().Equal(40, reloaded.AllocatedRpm)
 }
 
+func (s *EnterpriseManagementRepoSuite) TestUpdateEmployeeAllocationCanUseEnterpriseBalanceAddedByAffiliateTransfer() {
+	enterprise := s.mustCreateEnterprise("enterprise-affiliate-transfer@test.local", 0, service.StatusActive)
+	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 10, 100))
+	employee := s.mustCreateEmployeeThroughRepo(enterprise.ID, "employee-affiliate-transfer@test.local", 0, 1, 10)
+
+	_, err := s.db.ExecContext(s.ctx, `
+UPDATE users SET balance = 30, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+		enterprise.ID,
+	)
+	s.Require().NoError(err)
+
+	_, err = s.repo.UpdateEmployeeAllocation(s.ctx, enterprise.ID, employee.ID, enterprise.ID, service.EmployeeAllocationUpdate{
+		Balance:     30,
+		Concurrency: 1,
+		RPM:         10,
+	})
+
+	s.Require().NoError(err)
+	s.Require().InDelta(0, s.userBalance(enterprise.ID), 0.000001)
+	s.Require().InDelta(30, s.userBalance(employee.ID), 0.000001)
+}
+
 func (s *EnterpriseManagementRepoSuite) TestDeleteEmployeeReturnsBalanceAndHardDeletes() {
 	enterprise := s.mustCreateEnterprise("enterprise-delete@test.local", 100, service.StatusActive)
 	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 10, 100))

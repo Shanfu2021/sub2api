@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -34,6 +35,13 @@ func (s *AgentManagementRepoSuite) SetupTest() {
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM agent_group_delegations")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_affiliates")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM usage_billing_dedup")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM usage_billing_dedup_archive")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM billing_usage_entries")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM usage_logs")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM usage_cleanup_tasks")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM payment_orders")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
 }
@@ -175,7 +183,7 @@ func (s *AgentManagementRepoSuite) TestAgentProfilePoolQuotaUsage() {
 	s.Require().Equal(250, updated.RpmLimit)
 }
 
-func (s *AgentManagementRepoSuite) TestDetachChildToRootAdmin() {
+func (s *AgentManagementRepoSuite) TestRehomeChildToRootAdmin() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	child := s.mustCreateAgentUser("child@test.com", service.RoleUser, &level1.ID, 10, 100)
@@ -206,14 +214,46 @@ func (s *AgentManagementRepoSuite) TestDetachChildToRootAdmin() {
 	s.Require().Equal(child.ID, reloadedKey.UserID)
 }
 
-func (s *AgentManagementRepoSuite) TestDetachLevel1AgentKeepsAccountMovesChildrenAndPromotesLevel2() {
+func (s *AgentManagementRepoSuite) TestSetParentPreservesAffiliateInviterBinding() {
+	root := s.mustCreateAgentUser("root-admin-affiliate-rehome@test.com", service.RoleAdmin, nil, 1000, 10000)
+	level1 := s.mustCreateAgentUser("level1-affiliate-rehome@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
+	inviter := s.mustCreateAgentUser("inviter-affiliate-rehome@test.com", service.RoleUser, &level1.ID, 10, 100)
+	child := s.mustCreateAgentUser("child-affiliate-rehome@test.com", service.RoleUser, &level1.ID, 10, 100)
+
+	_, err := integrationDB.ExecContext(s.ctx, `
+INSERT INTO user_affiliates (user_id, aff_code, inviter_id, created_at, updated_at)
+VALUES ($1, $2, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+       ($3, $4, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		inviter.ID,
+		"INVITERREHOME",
+		child.ID,
+		"CHILDREHOME",
+	)
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.SetParent(s.ctx, child.ID, &root.ID))
+
+	reloadedChild, err := s.client.User.Get(s.ctx, child.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(reloadedChild.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedChild.ParentUserID)
+
+	var inviterID int64
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
+SELECT inviter_id FROM user_affiliates WHERE user_id = $1`,
+		child.ID,
+	).Scan(&inviterID))
+	s.Require().Equal(inviter.ID, inviterID)
+}
+
+func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentDeletesAccountMovesChildrenAndPromotesLevel2() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	directUser := s.mustCreateAgentUser("direct-user@test.com", service.RoleUser, &level1.ID, 10, 100)
 	directEnterprise := s.mustCreateAgentUser("direct-enterprise@test.com", service.RoleEnterprise, &level1.ID, 20, 200)
 	directLevel2 := s.mustCreateAgentUser("direct-level2@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
 	nestedUser := s.mustCreateAgentUser("nested-user@test.com", service.RoleUser, &directLevel2.ID, 5, 50)
-	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-detach-level1", true, 0.3)
+	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level1-account", true, 0.3)
 
 	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID, 1.8, true))
 	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
@@ -223,16 +263,13 @@ func (s *AgentManagementRepoSuite) TestDetachLevel1AgentKeepsAccountMovesChildre
 		Save(s.ctx)
 	s.Require().NoError(err)
 
-	s.Require().NoError(s.repo.DetachLevel1AgentAndMoveChildren(s.ctx, level1.ID, root.ID))
+	s.Require().NoError(s.repo.DeleteLevel1AgentAndMoveChildren(s.ctx, level1.ID, root.ID))
 
-	detachedAgent, err := s.client.User.Query().
+	agentExists, err := s.client.User.Query().
 		Where(user.IDEQ(level1.ID)).
-		Only(s.ctx)
+		Exist(mixins.SkipSoftDelete(s.ctx))
 	s.Require().NoError(err)
-	s.Require().Nil(detachedAgent.DeletedAt)
-	s.Require().NotNil(detachedAgent.ParentUserID)
-	s.Require().Equal(root.ID, *detachedAgent.ParentUserID)
-	s.Require().Equal(service.RoleUser, detachedAgent.Role)
+	s.Require().False(agentExists)
 
 	reloadedUser, err := s.client.User.Get(s.ctx, directUser.ID)
 	s.Require().NoError(err)
@@ -269,6 +306,62 @@ func (s *AgentManagementRepoSuite) TestDetachLevel1AgentKeepsAccountMovesChildre
 	profile, err := s.repo.GetAgentProfile(s.ctx, level1.ID)
 	s.Require().NoError(err)
 	s.Require().Nil(profile)
+}
+
+func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentClearsOwnUsageReferencesBeforeHardDelete() {
+	root := s.mustCreateAgentUser("root-admin-usage-delete@test.com", service.RoleAdmin, nil, 1000, 10000)
+	level1 := s.mustCreateAgentUser("level1-usage-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "agent-delete-usage-account"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{
+		UserID: level1.ID,
+		Key:    "sk-agent-delete-usage",
+		Name:   "agent-delete-usage",
+	})
+
+	_, err := integrationDB.ExecContext(s.ctx, `
+INSERT INTO usage_logs (request_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at, api_key_id, account_id, user_id)
+VALUES ($1, $2, 1, 1, 0.1, 0.1, CURRENT_TIMESTAMP, $3, $4, $5)`,
+		"agent-delete-usage-log",
+		"claude-3",
+		apiKey.ID,
+		account.ID,
+		level1.ID,
+	)
+	s.Require().NoError(err)
+	_, err = integrationDB.ExecContext(s.ctx, `
+INSERT INTO usage_billing_dedup (request_id, api_key_id, request_fingerprint)
+VALUES ($1, $2, $3)`,
+		"agent-delete-usage-log",
+		apiKey.ID,
+		"agent-delete-usage-fingerprint",
+	)
+	s.Require().NoError(err)
+	_, err = integrationDB.ExecContext(s.ctx, `
+INSERT INTO usage_cleanup_tasks (status, filters, created_by, deleted_rows, created_at, updated_at)
+VALUES ($1, '{}'::jsonb, $2, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		"completed",
+		level1.ID,
+	)
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.DeleteLevel1AgentAndMoveChildren(s.ctx, level1.ID, root.ID))
+
+	var count int
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM usage_logs WHERE user_id = $1 OR api_key_id = $2`, level1.ID, apiKey.ID).Scan(&count))
+	s.Require().Zero(count)
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM usage_billing_dedup WHERE api_key_id = $1`, apiKey.ID).Scan(&count))
+	s.Require().Zero(count)
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM api_keys WHERE id = $1`, apiKey.ID).Scan(&count))
+	s.Require().Zero(count)
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM usage_cleanup_tasks WHERE created_by = $1`, level1.ID).Scan(&count))
+	s.Require().Zero(count)
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM usage_cleanup_tasks WHERE created_by = $1`, root.ID).Scan(&count))
+	s.Require().Equal(1, count)
+	agentExists, err := s.client.User.Query().
+		Where(user.IDEQ(level1.ID)).
+		Exist(mixins.SkipSoftDelete(s.ctx))
+	s.Require().NoError(err)
+	s.Require().False(agentExists)
 }
 
 func (s *AgentManagementRepoSuite) TestGroupDelegationRoundTripAndSoftDelete() {

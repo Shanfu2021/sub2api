@@ -171,7 +171,7 @@
                 <span>{{ t('agentManagement.groups.manage') }}</span>
               </button>
 
-              <button class="btn btn-secondary btn-sm text-red-600 dark:text-red-400" @click="askDetach(row)">
+              <button class="btn btn-secondary btn-sm text-red-600 dark:text-red-400" @click="askDelete(row)">
                 <Icon name="trash" size="sm" />
                 <span>{{ deleteActionLabel(row) }}</span>
               </button>
@@ -194,13 +194,21 @@
     </TablePageLayout>
 
     <ConfirmDialog
-      :show="detachDialog.show"
+      :show="deleteDialog.show"
       :title="deleteDialogTitle"
       :message="deleteDialogMessage"
       :confirm-text="deleteDialogConfirmText"
       danger
-      @confirm="confirmDetach"
-      @cancel="detachDialog.show = false"
+      @confirm="confirmDelete"
+      @cancel="deleteDialog.show = false"
+    />
+    <ConfirmDialog
+      :show="upgradeDialog.show"
+      :title="upgradeDialogTitle"
+      :message="upgradeDialogMessage"
+      :confirm-text="t('agentManagement.direct.upgrade')"
+      @confirm="confirmUpgrade"
+      @cancel="closeUpgradeDialog"
     />
     <AgentDirectUserCreateModal
       v-if="canCreateDirectUser"
@@ -429,7 +437,12 @@ const inviteDefaultsDraft = reactive<AgentInviteDefaultsUpdate>({
 })
 const drafts = reactive<Record<number, AgentAllocationUpdate>>({})
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
-const detachDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>({ show: false, child: null })
+const deleteDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>({ show: false, child: null })
+const upgradeDialog = reactive<{ show: boolean; child: AgentManagedUser | null; targetRole: AgentUpgradeTargetRole | null }>({
+  show: false,
+  child: null,
+  targetRole: null,
+})
 const groupDialog = reactive<{
   show: boolean
   child: AgentManagedUser | null
@@ -489,15 +502,20 @@ const directSubtitle = computed(() => {
   return t('agentManagement.direct.subtitle')
 })
 
-const deleteDialogIsTrueDelete = computed(() => isTrueDeleteDirectUser(detachDialog.child))
-const deleteDialogTitle = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteUserTitle') : t('agentManagement.direct.detachTitle'))
+const deleteDialogIsTrueDelete = computed(() => isTrueDeleteDirectChild(deleteDialog.child))
+const deleteDialogTitle = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteDirectTitle') : t('agentManagement.direct.deleteChildTitle'))
 const deleteDialogMessage = computed(() => {
-  const email = detachDialog.child?.email || ''
+  const email = deleteDialog.child?.email || ''
   return deleteDialogIsTrueDelete.value
-    ? t('agentManagement.direct.deleteUserConfirm', { email })
-    : t('agentManagement.direct.detachConfirm', { email })
+    ? t('agentManagement.direct.deleteDirectConfirm', { email })
+    : t('agentManagement.direct.deleteChildConfirm', { email })
 })
-const deleteDialogConfirmText = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteUser') : t('agentManagement.direct.detach'))
+const deleteDialogConfirmText = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteDirect') : t('agentManagement.direct.deleteChild'))
+const upgradeDialogTitle = computed(() => t('agentManagement.direct.upgradeTitle'))
+const upgradeDialogMessage = computed(() => t('agentManagement.direct.upgradeConfirm', {
+  email: upgradeDialog.child?.email || '',
+  role: upgradeDialog.targetRole ? roleLabel(upgradeDialog.targetRole) : '',
+}))
 const remainingConcurrencyText = computed(() => allocation.value?.unlimited_concurrency ? t('common.unlimited') : String(allocation.value?.remaining_concurrency ?? '-'))
 const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
 const groupDialogTitle = computed(() => t('agentManagement.groups.manageTitle', { email: groupDialog.child?.email || '' }))
@@ -690,7 +708,23 @@ async function saveAllocation(child: AgentManagedUser) {
   }
 }
 
-async function upgrade(child: AgentManagedUser, targetRole: AgentUpgradeTargetRole) {
+function upgrade(child: AgentManagedUser, targetRole: AgentUpgradeTargetRole) {
+  upgradeDialog.child = child
+  upgradeDialog.targetRole = targetRole
+  upgradeDialog.show = true
+}
+
+function closeUpgradeDialog() {
+  upgradeDialog.show = false
+  upgradeDialog.child = null
+  upgradeDialog.targetRole = null
+}
+
+async function confirmUpgrade() {
+  if (!upgradeDialog.child || !upgradeDialog.targetRole) return
+  const child = upgradeDialog.child
+  const targetRole = upgradeDialog.targetRole
+  closeUpgradeDialog()
   savingChildId.value = child.id
   try {
     const payload = { target_role: targetRole }
@@ -928,30 +962,30 @@ async function removeInviteGroupDefault(groupRate: AgentChildGroupDelegationOpti
   }
 }
 
-function askDetach(child: AgentManagedUser) {
-  detachDialog.child = child
-  detachDialog.show = true
+function askDelete(child: AgentManagedUser) {
+  deleteDialog.child = child
+  deleteDialog.show = true
 }
 
-function isTrueDeleteDirectUser(child: AgentManagedUser | null): boolean {
-  return isAdmin.value && props.kind === 'users' && child?.role === 'user'
+function isTrueDeleteDirectChild(child: AgentManagedUser | null): boolean {
+  return isAdmin.value && !!child && (child.role === 'user' || child.role === 'agent_level1' || child.role === 'enterprise')
 }
 
 function deleteActionLabel(child: AgentManagedUser): string {
-  return isTrueDeleteDirectUser(child) ? t('agentManagement.direct.deleteUser') : t('agentManagement.direct.detach')
+  return isTrueDeleteDirectChild(child) ? t('agentManagement.direct.deleteDirect') : t('agentManagement.direct.deleteChild')
 }
 
-async function confirmDetach() {
-  if (!detachDialog.child) return
-  const child = detachDialog.child
-  detachDialog.show = false
+async function confirmDelete() {
+  if (!deleteDialog.child) return
+  const child = deleteDialog.child
+  deleteDialog.show = false
   savingChildId.value = child.id
   try {
     await agentManagementAPI.deleteDirectChild(child.id)
-    appStore.showSuccess(isTrueDeleteDirectUser(child) ? t('agentManagement.direct.userDeleted') : t('agentManagement.direct.detached'))
+    appStore.showSuccess(isTrueDeleteDirectChild(child) ? t('agentManagement.direct.directDeleted') : t('agentManagement.direct.childDeleted'))
     await loadData()
   } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('agentManagement.direct.detachFailed'))
+    appStore.showError((error as { message?: string }).message || t('agentManagement.direct.deleteChildFailed'))
   } finally {
     savingChildId.value = null
   }
