@@ -230,6 +230,9 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if abortIfEmployeeFeatureRestricted(c) {
+		return
+	}
 
 	var req CreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

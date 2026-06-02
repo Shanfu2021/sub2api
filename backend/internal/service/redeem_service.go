@@ -381,6 +381,15 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, err
 	}
 
+	// 获取用户信息，并在兑换码被消费前拦截不允许兑换的角色。
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if IsEmployeeRole(user.Role) {
+		return nil, ErrEmployeeFeatureRestricted
+	}
+
 	// 获取分布式锁，防止同一兑换码并发使用
 	if !s.acquireRedeemLock(ctx, code) {
 		return nil, ErrRedeemCodeLocked
@@ -410,12 +419,6 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 验证兑换码类型的前置条件
 	if redeemCode.Type == RedeemTypeSubscription && redeemCode.GroupID == nil {
 		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
-	}
-
-	// 获取用户信息
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
 	}
 
 	// 使用数据库事务保证兑换码标记与权益发放的原子性
