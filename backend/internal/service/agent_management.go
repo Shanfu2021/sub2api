@@ -102,7 +102,7 @@ type AgentManagementRepository interface {
 	SetParent(ctx context.Context, userID int64, parentID *int64) error
 	SetRoleAndParent(ctx context.Context, userID int64, role string, parentID *int64) error
 	SetAllocation(ctx context.Context, userID int64, concurrency int, rpm int) error
-	DeleteLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error
+	DetachLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error
 	ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]AgentGroupDelegation, error)
 	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
@@ -316,10 +316,14 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 	}
 
 	if actor.Role == RoleAdmin && child.Role == RoleAgentLevel1 {
-		if err := s.repo.DeleteLevel1AgentAndMoveChildren(ctx, child.ID, rootAdmin.ID); err != nil {
+		directChildren, _, _ := s.repo.ListDirectChildren(ctx, child.ID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 1000})
+		if err := s.repo.DetachLevel1AgentAndMoveChildren(ctx, child.ID, rootAdmin.ID); err != nil {
 			return err
 		}
 		s.invalidateUser(ctx, child.ID)
+		for i := range directChildren {
+			s.invalidateUser(ctx, directChildren[i].ID)
+		}
 		return nil
 	}
 	if actor.Role == RoleAgentLevel1 && child.Role == RoleAgentLevel2 {

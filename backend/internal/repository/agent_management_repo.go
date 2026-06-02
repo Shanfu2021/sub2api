@@ -7,7 +7,6 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
-	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -242,7 +241,7 @@ func (r *agentManagementRepository) SetAllocation(ctx context.Context, userID in
 	return translatePersistenceError(err, service.ErrUserNotFound, nil)
 }
 
-func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error {
+func (r *agentManagementRepository) DetachLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return err
@@ -282,15 +281,10 @@ func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context
 		return err
 	}
 
-	if _, err := txClient.User.Delete().
-		Where(dbuser.IDEQ(agent.ID)).
-		Exec(txCtx); err != nil {
-		return translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-
-	if _, err := txClient.User.Query().
-		Where(dbuser.IDEQ(agent.ID)).
-		Only(mixins.SkipSoftDelete(txCtx)); err != nil {
+	if _, err := txClient.User.UpdateOneID(agent.ID).
+		SetRole(service.RoleUser).
+		SetParentUserID(rootAdminID).
+		Save(txCtx); err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 

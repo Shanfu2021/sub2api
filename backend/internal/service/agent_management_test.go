@@ -41,7 +41,7 @@ type agentManagementRepoStub struct {
 		role     string
 		parentID *int64
 	}
-	deleteLevel1Calls []struct {
+	detachLevel1Calls []struct {
 		agentID     int64
 		rootAdminID int64
 	}
@@ -237,12 +237,26 @@ func (r *agentManagementRepoStub) SetAllocation(_ context.Context, userID int64,
 	return nil
 }
 
-func (r *agentManagementRepoStub) DeleteLevel1AgentAndMoveChildren(_ context.Context, agentID int64, rootAdminID int64) error {
-	r.deleteLevel1Calls = append(r.deleteLevel1Calls, struct {
+func (r *agentManagementRepoStub) DetachLevel1AgentAndMoveChildren(_ context.Context, agentID int64, rootAdminID int64) error {
+	r.detachLevel1Calls = append(r.detachLevel1Calls, struct {
 		agentID     int64
 		rootAdminID int64
 	}{agentID: agentID, rootAdminID: rootAdminID})
-	delete(r.users, agentID)
+	agent, ok := r.users[agentID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	for _, child := range r.users {
+		if child.ParentUserID == nil || *child.ParentUserID != agentID {
+			continue
+		}
+		child.ParentUserID = &rootAdminID
+		if child.Role == RoleAgentLevel2 {
+			child.Role = RoleAgentLevel1
+		}
+	}
+	agent.Role = RoleUser
+	agent.ParentUserID = &rootAdminID
 	return nil
 }
 
@@ -800,12 +814,16 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	level2ID := int64(3)
 	userID := int64(10)
 	level1UnderAdminID := int64(20)
+	userUnderDetachedAgentID := int64(21)
+	level2UnderDetachedAgentID := int64(22)
 	users := []*User{
 		{ID: rootID, Role: RoleAdmin},
 		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID},
 		{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID},
 		{ID: userID, Role: RoleUser, ParentUserID: &level1ID},
 		{ID: level1UnderAdminID, Role: RoleAgentLevel1, ParentUserID: &rootID},
+		{ID: userUnderDetachedAgentID, Role: RoleUser, ParentUserID: &level1UnderAdminID},
+		{ID: level2UnderDetachedAgentID, Role: RoleAgentLevel2, ParentUserID: &level1UnderAdminID},
 	}
 	repo := newAgentManagementRepoStub(users...)
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
@@ -821,12 +839,20 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.Equal(t, RoleAgentLevel1, repo.users[level2ID].Role)
 
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), rootID, level1UnderAdminID))
-	require.Len(t, repo.deleteLevel1Calls, 1)
-	require.Equal(t, level1UnderAdminID, repo.deleteLevel1Calls[0].agentID)
-	require.Equal(t, rootID, repo.deleteLevel1Calls[0].rootAdminID)
+	require.Len(t, repo.detachLevel1Calls, 1)
+	require.Equal(t, level1UnderAdminID, repo.detachLevel1Calls[0].agentID)
+	require.Equal(t, rootID, repo.detachLevel1Calls[0].rootAdminID)
+	require.Equal(t, rootID, *repo.users[level1UnderAdminID].ParentUserID)
+	require.Equal(t, RoleUser, repo.users[level1UnderAdminID].Role)
+	require.Equal(t, rootID, *repo.users[userUnderDetachedAgentID].ParentUserID)
+	require.Equal(t, RoleUser, repo.users[userUnderDetachedAgentID].Role)
+	require.Equal(t, rootID, *repo.users[level2UnderDetachedAgentID].ParentUserID)
+	require.Equal(t, RoleAgentLevel1, repo.users[level2UnderDetachedAgentID].Role)
 	require.Contains(t, invalidator.userIDs, userID)
 	require.Contains(t, invalidator.userIDs, level2ID)
 	require.Contains(t, invalidator.userIDs, level1UnderAdminID)
+	require.Contains(t, invalidator.userIDs, userUnderDetachedAgentID)
+	require.Contains(t, invalidator.userIDs, level2UnderDetachedAgentID)
 }
 
 func TestAgentManagementRejectsNonDirectChild(t *testing.T) {

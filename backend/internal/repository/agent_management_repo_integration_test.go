@@ -9,7 +9,6 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -187,7 +186,7 @@ func (s *AgentManagementRepoSuite) TestDetachChildToRootAdmin() {
 	s.Require().Equal(child.ID, reloadedKey.UserID)
 }
 
-func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentMovesChildrenAndPromotesLevel2() {
+func (s *AgentManagementRepoSuite) TestDetachLevel1AgentKeepsAccountMovesChildrenAndPromotesLevel2() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	directUser := s.mustCreateAgentUser("direct-user@test.com", service.RoleUser, &level1.ID, 10, 100)
@@ -195,13 +194,16 @@ func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentMovesChildrenAndPromotes
 	directLevel2 := s.mustCreateAgentUser("direct-level2@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
 	nestedUser := s.mustCreateAgentUser("nested-user@test.com", service.RoleUser, &directLevel2.ID, 5, 50)
 
-	s.Require().NoError(s.repo.DeleteLevel1AgentAndMoveChildren(s.ctx, level1.ID, root.ID))
+	s.Require().NoError(s.repo.DetachLevel1AgentAndMoveChildren(s.ctx, level1.ID, root.ID))
 
-	deletedAgent, err := s.client.User.Query().
+	detachedAgent, err := s.client.User.Query().
 		Where(user.IDEQ(level1.ID)).
-		Only(mixins.SkipSoftDelete(s.ctx))
+		Only(s.ctx)
 	s.Require().NoError(err)
-	s.Require().NotNil(deletedAgent.DeletedAt)
+	s.Require().Nil(detachedAgent.DeletedAt)
+	s.Require().NotNil(detachedAgent.ParentUserID)
+	s.Require().Equal(root.ID, *detachedAgent.ParentUserID)
+	s.Require().Equal(service.RoleUser, detachedAgent.Role)
 
 	reloadedUser, err := s.client.User.Get(s.ctx, directUser.ID)
 	s.Require().NoError(err)
