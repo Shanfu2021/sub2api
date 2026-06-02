@@ -11,13 +11,17 @@ import (
 
 type agentAllocationRateRepoStub struct {
 	delegated map[int64]float64
+	userRates map[int64]float64
 }
 
 func (r *agentAllocationRateRepoStub) GetByUserID(context.Context, int64) (map[int64]float64, error) {
 	panic("unexpected GetByUserID")
 }
-func (r *agentAllocationRateRepoStub) GetByUserAndGroup(context.Context, int64, int64) (*float64, error) {
-	panic("unexpected GetByUserAndGroup")
+func (r *agentAllocationRateRepoStub) GetByUserAndGroup(_ context.Context, _ int64, groupID int64) (*float64, error) {
+	if rate, ok := r.userRates[groupID]; ok {
+		return &rate, nil
+	}
+	return nil, nil
 }
 func (r *agentAllocationRateRepoStub) GetDelegatedRateByUserAndGroup(_ context.Context, _ int64, groupID int64) (*float64, error) {
 	if rate, ok := r.delegated[groupID]; ok {
@@ -132,10 +136,10 @@ func TestAuthSnapshotPreservesManagerRemainingAllocation(t *testing.T) {
 	require.Equal(t, 700, snapshot.User.RPMLimit)
 }
 
-func TestExclusiveGroupUsesDelegatedEffectiveRate(t *testing.T) {
+func TestExclusiveGroupUsesUserSpecificEffectiveRate(t *testing.T) {
 	groupID := int64(9)
-	delegatedRate := 2.4
-	rateRepo := &agentAllocationRateRepoStub{delegated: map[int64]float64{groupID: delegatedRate}}
+	userRate := 2.4
+	rateRepo := &agentAllocationRateRepoStub{userRates: map[int64]float64{groupID: userRate}}
 	svc := NewAPIKeyService(nil, nil, nil, nil, rateRepo, nil, &config.Config{})
 	apiKey := &APIKey{
 		ID:      11,
@@ -163,7 +167,7 @@ func TestExclusiveGroupUsesDelegatedEffectiveRate(t *testing.T) {
 
 	require.NotNil(t, snapshot)
 	require.NotNil(t, snapshot.Group)
-	require.Equal(t, delegatedRate, snapshot.Group.RateMultiplier)
+	require.Equal(t, userRate, snapshot.Group.RateMultiplier)
 }
 
 func TestAgentBalanceDoesNotBlockChildUsage(t *testing.T) {

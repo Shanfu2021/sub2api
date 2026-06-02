@@ -20,8 +20,11 @@ const {
   deleteDirectChild,
   listGroups,
   listChildGroupDelegationOptions,
+  listInviteGroupDefaultOptions,
   setChildGroupDelegation,
   removeChildGroupDelegation,
+  setInviteGroupDefault,
+  removeInviteGroupDefault,
   showError,
   showSuccess,
 } = vi.hoisted(() => ({
@@ -37,8 +40,11 @@ const {
   deleteDirectChild: vi.fn(),
   listGroups: vi.fn(),
   listChildGroupDelegationOptions: vi.fn(),
+  listInviteGroupDefaultOptions: vi.fn(),
   setChildGroupDelegation: vi.fn(),
   removeChildGroupDelegation: vi.fn(),
+  setInviteGroupDefault: vi.fn(),
+  removeInviteGroupDefault: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
@@ -56,8 +62,11 @@ vi.mock('@/api/agentManagement', () => ({
     deleteDirectChild,
     listGroups,
     listChildGroupDelegationOptions,
+    listInviteGroupDefaultOptions,
     setChildGroupDelegation,
     removeChildGroupDelegation,
+    setInviteGroupDefault,
+    removeInviteGroupDefault,
   },
 }))
 
@@ -295,8 +304,11 @@ describe('agent management pages', () => {
     deleteDirectChild.mockResolvedValue({ id: 12 })
     listGroups.mockResolvedValue([makeAgentGroupRate()])
     listChildGroupDelegationOptions.mockResolvedValue([makeChildGroupOption()])
+    listInviteGroupDefaultOptions.mockResolvedValue([makeChildGroupOption()])
     setChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     removeChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
+    setInviteGroupDefault.mockResolvedValue({ group_id: 7 })
+    removeInviteGroupDefault.mockResolvedValue({ group_id: 7 })
   })
 
   it('does not render balance, recharge, disable, or official delete actions on direct users', async () => {
@@ -644,5 +656,55 @@ describe('agent management pages', () => {
     expect(wrapper.text()).not.toContain('upstream')
     expect(wrapper.text()).not.toContain('cost')
     expect(wrapper.text()).not.toContain('admin cost')
+  })
+
+  it('shows invite default group propagation config for agents and saves a checked group rate', async () => {
+    listInviteGroupDefaultOptions.mockResolvedValue([
+      makeChildGroupOption({
+        assigned: false,
+        child_rate_multiplier: 0,
+        effective_rate: 2.4,
+      }),
+    ])
+    const wrapper = mountAgentView(MyGroupsView, 'agent_level1')
+    await flushPromises()
+
+    expect(listInviteGroupDefaultOptions).toHaveBeenCalled()
+    expect(wrapper.get('[data-test="invite-default-groups-section"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Exclusive Retail')
+    expect((wrapper.get('[data-test="invite-default-assigned-7"]').element as HTMLInputElement).checked).toBe(false)
+    expect((wrapper.get('[data-test="invite-default-rate-7"]').element as HTMLInputElement).value).toBe('2.4')
+
+    await wrapper.get('[data-test="invite-default-assigned-7"]').setValue(true)
+    await wrapper.get('[data-test="invite-default-rate-7"]').setValue('3.1')
+    await wrapper.get('[data-test="save-invite-default-7"]').trigger('click')
+    await flushPromises()
+
+    expect(setInviteGroupDefault).toHaveBeenCalledWith(7, {
+      rate_multiplier: 3.1,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.inviteDefaultGroupSaved')
+  })
+
+  it('removes an invite default group when it is unchecked and saved', async () => {
+    const wrapper = mountAgentView(MyGroupsView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="invite-default-assigned-7"]').setValue(false)
+    await wrapper.get('[data-test="save-invite-default-7"]').trigger('click')
+    await flushPromises()
+
+    expect(removeInviteGroupDefault).toHaveBeenCalledWith(7)
+    expect(setInviteGroupDefault).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.inviteDefaultGroupRemoved')
+  })
+
+  it('does not show invite default group propagation config for admins', async () => {
+    const wrapper = mountAgentView(MyGroupsView, 'admin')
+    await flushPromises()
+
+    expect(listGroups).toHaveBeenCalled()
+    expect(listInviteGroupDefaultOptions).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="invite-default-groups-section"]').exists()).toBe(false)
   })
 })

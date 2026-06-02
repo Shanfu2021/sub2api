@@ -197,6 +197,7 @@ type AgentManagementService struct {
 	repo                  AgentManagementRepository
 	userRepo              UserRepository
 	groupRepo             GroupRepository
+	userGroupRateRepo     UserGroupRateRepository
 	authCacheInvalidator  APIKeyAuthCacheInvalidator
 	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository
 }
@@ -212,6 +213,10 @@ func NewAgentManagementService(repo AgentManagementRepository, userRepo UserRepo
 
 func (s *AgentManagementService) SetEnterpriseCleanupRepository(repo AgentEnterpriseDeletionCleanupRepository) {
 	s.enterpriseCleanupRepo = repo
+}
+
+func (s *AgentManagementService) SetUserGroupRateRepository(repo UserGroupRateRepository) {
+	s.userGroupRateRepo = repo
 }
 
 func (s *AgentManagementService) ListDirectUsers(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
@@ -332,6 +337,12 @@ func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID i
 		return nil, err
 	}
 	if actor.Role != RoleAdmin {
+		if err := s.ApplyInviteGroupDefaultsToChild(ctx, actor.ID, user.ID); err != nil {
+			if s.userRepo != nil {
+				_ = s.userRepo.HardDelete(ctx, user.ID)
+			}
+			return nil, err
+		}
 		if err := s.recalculateAgentEffectiveQuota(ctx, actor.ID); err != nil {
 			return nil, err
 		}
@@ -756,6 +767,9 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 			return err
 		}
 	}
+	if err := s.syncDelegatedUserGroupRate(ctx, child.ID, groupID, &input.RateMultiplier); err != nil {
+		return err
+	}
 	s.invalidateUser(ctx, child.ID)
 	if existing != nil && existing.CanDelegate && !input.CanDelegate {
 		if err := s.repo.DeleteInviteGroupDefault(ctx, child.ID, groupID); err != nil {
@@ -900,9 +914,20 @@ func (s *AgentManagementService) ApplyInviteGroupDefaultsToChild(ctx context.Con
 				return err
 			}
 		}
+		rate := defaults[i].RateMultiplier
+		if err := s.syncDelegatedUserGroupRate(ctx, child.ID, defaults[i].GroupID, &rate); err != nil {
+			return err
+		}
 	}
 	s.invalidateUser(ctx, child.ID)
 	return nil
+}
+
+func (s *AgentManagementService) syncDelegatedUserGroupRate(ctx context.Context, userID int64, groupID int64, rate *float64) error {
+	if s == nil || s.userGroupRateRepo == nil || userID <= 0 || groupID <= 0 {
+		return nil
+	}
+	return s.userGroupRateRepo.SyncUserGroupRates(ctx, userID, map[int64]*float64{groupID: rate})
 }
 
 func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx context.Context, userID int64, groupID int64) error {
@@ -915,6 +940,9 @@ func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx 
 		if err := s.userRepo.RemoveGroupFromUserAllowedGroups(ctx, userID, groupID); err != nil {
 			return err
 		}
+	}
+	if err := s.syncDelegatedUserGroupRate(ctx, userID, groupID, nil); err != nil {
+		return err
 	}
 	s.invalidateUser(ctx, userID)
 

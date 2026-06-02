@@ -619,6 +619,94 @@ func (s *agentManagementAuthInvalidatorStub) InvalidateAuthCacheByUserID(_ conte
 	s.userIDs = append(s.userIDs, userID)
 }
 
+type agentManagementUserGroupRateRepoStub struct {
+	rates map[int64]map[int64]float64
+	syncs []struct {
+		userID int64
+		rates  map[int64]*float64
+	}
+}
+
+func (r *agentManagementUserGroupRateRepoStub) GetByUserID(_ context.Context, userID int64) (map[int64]float64, error) {
+	if r.rates == nil {
+		return map[int64]float64{}, nil
+	}
+	userRates := r.rates[userID]
+	out := make(map[int64]float64, len(userRates))
+	for groupID, rate := range userRates {
+		out[groupID] = rate
+	}
+	return out, nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) GetByUserAndGroup(_ context.Context, userID, groupID int64) (*float64, error) {
+	if r.rates == nil {
+		return nil, nil
+	}
+	if rate, ok := r.rates[userID][groupID]; ok {
+		return &rate, nil
+	}
+	return nil, nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) GetRPMOverrideByUserAndGroup(context.Context, int64, int64) (*int, error) {
+	return nil, nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) GetByGroupID(context.Context, int64) ([]UserGroupRateEntry, error) {
+	return nil, nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) SyncUserGroupRates(_ context.Context, userID int64, rates map[int64]*float64) error {
+	if r.rates == nil {
+		r.rates = map[int64]map[int64]float64{}
+	}
+	if _, ok := r.rates[userID]; !ok {
+		r.rates[userID] = map[int64]float64{}
+	}
+	clone := make(map[int64]*float64, len(rates))
+	for groupID, rate := range rates {
+		if rate == nil {
+			delete(r.rates[userID], groupID)
+			clone[groupID] = nil
+			continue
+		}
+		value := *rate
+		r.rates[userID][groupID] = value
+		clone[groupID] = &value
+	}
+	r.syncs = append(r.syncs, struct {
+		userID int64
+		rates  map[int64]*float64
+	}{userID: userID, rates: clone})
+	return nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) SyncGroupRateMultipliers(context.Context, int64, []GroupRateMultiplierInput) error {
+	return nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) SyncGroupRPMOverrides(context.Context, int64, []GroupRPMOverrideInput) error {
+	return nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) ClearGroupRPMOverrides(context.Context, int64) error {
+	return nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) DeleteByGroupID(context.Context, int64) error {
+	return nil
+}
+
+func (r *agentManagementUserGroupRateRepoStub) DeleteByUserID(_ context.Context, userID int64) error {
+	delete(r.rates, userID)
+	return nil
+}
+
 type agentManagementGroupRepoStub struct {
 	groups []Group
 	byID   map[int64]*Group
@@ -1424,6 +1512,40 @@ func TestAgentManagementCreateDirectUserCannotExceedAgentRemaining(t *testing.T)
 	require.Equal(t, 30, created.RPMLimit)
 }
 
+func TestAgentManagementCreateDirectUserAppliesInviteGroupDefaults(t *testing.T) {
+	rootID := int64(1)
+	managerID := int64(2)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		managerID: {UserID: managerID, PoolConcurrency: 10, PoolRPM: 100},
+	}
+	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: managerID, groupID: groupID, rateMultiplier: 2.4},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRateRepo := &agentManagementUserGroupRateRepoStub{}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+	svc.SetUserGroupRateRepository(groupRateRepo)
+
+	created, err := svc.CreateDirectUser(context.Background(), managerID, CreateDirectUserInput{
+		Email:                "default-group-child@example.com",
+		Password:             "secret123",
+		AllocatedConcurrency: 1,
+		AllocatedRPM:         1,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []agentGroupDelegationRecord{
+		{managerID: managerID, childID: created.ID, groupID: groupID, rateMultiplier: 2.4, canDelegate: false},
+	}, repo.groupDelegations)
+	require.Equal(t, []int64{groupID}, repo.users[created.ID].AllowedGroups)
+	require.Equal(t, 2.4, groupRateRepo.rates[created.ID][groupID])
+}
+
 func TestAgentManagementDeleteRules(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
@@ -1756,6 +1878,8 @@ func TestApplyInviteGroupDefaultsToRegisteredChild(t *testing.T) {
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+	groupRateRepo := &agentManagementUserGroupRateRepoStub{}
+	svc.SetUserGroupRateRepository(groupRateRepo)
 
 	require.NoError(t, svc.ApplyInviteGroupDefaultsToChild(context.Background(), level1ID, childID))
 
@@ -1763,6 +1887,7 @@ func TestApplyInviteGroupDefaultsToRegisteredChild(t *testing.T) {
 		{managerID: level1ID, childID: childID, groupID: groupID, rateMultiplier: 2.4, canDelegate: false},
 	}, repo.groupDelegations)
 	require.Equal(t, []int64{groupID}, repo.users[childID].AllowedGroups)
+	require.Equal(t, 2.4, groupRateRepo.rates[childID][groupID])
 }
 
 func TestDelegateExclusiveGroupRequiresManagerAccess(t *testing.T) {
@@ -1816,6 +1941,15 @@ func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.
 	invalidator := &agentManagementAuthInvalidatorStub{}
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
+	groupRateRepo := &agentManagementUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			level1ID:        {groupID: 1.5},
+			level2ID:        {groupID: 1.8},
+			ordinaryChildID: {groupID: 2.1},
+			directUserID:    {groupID: 1.9},
+		},
+	}
+	svc.SetUserGroupRateRepository(groupRateRepo)
 
 	require.NoError(t, svc.RemoveChildGroupDelegation(context.Background(), rootID, level1ID, groupID))
 
@@ -1834,6 +1968,10 @@ func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.
 		{userID: ordinaryChildID, groupID: groupID},
 		{userID: directUserID, groupID: groupID},
 	}, userRepo.removedAllowedGroups)
+	require.Empty(t, groupRateRepo.rates[level1ID])
+	require.Empty(t, groupRateRepo.rates[level2ID])
+	require.Empty(t, groupRateRepo.rates[ordinaryChildID])
+	require.Empty(t, groupRateRepo.rates[directUserID])
 }
 
 func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T) {
@@ -1857,6 +1995,14 @@ func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T)
 	invalidator := &agentManagementAuthInvalidatorStub{}
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
+	groupRateRepo := &agentManagementUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			level1ID:        {groupID: 1.5},
+			level2ID:        {groupID: 1.8},
+			ordinaryChildID: {groupID: 2.1},
+		},
+	}
+	svc.SetUserGroupRateRepository(groupRateRepo)
 
 	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), rootID, level1ID, groupID, ChildGroupDelegationInput{RateMultiplier: 1.5, CanDelegate: false}))
 
@@ -1875,6 +2021,9 @@ func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T)
 		{userID: level2ID, groupID: groupID},
 		{userID: ordinaryChildID, groupID: groupID},
 	}, userRepo.removedAllowedGroups)
+	require.Equal(t, 1.5, groupRateRepo.rates[level1ID][groupID])
+	require.Empty(t, groupRateRepo.rates[level2ID])
+	require.Empty(t, groupRateRepo.rates[ordinaryChildID])
 }
 
 func TestDisablingChildGroupDelegationRemovesInviteDefaultForChildAgent(t *testing.T) {

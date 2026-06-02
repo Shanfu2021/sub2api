@@ -71,26 +71,25 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		}
 
 		userGroupRateCacheLoadTotal.Add(1)
-		delegatedRate, repoErr := r.repo.GetDelegatedRateByUserAndGroup(ctx, userID, groupID)
+		userRate, repoErr := r.repo.GetByUserAndGroup(ctx, userID, groupID)
 		if repoErr != nil {
 			return nil, repoErr
 		}
-		if delegatedRate != nil {
-			multiplier := *delegatedRate
+		if userRate != nil {
+			multiplier := *userRate
 			if r.cache != nil {
 				r.cache.Set(key, multiplier, r.cacheTTL)
 			}
 			return multiplier, nil
 		}
 
-		userRate, repoErr := r.repo.GetByUserAndGroup(ctx, userID, groupID)
+		delegatedRate, repoErr := r.repo.GetDelegatedRateByUserAndGroup(ctx, userID, groupID)
 		if repoErr != nil {
 			return nil, repoErr
 		}
-
 		multiplier := groupDefaultMultiplier
-		if userRate != nil {
-			multiplier = *userRate
+		if delegatedRate != nil {
+			multiplier = *delegatedRate
 		}
 		if r.cache != nil {
 			r.cache.Set(key, multiplier, r.cacheTTL)

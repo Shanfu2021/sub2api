@@ -248,7 +248,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	}
 	if apiKey.Group != nil {
 		group := *apiKey.Group
-		s.applyDelegatedGroupRate(ctx, apiKey.UserID, &group)
+		s.applyUserSpecificGroupRate(ctx, apiKey.UserID, &group)
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
 			ID:                              group.ID,
 			Name:                            group.Name,

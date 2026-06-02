@@ -92,7 +92,7 @@ func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolv
 	require.Equal(t, 1, repo.calls)
 }
 
-func TestEffectiveGroupRateUsesDirectDelegation(t *testing.T) {
+func TestEffectiveGroupRatePrefersUserRateOverDirectDelegation(t *testing.T) {
 	adminRate := 1.4
 	delegatedRate := 2.2
 	repo := &userGroupRateResolverRepoStub{rate: &adminRate, delegationRate: &delegatedRate}
@@ -100,7 +100,19 @@ func TestEffectiveGroupRateUsesDirectDelegation(t *testing.T) {
 
 	got := resolver.Resolve(context.Background(), 101, 202, 1.0)
 
+	require.Equal(t, adminRate, got)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, 0, repo.delegatedCalls)
+}
+
+func TestEffectiveGroupRateFallsBackToDirectDelegation(t *testing.T) {
+	delegatedRate := 2.2
+	repo := &userGroupRateResolverRepoStub{delegationRate: &delegatedRate}
+	resolver := newUserGroupRateResolver(repo, nil, time.Minute, nil, "service.test")
+
+	got := resolver.Resolve(context.Background(), 101, 202, 1.0)
+
 	require.Equal(t, delegatedRate, got)
+	require.Equal(t, 1, repo.calls)
 	require.Equal(t, 1, repo.delegatedCalls)
-	require.Equal(t, 0, repo.calls)
 }

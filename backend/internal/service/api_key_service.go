@@ -436,7 +436,7 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 	if err != nil {
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
-	s.applyDelegatedGroupRatesToAPIKeys(ctx, userID, keys)
+	s.applyUserSpecificGroupRatesToAPIKeys(ctx, userID, keys)
 	return keys, pagination, nil
 }
 
@@ -772,7 +772,7 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
 		if s.canUserBindGroupInternal(ctx, user, &group, subscribedGroupIDs) {
-			s.applyDelegatedGroupRate(ctx, user.ID, &group)
+			s.applyUserSpecificGroupRate(ctx, user.ID, &group)
 			availableGroups = append(availableGroups, group)
 		}
 	}
@@ -801,31 +801,36 @@ func (s *APIKeyService) hasDelegatedGroupAccess(ctx context.Context, userID int6
 	if !ok {
 		return false
 	}
-	rate, err := delegatedRepo.GetDelegatedRateByUserAndGroup(ctx, userID, groupID)
-	return err == nil && rate != nil
+	delegatedRate, err := delegatedRepo.GetDelegatedRateByUserAndGroup(ctx, userID, groupID)
+	return err == nil && delegatedRate != nil
 }
 
-func (s *APIKeyService) applyDelegatedGroupRatesToAPIKeys(ctx context.Context, userID int64, keys []APIKey) {
+func (s *APIKeyService) applyUserSpecificGroupRatesToAPIKeys(ctx context.Context, userID int64, keys []APIKey) {
 	for i := range keys {
 		if keys[i].Group != nil {
-			s.applyDelegatedGroupRate(ctx, userID, keys[i].Group)
+			s.applyUserSpecificGroupRate(ctx, userID, keys[i].Group)
 		}
 	}
 }
 
-func (s *APIKeyService) applyDelegatedGroupRate(ctx context.Context, userID int64, group *Group) {
+func (s *APIKeyService) applyUserSpecificGroupRate(ctx context.Context, userID int64, group *Group) {
 	if group == nil || !group.IsExclusive || s == nil || s.userGroupRateRepo == nil {
+		return
+	}
+	rate, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, userID, group.ID)
+	if err == nil && rate != nil {
+		group.RateMultiplier = *rate
 		return
 	}
 	delegatedRepo, ok := s.userGroupRateRepo.(DelegatedGroupRateRepository)
 	if !ok {
 		return
 	}
-	rate, err := delegatedRepo.GetDelegatedRateByUserAndGroup(ctx, userID, group.ID)
-	if err != nil || rate == nil {
+	delegatedRate, err := delegatedRepo.GetDelegatedRateByUserAndGroup(ctx, userID, group.ID)
+	if err != nil || delegatedRate == nil {
 		return
 	}
-	group.RateMultiplier = *rate
+	group.RateMultiplier = *delegatedRate
 }
 
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {

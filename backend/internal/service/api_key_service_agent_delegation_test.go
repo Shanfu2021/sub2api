@@ -136,13 +136,17 @@ func (r *apiKeyDelegatedSubscriptionRepoStub) BatchUpdateExpiredStatus(context.C
 
 type apiKeyDelegatedRateRepoStub struct {
 	delegated map[int64]float64
+	userRates map[int64]float64
 }
 
 func (r *apiKeyDelegatedRateRepoStub) GetByUserID(context.Context, int64) (map[int64]float64, error) {
 	panic("unexpected GetByUserID")
 }
-func (r *apiKeyDelegatedRateRepoStub) GetByUserAndGroup(context.Context, int64, int64) (*float64, error) {
-	panic("unexpected GetByUserAndGroup")
+func (r *apiKeyDelegatedRateRepoStub) GetByUserAndGroup(_ context.Context, _ int64, groupID int64) (*float64, error) {
+	if rate, ok := r.userRates[groupID]; ok {
+		return &rate, nil
+	}
+	return nil, nil
 }
 func (r *apiKeyDelegatedRateRepoStub) GetDelegatedRateByUserAndGroup(_ context.Context, _ int64, groupID int64) (*float64, error) {
 	if rate, ok := r.delegated[groupID]; ok {
@@ -204,6 +208,60 @@ func TestAPIKeyServiceDelegatedExclusiveGroupCanBeListedAndBound(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created.GroupID)
 	require.Equal(t, groupID, *created.GroupID)
+}
+
+func TestAPIKeyServiceUserSpecificRateTakesPrecedenceOverDelegatedFallback(t *testing.T) {
+	userID := int64(10)
+	groupID := int64(20)
+	userRepo := &mockUserRepo{getByIDUser: &User{ID: userID, Role: RoleUser, Status: StatusActive}}
+	groupRepo := &apiKeyDelegatedGroupRepoStub{groups: []Group{
+		{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive, RateMultiplier: 0.5},
+	}}
+	rateRepo := &apiKeyDelegatedRateRepoStub{
+		userRates: map[int64]float64{groupID: 2.4},
+		delegated: map[int64]float64{groupID: 1.8},
+	}
+	svc := NewAPIKeyService(nil, userRepo, groupRepo, &apiKeyDelegatedSubscriptionRepoStub{}, rateRepo, nil, &config.Config{})
+
+	groups, err := svc.GetAvailableGroups(context.Background(), userID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, 2.4, groups[0].RateMultiplier)
+}
+
+func TestAPIKeyServiceUserSpecificRateDoesNotGrantExclusiveGroupAccess(t *testing.T) {
+	userID := int64(10)
+	groupID := int64(20)
+	userRepo := &mockUserRepo{getByIDUser: &User{ID: userID, Role: RoleUser, Status: StatusActive}}
+	groupRepo := &apiKeyDelegatedGroupRepoStub{groups: []Group{
+		{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive, RateMultiplier: 0.5},
+	}}
+	rateRepo := &apiKeyDelegatedRateRepoStub{
+		userRates: map[int64]float64{groupID: 2.4},
+	}
+	svc := NewAPIKeyService(nil, userRepo, groupRepo, &apiKeyDelegatedSubscriptionRepoStub{}, rateRepo, nil, &config.Config{})
+
+	groups, err := svc.GetAvailableGroups(context.Background(), userID)
+	require.NoError(t, err)
+	require.Empty(t, groups)
+}
+
+func TestAPIKeyServiceAllowedExclusiveGroupUsesUserSpecificRate(t *testing.T) {
+	userID := int64(10)
+	groupID := int64(20)
+	userRepo := &mockUserRepo{getByIDUser: &User{ID: userID, Role: RoleUser, Status: StatusActive, AllowedGroups: []int64{groupID}}}
+	groupRepo := &apiKeyDelegatedGroupRepoStub{groups: []Group{
+		{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive, RateMultiplier: 0.5},
+	}}
+	rateRepo := &apiKeyDelegatedRateRepoStub{
+		userRates: map[int64]float64{groupID: 2.4},
+	}
+	svc := NewAPIKeyService(nil, userRepo, groupRepo, &apiKeyDelegatedSubscriptionRepoStub{}, rateRepo, nil, &config.Config{})
+
+	groups, err := svc.GetAvailableGroups(context.Background(), userID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, 2.4, groups[0].RateMultiplier)
 }
 
 func TestAPIKeyServiceListHidesDelegatedExclusiveGroupUpstreamRate(t *testing.T) {
