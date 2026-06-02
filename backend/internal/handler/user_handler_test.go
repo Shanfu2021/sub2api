@@ -44,6 +44,9 @@ func (s *userHandlerRepoStub) Update(_ context.Context, user *service.User) erro
 	return nil
 }
 func (s *userHandlerRepoStub) Delete(context.Context, int64) error { return nil }
+func (s *userHandlerRepoStub) HardDelete(context.Context, int64) error {
+	return nil
+}
 func (s *userHandlerRepoStub) GetUserAvatar(context.Context, int64) (*service.UserAvatar, error) {
 	if s.user == nil || s.user.AvatarURL == "" {
 		return nil, nil

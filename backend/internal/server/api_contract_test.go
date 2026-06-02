@@ -1409,6 +1409,10 @@ func (r *stubUserRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) HardDelete(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
 	return nil, nil
 }

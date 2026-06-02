@@ -2731,6 +2731,10 @@ func (r *oauthPendingFlowUserRepo) Delete(ctx context.Context, id int64) error {
 	return r.client.User.DeleteOneID(id).Exec(ctx)
 }
 
+func (r *oauthPendingFlowUserRepo) HardDelete(ctx context.Context, id int64) error {
+	return r.Delete(ctx, id)
+}
+
 func (r *oauthPendingFlowUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
 	driver := r.client.Driver()
 	if tx := dbent.TxFromContext(ctx); tx != nil {

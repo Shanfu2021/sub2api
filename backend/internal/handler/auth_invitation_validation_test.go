@@ -91,6 +91,10 @@ func (r *authInvitationValidationUserRepo) Delete(context.Context, int64) error 
 	panic("unexpected Delete call")
 }
 
+func (r *authInvitationValidationUserRepo) HardDelete(context.Context, int64) error {
+	panic("unexpected HardDelete call")
+}
+
 func (r *authInvitationValidationUserRepo) GetUserAvatar(context.Context, int64) (*service.UserAvatar, error) {
 	panic("unexpected GetUserAvatar call")
 }
