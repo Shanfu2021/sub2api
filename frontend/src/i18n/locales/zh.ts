@@ -650,7 +650,7 @@ export default {
       upgradeFailed: '升级角色失败',
       deleteChild: '删除',
       deleteChildTitle: '删除直属下级',
-      deleteChildConfirm: "确定删除直属下级 '{email}' 吗？该账号不会被真实删除，会按角色规则挂到管理员下。",
+      deleteChildConfirm: "确定删除直属下级 '{email}' 吗？删除后将不再显示在你的直属列表中。",
       childDeleted: '直属下级已删除',
       deleteChildFailed: '删除直属下级失败',
       deleteDirect: '真实删除',

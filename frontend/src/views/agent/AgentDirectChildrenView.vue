@@ -461,7 +461,7 @@ function syncInviteDefaults(defaults?: AgentInviteDefaultsUpdate) {
 }
 
 function quotaFor(child: AgentManagedUser): AgentAllocationUpdate {
-  if (props.kind === 'agents') {
+  if (props.kind === 'agents' || props.kind === 'enterprises') {
     return {
       concurrency: normalizedPositiveInt(child.pool_concurrency ?? 1),
       rpm: child.pool_rpm || 0,

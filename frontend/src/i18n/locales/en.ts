@@ -651,7 +651,7 @@ export default {
       upgradeFailed: 'Failed to upgrade role',
       deleteChild: 'Delete',
       deleteChildTitle: 'Delete direct child',
-      deleteChildConfirm: "Delete direct child '{email}'? This account will not be permanently deleted and will be rehomed to admin by role rules.",
+      deleteChildConfirm: "Delete direct child '{email}'? It will no longer appear in your direct list.",
       childDeleted: 'Direct child deleted',
       deleteChildFailed: 'Failed to delete direct child',
       deleteDirect: 'Permanently delete',

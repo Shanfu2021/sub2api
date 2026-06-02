@@ -407,15 +407,15 @@ describe('agent management pages', () => {
     expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('300')
   })
 
-  it('uses effective concurrency and RPM fields for direct enterprises', async () => {
+  it('uses pool fields for direct enterprises instead of live remaining quota', async () => {
     listDirectEnterprises.mockResolvedValue(makeChildrenResponse([
-      makeChild({ role: 'enterprise', concurrency: 18, rpm_limit: 190, allocated_concurrency: 0, allocated_rpm: 0 }),
+      makeChild({ role: 'enterprise', concurrency: 5, rpm_limit: 50, pool_concurrency: 30, pool_rpm: 300 }),
     ]))
     const wrapper = mountAgentView(DirectEnterprisesView, 'admin')
     await flushPromises()
 
-    expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('18')
-    expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('190')
+    expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('30')
+    expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('300')
   })
 
   it('opens a modal and creates direct users from the direct users page', async () => {
