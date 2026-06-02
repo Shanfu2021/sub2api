@@ -682,8 +682,12 @@ async function confirmUpgrade() {
   savingChildId.value = child.id
   try {
     const payload = { target_role: targetRole }
-    if (targetRole === 'agent_level1' || targetRole === 'agent_level2') {
+    if (targetRole === 'agent_level1' || targetRole === 'agent_level2' || targetRole === 'enterprise') {
       const quota = draftFor(child)
+      if (exceedsRemainingAllocationForExisting(child, quota)) {
+        appStore.showError(t('agentManagement.direct.insufficientAllocation'))
+        return
+      }
       await agentManagementAPI.upgradeChild(child.id, {
         ...payload,
         pool_concurrency: quota.concurrency,

@@ -616,10 +616,15 @@ describe('agent management pages', () => {
     })
   })
 
-  it('does not send pool fields when upgrading a direct user to enterprise', async () => {
+  it('sends the row draft as pool quota when upgrading a direct user to enterprise', async () => {
+    listDirectUsers.mockResolvedValue(makeChildrenResponse([
+      makeChild({ concurrency: 10, rpm_limit: 120, allocated_concurrency: 0, allocated_rpm: 0 }),
+    ]))
     const wrapper = mountAgentView(DirectUsersView, 'admin')
     await flushPromises()
 
+    await wrapper.get('[data-test="allocation-concurrency-12"]').setValue('40')
+    await wrapper.get('[data-test="allocation-rpm-12"]').setValue('500')
     await wrapper.get('[data-test="upgrade-enterprise-12"]').trigger('click')
     await flushPromises()
 
@@ -629,6 +634,8 @@ describe('agent management pages', () => {
 
     expect(upgradeChild).toHaveBeenCalledWith(12, {
       target_role: 'enterprise',
+      pool_concurrency: 40,
+      pool_rpm: 500,
     })
   })
 
