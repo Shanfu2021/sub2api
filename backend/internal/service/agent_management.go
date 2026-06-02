@@ -675,6 +675,10 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 	if err := s.requireGroupDelegationAccess(ctx, actor, groupID); err != nil {
 		return err
 	}
+	existing, err := s.repo.GetGroupDelegation(ctx, actor.ID, child.ID, groupID)
+	if err != nil {
+		return err
+	}
 	if err := s.repo.UpsertGroupDelegation(ctx, actor.ID, child.ID, groupID, input.RateMultiplier, input.CanDelegate); err != nil {
 		return err
 	}
@@ -684,6 +688,11 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 		}
 	}
 	s.invalidateUser(ctx, child.ID)
+	if existing != nil && existing.CanDelegate && !input.CanDelegate {
+		if err := s.removeDelegatedGroupFromDescendants(ctx, child.ID, groupID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -719,6 +728,22 @@ func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx 
 	}
 	for i := range children {
 		if err := s.repo.DeleteGroupDelegation(ctx, userID, children[i].ID, groupID); err != nil {
+			return err
+		}
+		if err := s.removeGroupFromUserAndDelegatedDescendants(ctx, children[i].ID, groupID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context.Context, managerID int64, groupID int64) error {
+	children, _, err := s.repo.ListDirectChildren(ctx, managerID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 1000})
+	if err != nil {
+		return err
+	}
+	for i := range children {
+		if err := s.repo.DeleteGroupDelegation(ctx, managerID, children[i].ID, groupID); err != nil {
 			return err
 		}
 		if err := s.removeGroupFromUserAndDelegatedDescendants(ctx, children[i].ID, groupID); err != nil {
