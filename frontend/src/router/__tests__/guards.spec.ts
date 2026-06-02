@@ -134,9 +134,12 @@ function simulateGuard(
     }
   }
 
-  // Backend mode: admin gets full access, non-admin blocked
+  // Backend mode keeps ordinary user pages hidden, but agent management remains available.
   if (authState.backendModeEnabled) {
-    if (authState.isAuthenticated && authState.isAdmin) {
+    if (
+      authState.isAuthenticated &&
+      (authState.isAdmin || (requiresAgentManagement && authState.canUseAgentManagement))
+    ) {
       return null
     }
     const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
@@ -503,6 +506,19 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard('/key-usage', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('agent authenticated: /agent/direct-users is allowed in backend mode', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        canUseAgentManagement: true,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/agent/direct-users', { requiresAgentManagement: true }, authState)
       expect(redirect).toBeNull()
     })
 

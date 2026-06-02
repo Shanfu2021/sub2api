@@ -897,9 +897,13 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
-  // Backend mode: admin gets full access, non-admin blocked
+  // Backend mode keeps ordinary user pages hidden, but agent management remains
+  // available to admins and promoted agents.
   if (appStore.backendModeEnabled) {
-    if (authStore.isAuthenticated && authStore.isAdmin) {
+    if (
+      authStore.isAuthenticated &&
+      (authStore.isAdmin || (requiresAgentManagement && authStore.canUseAgentManagement))
+    ) {
       next()
       return
     }

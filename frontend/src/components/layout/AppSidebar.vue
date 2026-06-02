@@ -140,9 +140,9 @@
         </div>
       </template>
 
-      <!-- Regular User View -->
-      <template v-else-if="!appStore.backendModeEnabled">
-        <div class="sidebar-section">
+      <!-- Regular User / Agent View -->
+      <template v-else>
+        <div v-if="!appStore.backendModeEnabled" class="sidebar-section">
           <router-link
             v-for="item in userNavItems"
             :key="item.path"
@@ -744,10 +744,10 @@ const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(tru
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
 
 const agentManagementNavItems = computed((): NavItem[] => finalizeNav([
-  { path: '/agent/direct-users', label: t('nav.agentDirectUsers'), icon: UsersIcon, hideInSimpleMode: true },
-  { path: '/agent/direct-agents', label: t('nav.agentDirectAgents'), icon: UsersIcon, hideInSimpleMode: true },
-  { path: '/agent/direct-enterprises', label: t('nav.agentDirectEnterprises'), icon: GlobeIcon, hideInSimpleMode: true },
-  { path: '/agent/groups', label: t('nav.agentGroups'), icon: FolderIcon, hideInSimpleMode: true },
+  { path: '/agent/direct-users', label: t('nav.agentDirectUsers'), icon: UsersIcon },
+  { path: '/agent/direct-agents', label: t('nav.agentDirectAgents'), icon: UsersIcon },
+  { path: '/agent/direct-enterprises', label: t('nav.agentDirectEnterprises'), icon: GlobeIcon },
+  { path: '/agent/groups', label: t('nav.agentGroups'), icon: FolderIcon },
 ]))
 
 // Custom menu items filtered by visibility
