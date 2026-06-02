@@ -114,6 +114,17 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// agent_profiles: agent quota-pool extension table
+	var agentProfilesRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.agent_profiles')").Scan(&agentProfilesRegclass))
+	require.True(t, agentProfilesRegclass.Valid, "expected agent_profiles table to exist")
+	requireColumn(t, tx, "agent_profiles", "user_id", "bigint", 0, false)
+	requireColumn(t, tx, "agent_profiles", "pool_concurrency", "integer", 0, false)
+	requireColumn(t, tx, "agent_profiles", "pool_rpm", "integer", 0, false)
+	requireColumn(t, tx, "agent_profiles", "deleted_at", "timestamp with time zone", 0, true)
+	requireIndex(t, tx, "agent_profiles", "agent_profiles_pkey")
+	requireForeignKeyOnDelete(t, tx, "agent_profiles", "user_id", "users", "CASCADE")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

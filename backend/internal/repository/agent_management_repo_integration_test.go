@@ -129,6 +129,33 @@ func (s *AgentManagementRepoSuite) TestSumDirectChildAllocations() {
 	s.Require().Equal(200, rpm)
 }
 
+func (s *AgentManagementRepoSuite) TestAgentProfilePoolQuotaUsage() {
+	root := s.mustCreateAgentUser("root-profile@test.com", service.RoleAdmin, nil, 0, 0)
+	manager := s.mustCreateAgentUser("manager-profile@test.com", service.RoleAgentLevel1, &root.ID, 0, 0)
+	ordinary := s.mustCreateAgentUser("ordinary-profile@test.com", service.RoleUser, &manager.ID, 10, 100)
+	childAgent := s.mustCreateAgentUser("child-agent-profile@test.com", service.RoleAgentLevel2, &manager.ID, 0, 0)
+
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, manager.ID, 100, 1000))
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, childAgent.ID, 30, 300))
+
+	profile, err := s.repo.GetAgentProfile(s.ctx, manager.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(profile)
+	s.Require().Equal(100, profile.PoolConcurrency)
+	s.Require().Equal(1000, profile.PoolRPM)
+
+	concurrency, rpm, err := s.repo.SumDirectChildQuotaUsage(s.ctx, manager.ID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(40, concurrency)
+	s.Require().Equal(400, rpm)
+
+	s.Require().NoError(s.repo.SetEffectiveQuota(s.ctx, ordinary.ID, 25, 250))
+	updated, err := s.client.User.Get(s.ctx, ordinary.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(25, updated.Concurrency)
+	s.Require().Equal(250, updated.RpmLimit)
+}
+
 func (s *AgentManagementRepoSuite) TestDetachChildToRootAdmin() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)

@@ -24,8 +24,15 @@ type agentManagementRepoStub struct {
 	users  map[int64]*User
 	nextID int64
 
-	setAllocations []AllocationUpdate
-	setParents     []struct {
+	agentProfiles      map[int64]AgentProfile
+	setAllocations     []AllocationUpdate
+	setEffectiveQuotas []struct {
+		userID      int64
+		concurrency int
+		rpm         int
+	}
+	upsertAgentProfiles []AgentProfile
+	setParents          []struct {
 		userID   int64
 		parentID *int64
 	}
@@ -115,6 +122,78 @@ func (r *agentManagementRepoStub) SumDirectChildAllocations(_ context.Context, p
 		rpm += user.AllocatedRPM
 	}
 	return concurrency, rpm, nil
+}
+
+func (r *agentManagementRepoStub) GetAgentProfile(_ context.Context, userID int64) (*AgentProfile, error) {
+	if r.agentProfiles == nil {
+		return nil, nil
+	}
+	profile, ok := r.agentProfiles[userID]
+	if !ok {
+		return nil, nil
+	}
+	clone := profile
+	return &clone, nil
+}
+
+func (r *agentManagementRepoStub) UpsertAgentProfile(_ context.Context, userID int64, poolConcurrency int, poolRPM int) error {
+	if r.agentProfiles == nil {
+		r.agentProfiles = map[int64]AgentProfile{}
+	}
+	if poolConcurrency < 0 {
+		poolConcurrency = 0
+	}
+	if poolRPM < 0 {
+		poolRPM = 0
+	}
+	profile := AgentProfile{UserID: userID, PoolConcurrency: poolConcurrency, PoolRPM: poolRPM}
+	r.agentProfiles[userID] = profile
+	r.upsertAgentProfiles = append(r.upsertAgentProfiles, profile)
+	return nil
+}
+
+func (r *agentManagementRepoStub) SumDirectChildQuotaUsage(_ context.Context, parentID int64, excludeChildID *int64) (int, int, error) {
+	concurrency := 0
+	rpm := 0
+	for _, child := range r.users {
+		if child.ParentUserID == nil || *child.ParentUserID != parentID {
+			continue
+		}
+		if excludeChildID != nil && child.ID == *excludeChildID {
+			continue
+		}
+		if isAgentManagerRole(child.Role) && child.Role != RoleAdmin {
+			if profile, ok := r.agentProfiles[child.ID]; ok {
+				concurrency += profile.PoolConcurrency
+				rpm += profile.PoolRPM
+				continue
+			}
+		}
+		concurrency += child.Concurrency
+		rpm += child.RPMLimit
+	}
+	return concurrency, rpm, nil
+}
+
+func (r *agentManagementRepoStub) SetEffectiveQuota(_ context.Context, userID int64, concurrency int, rpm int) error {
+	user, ok := r.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	if concurrency < 0 {
+		concurrency = 0
+	}
+	if rpm < 0 {
+		rpm = 0
+	}
+	user.Concurrency = concurrency
+	user.RPMLimit = rpm
+	r.setEffectiveQuotas = append(r.setEffectiveQuotas, struct {
+		userID      int64
+		concurrency int
+		rpm         int
+	}{userID: userID, concurrency: concurrency, rpm: rpm})
+	return nil
 }
 
 func (r *agentManagementRepoStub) SetParent(_ context.Context, userID int64, parentID *int64) error {

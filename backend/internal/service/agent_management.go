@@ -27,6 +27,12 @@ type AllocationUpdate struct {
 	AllocatedRPM         int `json:"allocated_rpm"`
 }
 
+type AgentProfile struct {
+	UserID          int64 `json:"user_id"`
+	PoolConcurrency int   `json:"pool_concurrency"`
+	PoolRPM         int   `json:"pool_rpm"`
+}
+
 type CreateDirectUserInput struct {
 	Email                string `json:"email"`
 	Password             string `json:"password"`
@@ -81,6 +87,10 @@ type AgentManagementRepository interface {
 	CreateUser(ctx context.Context, user *User) error
 	ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
 	SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
+	GetAgentProfile(ctx context.Context, userID int64) (*AgentProfile, error)
+	UpsertAgentProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error
+	SumDirectChildQuotaUsage(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
+	SetEffectiveQuota(ctx context.Context, userID int64, concurrency int, rpm int) error
 	SetParent(ctx context.Context, userID int64, parentID *int64) error
 	SetRoleAndParent(ctx context.Context, userID int64, role string, parentID *int64) error
 	SetAllocation(ctx context.Context, userID int64, concurrency int, rpm int) error

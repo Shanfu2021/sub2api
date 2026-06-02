@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
@@ -84,6 +85,122 @@ func (r *agentManagementRepository) SumDirectChildAllocations(ctx context.Contex
 		rpm += child.AllocatedRpm
 	}
 	return concurrency, rpm, nil
+}
+
+func (r *agentManagementRepository) GetAgentProfile(ctx context.Context, userID int64) (*service.AgentProfile, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT user_id, pool_concurrency, pool_rpm
+FROM agent_profiles
+WHERE user_id = $1 AND deleted_at IS NULL`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
+	var profile service.AgentProfile
+	if err := rows.Scan(&profile.UserID, &profile.PoolConcurrency, &profile.PoolRPM); err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
+func (r *agentManagementRepository) UpsertAgentProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+INSERT INTO agent_profiles (user_id, pool_concurrency, pool_rpm, created_at, updated_at)
+VALUES ($1, CASE WHEN $2 < 0 THEN 0 ELSE $2 END, CASE WHEN $3 < 0 THEN 0 ELSE $3 END, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (user_id) DO UPDATE SET
+    pool_concurrency = EXCLUDED.pool_concurrency,
+    pool_rpm = EXCLUDED.pool_rpm,
+    updated_at = CURRENT_TIMESTAMP,
+    deleted_at = NULL`,
+		userID,
+		poolConcurrency,
+		poolRPM,
+	)
+	return err
+}
+
+func (r *agentManagementRepository) SumDirectChildQuotaUsage(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return 0, 0, errors.New("sql executor is not configured")
+	}
+	var exclude any
+	if excludeChildID != nil {
+		exclude = *excludeChildID
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT
+  COALESCE(SUM(
+    CASE
+      WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_concurrency, 0)
+      ELSE u.concurrency
+    END
+  ), 0) AS concurrency,
+  COALESCE(SUM(
+    CASE
+      WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_rpm, 0)
+      ELSE u.rpm_limit
+    END
+  ), 0) AS rpm
+FROM users u
+LEFT JOIN agent_profiles ap ON ap.user_id = u.id AND ap.deleted_at IS NULL
+WHERE u.parent_user_id = $1
+  AND u.deleted_at IS NULL
+  AND ($2::bigint IS NULL OR u.id <> $2::bigint)`,
+		parentID,
+		exclude,
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return 0, 0, rows.Err()
+	}
+	if err := rows.Scan(&concurrency, &rpm); err != nil {
+		return 0, 0, err
+	}
+	return concurrency, rpm, rows.Err()
+}
+
+func (r *agentManagementRepository) SetEffectiveQuota(ctx context.Context, userID int64, concurrency int, rpm int) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	res, err := exec.ExecContext(ctx, `
+UPDATE users
+SET concurrency = CASE WHEN $2 < 0 THEN 0 ELSE $2 END,
+    rpm_limit = CASE WHEN $3 < 0 THEN 0 ELSE $3 END,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1 AND deleted_at IS NULL`,
+		userID,
+		concurrency,
+		rpm,
+	)
+	if err != nil {
+		return err
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *agentManagementRepository) SetParent(ctx context.Context, userID int64, parentID *int64) error {
