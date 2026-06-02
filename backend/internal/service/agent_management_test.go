@@ -1165,6 +1165,41 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.Contains(t, invalidator.userIDs, level2UnderDetachedAgentID)
 }
 
+func TestAgentManagementDeletingLevel2AgentRecalculatesLevel1Quota(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	level2ID := int64(3)
+	directUserID := int64(4)
+	grandchildID := int64(5)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Concurrency: 60, RPMLimit: 600, Status: StatusActive},
+		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Concurrency: 25, RPMLimit: 250, Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, Concurrency: 10, RPMLimit: 100, Status: StatusActive},
+		&User{ID: grandchildID, Role: RoleUser, ParentUserID: &level2ID, Concurrency: 7, RPMLimit: 70, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		level1ID: {UserID: level1ID, PoolConcurrency: 100, PoolRPM: 1000},
+		level2ID: {UserID: level2ID, PoolConcurrency: 30, PoolRPM: 300},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
+
+	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, level2ID))
+
+	require.Equal(t, rootID, *repo.users[level2ID].ParentUserID)
+	require.Equal(t, RoleAgentLevel1, repo.users[level2ID].Role)
+	require.Equal(t, level2ID, *repo.users[grandchildID].ParentUserID)
+	require.Equal(t, 30, repo.agentProfiles[level2ID].PoolConcurrency)
+	require.Equal(t, 300, repo.agentProfiles[level2ID].PoolRPM)
+	require.Equal(t, 90, repo.users[level1ID].Concurrency)
+	require.Equal(t, 900, repo.users[level1ID].RPMLimit)
+	require.Empty(t, userRepo.deletedUserIDs)
+	require.Contains(t, invalidator.userIDs, level2ID)
+	require.Contains(t, invalidator.userIDs, level1ID)
+}
+
 func TestAgentManagementRejectsNonDirectChild(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)

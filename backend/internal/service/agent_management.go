@@ -503,6 +503,9 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 			return err
 		}
 		s.invalidateUser(ctx, child.ID)
+		if err := s.recalculateAgentEffectiveQuota(ctx, actor.ID); err != nil {
+			return err
+		}
 		return nil
 	}
 	if actor.Role == RoleAdmin && child.Role == RoleUser {
