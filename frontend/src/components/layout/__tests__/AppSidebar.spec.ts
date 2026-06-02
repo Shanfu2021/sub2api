@@ -23,6 +23,9 @@ const navMessages = {
   agentDirectAgents: 'Direct Agents',
   agentDirectEnterprises: 'Direct Enterprises',
   agentGroups: 'Groups & Rates',
+  enterpriseManagement: 'Enterprise Management',
+  enterpriseEmployees: 'Employees',
+  enterpriseGroups: 'Groups',
   dashboard: 'Dashboard',
   apiKeys: 'API Keys',
   usage: 'Usage',
@@ -116,6 +119,8 @@ async function mountSidebar(options: {
       { path: '/agent/direct-agents', component: { template: '<div />' } },
       { path: '/agent/direct-enterprises', component: { template: '<div />' } },
       { path: '/agent/groups', component: { template: '<div />' } },
+      { path: '/enterprise/employees', component: { template: '<div />' } },
+      { path: '/enterprise/groups', component: { template: '<div />' } },
       { path: '/admin/dashboard', component: { template: '<div />' } },
       { path: '/admin/ops', component: { template: '<div />' } },
       { path: '/admin/users', component: { template: '<div />' } },
@@ -152,6 +157,8 @@ async function mountSidebar(options: {
   const appStore = useAppStore()
   appStore.cachedPublicSettings = {
     custom_menu_items: [],
+    available_channels_enabled: true,
+    affiliate_enabled: true,
     backend_mode_enabled: options.backendModeEnabled ?? false
   } as any
 
@@ -176,6 +183,10 @@ async function mountSidebar(options: {
 
 function agentLinkCount(wrapper: ReturnType<typeof mount>) {
   return wrapper.findAll('a').filter((link) => link.attributes('href')?.startsWith('/agent/')).length
+}
+
+function enterpriseLinkCount(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('a').filter((link) => link.attributes('href')?.startsWith('/enterprise/')).length
 }
 
 describe('AppSidebar agent management visibility', () => {
@@ -219,6 +230,73 @@ describe('AppSidebar agent management visibility', () => {
 
     expect(wrapper.text()).not.toContain('Agent Management')
     expect(agentLinkCount(wrapper)).toBe(0)
+  })
+})
+
+describe('AppSidebar enterprise management visibility', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.restoreAllMocks()
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  })
+
+  it('shows enterprise management links to enterprise accounts', async () => {
+    const wrapper = await mountSidebar({ role: 'enterprise' })
+
+    expect(wrapper.text()).toContain('Enterprise Management')
+    expect(wrapper.text()).toContain('Employees')
+    expect(wrapper.text()).toContain('Groups')
+    expect(enterpriseLinkCount(wrapper)).toBe(2)
+  })
+
+  it('hides enterprise management links from admins without changing agent management links', async () => {
+    const wrapper = await mountSidebar({ role: 'admin' })
+
+    expect(wrapper.text()).not.toContain('Enterprise Management')
+    expect(enterpriseLinkCount(wrapper)).toBe(0)
+    expect(wrapper.text()).toContain('Agent Management')
+    expect(agentLinkCount(wrapper)).toBe(4)
+  })
+})
+
+describe('AppSidebar employee visibility', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.restoreAllMocks()
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  })
+
+  it('shows only basic user entries to employees', async () => {
+    const wrapper = await mountSidebar({ role: 'employee' })
+
+    expect(wrapper.text()).toContain('Dashboard')
+    expect(wrapper.text()).toContain('API Keys')
+    expect(wrapper.text()).toContain('Usage')
+    expect(wrapper.text()).toContain('Available Channels')
+    expect(wrapper.text()).toContain('Channel Status')
+    expect(wrapper.text()).toContain('Profile')
+
+    expect(wrapper.text()).not.toContain('My Subscriptions')
+    expect(wrapper.text()).not.toContain('Buy Subscription')
+    expect(wrapper.text()).not.toContain('My Orders')
+    expect(wrapper.text()).not.toContain('Redeem')
+    expect(wrapper.text()).not.toContain('Affiliate')
+    expect(wrapper.text()).not.toContain('Enterprise Management')
+    expect(wrapper.text()).not.toContain('Agent Management')
   })
 })
 

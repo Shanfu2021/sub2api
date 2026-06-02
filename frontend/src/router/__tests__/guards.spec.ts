@@ -51,7 +51,9 @@ vi.mock('@/api/auth', () => ({
 interface MockAuthState {
   isAuthenticated: boolean
   isAdmin: boolean
+  isEmployee?: boolean
   canUseAgentManagement?: boolean
+  canUseEnterpriseManagement?: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
@@ -69,6 +71,7 @@ function simulateGuard(
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
   const requiresAgentManagement = toMeta.requiresAgentManagement === true
+  const requiresEnterpriseManagement = toMeta.requiresEnterpriseManagement === true
 
   if (toPath === '/setup' && authState.setupNeedsSetup === false) {
     return resolveCompletedSetupRedirectPath(authState.isAuthenticated, authState.isAdmin)
@@ -120,6 +123,24 @@ function simulateGuard(
     return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
   }
 
+  if (requiresEnterpriseManagement && !authState.canUseEnterpriseManagement) {
+    return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
+  }
+
+  if (authState.isEmployee) {
+    const employeeRestrictedPaths = [
+      '/subscriptions',
+      '/purchase',
+      '/orders',
+      '/payment/qrcode',
+      '/redeem',
+      '/affiliate',
+    ]
+    if (employeeRestrictedPaths.some((path) => toPath.startsWith(path))) {
+      return '/dashboard'
+    }
+  }
+
   // 简易模式限制
   if (authState.isSimpleMode) {
     const restrictedPaths = [
@@ -138,7 +159,11 @@ function simulateGuard(
   if (authState.backendModeEnabled) {
     if (
       authState.isAuthenticated &&
-      (authState.isAdmin || (requiresAgentManagement && authState.canUseAgentManagement))
+      (
+        authState.isAdmin ||
+        (requiresAgentManagement && authState.canUseAgentManagement) ||
+        (requiresEnterpriseManagement && authState.canUseEnterpriseManagement)
+      )
     ) {
       return null
     }
@@ -291,6 +316,102 @@ describe('路由守卫逻辑', () => {
       }
       const redirect = simulateGuard('/agent/direct-users', { requiresAgentManagement: true }, authState)
       expect(redirect).toBe('/dashboard')
+    })
+  })
+
+  describe('企业管理路由', () => {
+    it('企业账号可访问企业管理页面', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        canUseEnterpriseManagement: true,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/enterprise/employees', { requiresEnterpriseManagement: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('管理员访问企业管理页面会回到管理员后台', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: true,
+        canUseEnterpriseManagement: false,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/enterprise/employees', { requiresEnterpriseManagement: true }, authState)
+      expect(redirect).toBe('/admin/dashboard')
+    })
+
+    it.each([
+      { name: '普通用户', state: { isEmployee: false } },
+      { name: '员工', state: { isEmployee: true } },
+    ])('$name 访问企业管理页面会回到用户仪表盘', ({ state }) => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        canUseEnterpriseManagement: false,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+        ...state,
+      }
+      const redirect = simulateGuard('/enterprise/employees', { requiresEnterpriseManagement: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('enterprise management is allowed for enterprise accounts in backend mode', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        canUseEnterpriseManagement: true,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/enterprise/groups', { requiresEnterpriseManagement: true }, authState)
+      expect(redirect).toBeNull()
+    })
+  })
+
+  describe('员工受限路由', () => {
+    it.each([
+      '/subscriptions',
+      '/purchase',
+      '/orders',
+      '/payment/qrcode',
+      '/redeem',
+      '/affiliate',
+    ])('员工访问 %s 重定向到 /dashboard', (path) => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isEmployee: true,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard(path, {}, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('员工可以访问基础入口', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isEmployee: true,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      expect(simulateGuard('/keys', {}, authState)).toBeNull()
+      expect(simulateGuard('/usage', {}, authState)).toBeNull()
+      expect(simulateGuard('/available-channels', {}, authState)).toBeNull()
+      expect(simulateGuard('/monitor', {}, authState)).toBeNull()
+      expect(simulateGuard('/profile', {}, authState)).toBeNull()
     })
   })
 

@@ -422,6 +422,40 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+  // ==================== Enterprise Management Routes ====================
+  {
+    path: '/enterprise',
+    redirect: '/enterprise/employees',
+    meta: {
+      requiresAuth: true,
+      requiresEnterpriseManagement: true,
+      title: 'Enterprise Management',
+      titleKey: 'nav.enterpriseManagement'
+    }
+  },
+  {
+    path: '/enterprise/employees',
+    name: 'EnterpriseEmployees',
+    component: () => import('@/views/enterprise/EmployeesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresEnterpriseManagement: true,
+      title: 'Enterprise Employees',
+      titleKey: 'nav.enterpriseEmployees'
+    }
+  },
+  {
+    path: '/enterprise/groups',
+    name: 'EnterpriseGroups',
+    component: () => import('@/views/enterprise/GroupsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresEnterpriseManagement: true,
+      title: 'Enterprise Groups',
+      titleKey: 'nav.enterpriseGroups'
+    }
+  },
+
   // ==================== Admin Routes ====================
   {
     path: '/admin',
@@ -802,6 +836,7 @@ router.beforeEach(async (to, _from, next) => {
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
   const requiresAgentManagement = to.meta.requiresAgentManagement === true
+  const requiresEnterpriseManagement = to.meta.requiresEnterpriseManagement === true
 
   if (to.path === '/setup') {
     try {
@@ -863,6 +898,11 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  if (requiresEnterpriseManagement && !authStore.canUseEnterpriseManagement) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
+  }
+
   // Check payment requirement (internal payment system only)
   if (to.meta.requiresPayment) {
     const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
@@ -876,6 +916,22 @@ router.beforeEach(async (to, _from, next) => {
     const riskControlEnabled = appStore.cachedPublicSettings?.risk_control_enabled === true
     if (!riskControlEnabled) {
       next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+      return
+    }
+  }
+
+  if (authStore.isEmployee) {
+    const employeeRestrictedPaths = [
+      '/subscriptions',
+      '/purchase',
+      '/orders',
+      '/payment/qrcode',
+      '/redeem',
+      '/affiliate',
+    ]
+
+    if (employeeRestrictedPaths.some((path) => to.path.startsWith(path))) {
+      next('/dashboard')
       return
     }
   }
@@ -902,7 +958,11 @@ router.beforeEach(async (to, _from, next) => {
   if (appStore.backendModeEnabled) {
     if (
       authStore.isAuthenticated &&
-      (authStore.isAdmin || (requiresAgentManagement && authStore.canUseAgentManagement))
+      (
+        authStore.isAdmin ||
+        (requiresAgentManagement && authStore.canUseAgentManagement) ||
+        (requiresEnterpriseManagement && authStore.canUseEnterpriseManagement)
+      )
     ) {
       next()
       return

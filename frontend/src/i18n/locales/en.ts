@@ -361,6 +361,9 @@ export default {
     agentDirectAgents: 'Direct Agents',
     agentDirectEnterprises: 'Direct Enterprises',
     agentGroups: 'Groups & Rates',
+    enterpriseManagement: 'Enterprise Management',
+    enterpriseEmployees: 'Employees',
+    enterpriseGroups: 'Enterprise Groups',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
@@ -676,6 +679,17 @@ export default {
         admin_exclusive: 'Admin exclusive',
         delegated: 'Delegated'
       }
+    }
+  },
+
+  enterpriseManagement: {
+    employees: {
+      subtitle: 'Balances, concurrency, and RPM assigned to the enterprise can be distributed to employees.',
+      loadFailed: 'Failed to load employees'
+    },
+    groups: {
+      subtitle: 'View public and exclusive groups assigned to this enterprise. Only effective enterprise rates are shown.',
+      loadFailed: 'Failed to load enterprise groups'
     }
   },
 
@@ -2003,7 +2017,8 @@ export default {
         user: 'User',
         agent_level1: 'Level 1 Agent',
         agent_level2: 'Level 2 Agent',
-        enterprise: 'Enterprise'
+        enterprise: 'Enterprise',
+        employee: 'Employee'
       },
       // Settings Dropdowns
       filterSettings: 'Filter Settings',

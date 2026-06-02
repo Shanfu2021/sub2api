@@ -360,6 +360,52 @@ export interface AgentGroupDelegationResponse {
   group_id: number
 }
 
+export interface EnterpriseEmployee extends AgentManagedUser {
+  role: 'employee'
+  enterprise_id?: number | null
+}
+
+export interface EnterpriseEmployeesResponse {
+  items: EnterpriseEmployee[]
+  pagination: AgentDirectChildrenResponse['pagination']
+}
+
+export interface EnterpriseEmployeeCreateRequest {
+  email: string
+  password: string
+  username?: string
+  balance: number
+  concurrency: number
+  rpm: number
+}
+
+export interface EnterpriseEmployeeAllocationUpdate {
+  balance: number
+  concurrency: number
+  rpm: number
+}
+
+export type EnterpriseAllocationSummary = AgentAllocationSummary
+
+export type EnterpriseGroupRate = AgentGroupRate
+
+export interface EnterpriseEmployeeGroupOption extends AgentChildGroupDelegationOption {
+  assigned: boolean
+}
+
+export interface EnterpriseEmployeeGroupRequest {
+  assigned: boolean
+}
+
+export interface EnterpriseEmployeeGroupResponse {
+  employee_id: number
+  group_id: number
+}
+
+export interface EnterpriseManagementSummary {
+  allocation: EnterpriseAllocationSummary
+}
+
 // ==================== Subscription Types ====================
 
 export interface Subscription {

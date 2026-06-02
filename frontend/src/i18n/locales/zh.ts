@@ -361,6 +361,9 @@ export default {
     agentDirectAgents: '直属代理管理',
     agentDirectEnterprises: '直属企业管理',
     agentGroups: '分组与倍率',
+    enterpriseManagement: '企业管理',
+    enterpriseEmployees: '员工管理',
+    enterpriseGroups: '企业分组',
     profile: '个人资料',
     users: '用户管理',
     groups: '分组管理',
@@ -675,6 +678,17 @@ export default {
         admin_exclusive: '管理员专属',
         delegated: '上级传播'
       }
+    }
+  },
+
+  enterpriseManagement: {
+    employees: {
+      subtitle: '管理员或代理分配给企业的余额、并发和 RPM，可以继续分配给员工。',
+      loadFailed: '加载员工失败'
+    },
+    groups: {
+      subtitle: '查看上级分配给企业的公共和专属分组；这里只展示企业自己的有效倍率。',
+      loadFailed: '加载企业分组失败'
     }
   },
 
@@ -1948,7 +1962,8 @@ export default {
         user: '用户',
         agent_level1: '一级代理',
         agent_level2: '二级代理',
-        enterprise: '企业用户'
+        enterprise: '企业用户',
+        employee: '员工'
       },
       form: {
         emailLabel: '邮箱',

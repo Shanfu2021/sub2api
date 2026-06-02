@@ -26,6 +26,12 @@ declare module 'vue-router' {
     requiresAgentManagement?: boolean
 
     /**
+     * Whether this route requires enterprise management privileges
+     * @default false
+     */
+    requiresEnterpriseManagement?: boolean
+
+    /**
      * Page title for this route
      */
     title?: string
