@@ -689,16 +689,20 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 	}
 
 	user := &User{
-		Email:         input.Email,
-		Username:      input.Username,
-		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
-		ParentUserID:  input.ParentUserID,
-		Balance:       balance,
-		Concurrency:   input.Concurrency,
-		RPMLimit:      input.RPMLimit,
-		Status:        StatusActive,
-		AllowedGroups: input.AllowedGroups,
+		Email:        input.Email,
+		Username:     input.Username,
+		Notes:        input.Notes,
+		Role:         RoleUser, // Always create as regular user, never admin
+		ParentUserID: input.ParentUserID,
+		Balance:      balance,
+		Concurrency:  input.Concurrency,
+		RPMLimit:     input.RPMLimit,
+		// Native admin-created users are also direct admin-pool users, so keep
+		// the agent-management allocation fields in sync with official limits.
+		AllocatedConcurrency: input.Concurrency,
+		AllocatedRPM:         input.RPMLimit,
+		Status:               StatusActive,
+		AllowedGroups:        input.AllowedGroups,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err

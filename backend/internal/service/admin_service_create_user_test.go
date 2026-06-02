@@ -35,12 +35,34 @@ func TestAdminService_CreateUser_Success(t *testing.T) {
 	require.Equal(t, input.Notes, user.Notes)
 	require.Equal(t, balance, user.Balance)
 	require.Equal(t, input.Concurrency, user.Concurrency)
+	require.Equal(t, input.Concurrency, user.AllocatedConcurrency)
 	require.Equal(t, input.AllowedGroups, user.AllowedGroups)
 	require.Equal(t, RoleUser, user.Role)
 	require.Equal(t, StatusActive, user.Status)
 	require.True(t, user.CheckPassword(input.Password))
 	require.Len(t, repo.created, 1)
 	require.Equal(t, user, repo.created[0])
+}
+
+func TestAdminService_CreateUser_SyncsConcurrencyAndRPMToAllocationFields(t *testing.T) {
+	repo := &userRepoStub{nextID: 14}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:       "native-created@test.com",
+		Password:    "strong-pass",
+		Concurrency: 10,
+		RPMLimit:    120,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 10, user.Concurrency)
+	require.Equal(t, 10, user.AllocatedConcurrency)
+	require.Equal(t, 120, user.RPMLimit)
+	require.Equal(t, 120, user.AllocatedRPM)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 10, repo.created[0].AllocatedConcurrency)
+	require.Equal(t, 120, repo.created[0].AllocatedRPM)
 }
 
 func TestAdminService_CreateUser_UsesDefaultBalanceWhenBalanceOmitted(t *testing.T) {
