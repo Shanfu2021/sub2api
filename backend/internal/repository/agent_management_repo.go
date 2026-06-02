@@ -104,7 +104,7 @@ func (r *agentManagementRepository) GetAgentProfile(ctx context.Context, userID 
 		return nil, errors.New("sql executor is not configured")
 	}
 	rows, err := exec.QueryContext(ctx, `
-SELECT user_id, pool_concurrency, pool_rpm
+SELECT user_id, pool_concurrency, pool_rpm, invite_default_concurrency, invite_default_rpm
 FROM agent_profiles
 WHERE user_id = $1 AND deleted_at IS NULL`,
 		userID,
@@ -118,7 +118,7 @@ WHERE user_id = $1 AND deleted_at IS NULL`,
 		return nil, rows.Err()
 	}
 	var profile service.AgentProfile
-	if err := rows.Scan(&profile.UserID, &profile.PoolConcurrency, &profile.PoolRPM); err != nil {
+	if err := rows.Scan(&profile.UserID, &profile.PoolConcurrency, &profile.PoolRPM, &profile.InviteDefaultConcurrency, &profile.InviteDefaultRPM); err != nil {
 		return nil, err
 	}
 	return &profile, nil
@@ -140,6 +140,26 @@ ON CONFLICT (user_id) DO UPDATE SET
 		userID,
 		poolConcurrency,
 		poolRPM,
+	)
+	return err
+}
+
+func (r *agentManagementRepository) UpdateAgentInviteDefaults(ctx context.Context, userID int64, inviteConcurrency int, inviteRPM int) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+INSERT INTO agent_profiles (user_id, pool_concurrency, pool_rpm, invite_default_concurrency, invite_default_rpm, created_at, updated_at)
+VALUES ($1, 0, 0, CASE WHEN $2 < 0 THEN 1 ELSE $2 END, CASE WHEN $3 < 0 THEN 1 ELSE $3 END, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (user_id) DO UPDATE SET
+    invite_default_concurrency = EXCLUDED.invite_default_concurrency,
+    invite_default_rpm = EXCLUDED.invite_default_rpm,
+    updated_at = CURRENT_TIMESTAMP,
+    deleted_at = NULL`,
+		userID,
+		inviteConcurrency,
+		inviteRPM,
 	)
 	return err
 }

@@ -1,0 +1,3 @@
+ALTER TABLE agent_profiles
+    ADD COLUMN IF NOT EXISTS invite_default_concurrency INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS invite_default_rpm INTEGER NOT NULL DEFAULT 1;

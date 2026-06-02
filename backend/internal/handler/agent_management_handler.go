@@ -27,6 +27,7 @@ type agentManagementService interface {
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
+	UpdateInviteDefaults(ctx context.Context, actorID int64, input service.AgentInviteDefaultsUpdate) (*service.AgentProfile, error)
 	UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, input service.AgentUpgradeInput) (*service.User, error)
 	DeleteDirectChild(ctx context.Context, actorID int64, childID int64) error
 	ListMyGroups(ctx context.Context, actorID int64) ([]service.AgentGroupRate, error)
@@ -117,6 +118,24 @@ func (h *AgentManagementHandler) UpdateAllocation(c *gin.Context) {
 		return
 	}
 	response.Success(c, summary)
+}
+
+func (h *AgentManagementHandler) UpdateInviteDefaults(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var req service.AgentInviteDefaultsUpdate
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	profile, err := h.service.UpdateInviteDefaults(c.Request.Context(), actorID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, profile)
 }
 
 func (h *AgentManagementHandler) UpgradeDirectUser(c *gin.Context) {
@@ -322,21 +341,23 @@ func bindCreateDirectUser(c *gin.Context) (service.CreateDirectUserInput, bool) 
 }
 
 type agentManagedUserResponse struct {
-	ID                   int64   `json:"id"`
-	Email                string  `json:"email"`
-	Username             string  `json:"username"`
-	Role                 string  `json:"role"`
-	ParentUserID         *int64  `json:"parent_user_id,omitempty"`
-	Balance              float64 `json:"balance"`
-	Concurrency          int     `json:"concurrency"`
-	RPMLimit             int     `json:"rpm_limit"`
-	AllocatedConcurrency int     `json:"allocated_concurrency"`
-	AllocatedRPM         int     `json:"allocated_rpm"`
-	PoolConcurrency      int     `json:"pool_concurrency"`
-	PoolRPM              int     `json:"pool_rpm"`
-	Status               string  `json:"status"`
-	CreatedAt            string  `json:"created_at"`
-	UpdatedAt            string  `json:"updated_at"`
+	ID                       int64   `json:"id"`
+	Email                    string  `json:"email"`
+	Username                 string  `json:"username"`
+	Role                     string  `json:"role"`
+	ParentUserID             *int64  `json:"parent_user_id,omitempty"`
+	Balance                  float64 `json:"balance"`
+	Concurrency              int     `json:"concurrency"`
+	RPMLimit                 int     `json:"rpm_limit"`
+	AllocatedConcurrency     int     `json:"allocated_concurrency"`
+	AllocatedRPM             int     `json:"allocated_rpm"`
+	PoolConcurrency          int     `json:"pool_concurrency"`
+	PoolRPM                  int     `json:"pool_rpm"`
+	InviteDefaultConcurrency int     `json:"invite_default_concurrency"`
+	InviteDefaultRPM         int     `json:"invite_default_rpm"`
+	Status                   string  `json:"status"`
+	CreatedAt                string  `json:"created_at"`
+	UpdatedAt                string  `json:"updated_at"`
 }
 
 type agentGroupRateResponse struct {
@@ -352,26 +373,32 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 	}
 	poolConcurrency := 0
 	poolRPM := 0
+	inviteDefaultConcurrency := 0
+	inviteDefaultRPM := 0
 	if u.AgentProfile != nil {
 		poolConcurrency = u.AgentProfile.PoolConcurrency
 		poolRPM = u.AgentProfile.PoolRPM
+		inviteDefaultConcurrency = u.AgentProfile.InviteDefaultConcurrency
+		inviteDefaultRPM = u.AgentProfile.InviteDefaultRPM
 	}
 	return agentManagedUserResponse{
-		ID:                   u.ID,
-		Email:                u.Email,
-		Username:             u.Username,
-		Role:                 u.Role,
-		ParentUserID:         u.ParentUserID,
-		Balance:              u.Balance,
-		Concurrency:          u.Concurrency,
-		RPMLimit:             u.RPMLimit,
-		AllocatedConcurrency: u.AllocatedConcurrency,
-		AllocatedRPM:         u.AllocatedRPM,
-		PoolConcurrency:      poolConcurrency,
-		PoolRPM:              poolRPM,
-		Status:               u.Status,
-		CreatedAt:            u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:            u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:                       u.ID,
+		Email:                    u.Email,
+		Username:                 u.Username,
+		Role:                     u.Role,
+		ParentUserID:             u.ParentUserID,
+		Balance:                  u.Balance,
+		Concurrency:              u.Concurrency,
+		RPMLimit:                 u.RPMLimit,
+		AllocatedConcurrency:     u.AllocatedConcurrency,
+		AllocatedRPM:             u.AllocatedRPM,
+		PoolConcurrency:          poolConcurrency,
+		PoolRPM:                  poolRPM,
+		InviteDefaultConcurrency: inviteDefaultConcurrency,
+		InviteDefaultRPM:         inviteDefaultRPM,
+		Status:                   u.Status,
+		CreatedAt:                u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:                u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

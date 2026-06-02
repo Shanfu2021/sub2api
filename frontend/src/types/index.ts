@@ -256,12 +256,15 @@ export interface AgentManagedUser {
   username: string
   role: UserRole
   parent_user_id?: number | null
+  balance: number
   concurrency: number
   rpm_limit: number
   allocated_concurrency: number
   allocated_rpm: number
   pool_concurrency: number
   pool_rpm: number
+  invite_default_concurrency: number
+  invite_default_rpm: number
   status: 'active' | 'disabled'
   created_at: string
   updated_at: string
@@ -302,10 +305,26 @@ export interface AgentAllocationSummary {
   allocated_rpm: number
   remaining_rpm: number
   unlimited_capacity: boolean
+  unlimited_concurrency?: boolean
+  unlimited_rpm?: boolean
+}
+
+export interface AgentInviteDefaultsUpdate {
+  invite_default_concurrency: number
+  invite_default_rpm: number
+}
+
+export interface AgentProfile {
+  user_id: number
+  pool_concurrency: number
+  pool_rpm: number
+  invite_default_concurrency: number
+  invite_default_rpm: number
 }
 
 export interface AgentManagementSummary {
   allocation: AgentAllocationSummary
+  invite_defaults?: AgentInviteDefaultsUpdate
 }
 
 export type AgentUpgradeTargetRole = 'agent_level1' | 'agent_level2' | 'enterprise'

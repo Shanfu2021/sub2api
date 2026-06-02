@@ -177,6 +177,18 @@ func (r *agentManagementRepoStub) UpsertAgentProfile(_ context.Context, userID i
 	return nil
 }
 
+func (r *agentManagementRepoStub) UpdateAgentInviteDefaults(_ context.Context, userID int64, inviteConcurrency int, inviteRPM int) error {
+	if r.agentProfiles == nil {
+		r.agentProfiles = map[int64]AgentProfile{}
+	}
+	profile := r.agentProfiles[userID]
+	profile.UserID = userID
+	profile.InviteDefaultConcurrency = inviteConcurrency
+	profile.InviteDefaultRPM = inviteRPM
+	r.agentProfiles[userID] = profile
+	return nil
+}
+
 func (r *agentManagementRepoStub) GetDirectChildQuotaUsage(_ context.Context, parentID int64, excludeChildID *int64) (QuotaUsageSummary, error) {
 	usage := QuotaUsageSummary{}
 	for _, child := range r.users {
@@ -827,6 +839,44 @@ func TestAgentManagementUnlimitedAgentCanAllocateUnlimitedPool(t *testing.T) {
 	require.Equal(t, 0, repo.agentProfiles[childAgentID].PoolRPM)
 }
 
+func TestAgentManagementUpdateInviteDefaults(t *testing.T) {
+	rootID := int64(1)
+	managerID := int64(2)
+	childID := int64(3)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: childID, Role: RoleUser, ParentUserID: &managerID, Concurrency: 6, RPMLimit: 60, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		managerID: {UserID: managerID, PoolConcurrency: 10, PoolRPM: 100, InviteDefaultConcurrency: 1, InviteDefaultRPM: 1},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	profile, err := svc.UpdateInviteDefaults(context.Background(), managerID, AgentInviteDefaultsUpdate{
+		InviteDefaultConcurrency: 4,
+		InviteDefaultRPM:         40,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 4, profile.InviteDefaultConcurrency)
+	require.Equal(t, 40, profile.InviteDefaultRPM)
+	require.Equal(t, 4, repo.agentProfiles[managerID].InviteDefaultConcurrency)
+	require.Equal(t, 40, repo.agentProfiles[managerID].InviteDefaultRPM)
+
+	_, err = svc.UpdateInviteDefaults(context.Background(), managerID, AgentInviteDefaultsUpdate{
+		InviteDefaultConcurrency: 5,
+		InviteDefaultRPM:         50,
+	})
+	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
+
+	_, err = svc.UpdateInviteDefaults(context.Background(), managerID, AgentInviteDefaultsUpdate{
+		InviteDefaultConcurrency: 0,
+		InviteDefaultRPM:         0,
+	})
+	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
+}
+
 func TestAgentManagementFiniteAgentCannotAllocateWhenExistingChildIsUnlimited(t *testing.T) {
 	rootID := int64(1)
 	managerID := int64(2)
@@ -916,6 +966,36 @@ func TestAgentManagementAdminSummaryUsesUnlimitedCapacity(t *testing.T) {
 	require.Equal(t, 11000, summary.Allocation.AllocatedRPM)
 	require.GreaterOrEqual(t, summary.Allocation.RemainingConcurrency, 0)
 	require.GreaterOrEqual(t, summary.Allocation.RemainingRPM, 0)
+}
+
+func TestAgentManagementAgentSummaryIncludesInviteDefaults(t *testing.T) {
+	rootID := int64(1)
+	managerID := int64(2)
+	childID := int64(3)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: childID, Role: RoleUser, ParentUserID: &managerID, Concurrency: 6, RPMLimit: 60, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		managerID: {
+			UserID:                   managerID,
+			PoolConcurrency:          10,
+			PoolRPM:                  100,
+			InviteDefaultConcurrency: 4,
+			InviteDefaultRPM:         40,
+		},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	summary, err := svc.GetSummary(context.Background(), managerID)
+	require.NoError(t, err)
+	require.NotNil(t, summary.InviteDefaults)
+	require.Equal(t, 4, summary.InviteDefaults.InviteDefaultConcurrency)
+	require.Equal(t, 40, summary.InviteDefaults.InviteDefaultRPM)
+	require.Equal(t, 4, summary.Allocation.RemainingConcurrency)
+	require.Equal(t, 40, summary.Allocation.RemainingRPM)
 }
 
 func TestAgentManagementCreateDirectUserForAdminIsUnconstrained(t *testing.T) {

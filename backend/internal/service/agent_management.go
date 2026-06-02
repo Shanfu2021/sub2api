@@ -23,6 +23,11 @@ var (
 	ErrAgentManagementNotImplemented      = infraerrors.New(http.StatusNotImplemented, "AGENT_MANAGEMENT_NOT_IMPLEMENTED", "agent management feature is not implemented yet")
 )
 
+const (
+	DefaultAgentInviteConcurrency = 1
+	DefaultAgentInviteRPM         = 1
+)
+
 type AgentPoolReclaimExceededError struct {
 	AllocatedConcurrency int
 	RequestedConcurrency int
@@ -46,9 +51,11 @@ type AllocationUpdate struct {
 }
 
 type AgentProfile struct {
-	UserID          int64 `json:"user_id"`
-	PoolConcurrency int   `json:"pool_concurrency"`
-	PoolRPM         int   `json:"pool_rpm"`
+	UserID                   int64 `json:"user_id"`
+	PoolConcurrency          int   `json:"pool_concurrency"`
+	PoolRPM                  int   `json:"pool_rpm"`
+	InviteDefaultConcurrency int   `json:"invite_default_concurrency"`
+	InviteDefaultRPM         int   `json:"invite_default_rpm"`
 }
 
 type AgentUpgradeInput struct {
@@ -63,6 +70,11 @@ type CreateDirectUserInput struct {
 	Username             string `json:"username"`
 	AllocatedConcurrency int    `json:"allocated_concurrency"`
 	AllocatedRPM         int    `json:"allocated_rpm"`
+}
+
+type AgentInviteDefaultsUpdate struct {
+	InviteDefaultConcurrency int `json:"invite_default_concurrency"`
+	InviteDefaultRPM         int `json:"invite_default_rpm"`
 }
 
 type AllocationSummary struct {
@@ -95,7 +107,8 @@ type DirectChildrenQuery struct {
 }
 
 type AgentManagementSummary struct {
-	Allocation AllocationSummary `json:"allocation"`
+	Allocation     AllocationSummary          `json:"allocation"`
+	InviteDefaults *AgentInviteDefaultsUpdate `json:"invite_defaults,omitempty"`
 }
 
 type AgentGroupRate struct {
@@ -128,6 +141,7 @@ type AgentManagementRepository interface {
 	SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
 	GetAgentProfile(ctx context.Context, userID int64) (*AgentProfile, error)
 	UpsertAgentProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error
+	UpdateAgentInviteDefaults(ctx context.Context, userID int64, inviteConcurrency int, inviteRPM int) error
 	GetDirectChildQuotaUsage(ctx context.Context, parentID int64, excludeChildID *int64) (QuotaUsageSummary, error)
 	SetEffectiveQuota(ctx context.Context, userID int64, concurrency int, rpm int) error
 	SetParent(ctx context.Context, userID int64, parentID *int64) error
@@ -216,9 +230,25 @@ func (s *AgentManagementService) GetSummary(ctx context.Context, actorID int64) 
 	if err != nil {
 		return nil, err
 	}
-	return &AgentManagementSummary{
+	summary := &AgentManagementSummary{
 		Allocation: buildAllocationSummary(actor, totalConcurrency, totalRPM, usage),
-	}, nil
+	}
+	if actor.Role != RoleAdmin {
+		profile, err := s.repo.GetAgentProfile(ctx, actor.ID)
+		if err != nil {
+			return nil, err
+		}
+		defaults := AgentInviteDefaultsUpdate{
+			InviteDefaultConcurrency: DefaultAgentInviteConcurrency,
+			InviteDefaultRPM:         DefaultAgentInviteRPM,
+		}
+		if profile != nil {
+			defaults.InviteDefaultConcurrency = normalizedAgentInviteDefault(profile.InviteDefaultConcurrency, DefaultAgentInviteConcurrency)
+			defaults.InviteDefaultRPM = normalizedAgentInviteDefault(profile.InviteDefaultRPM, DefaultAgentInviteRPM)
+		}
+		summary.InviteDefaults = &defaults
+	}
+	return summary, nil
 }
 
 func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID int64, input CreateDirectUserInput) (*User, error) {
@@ -307,6 +337,44 @@ func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID i
 	usage = usage.WithRequest(requestedConcurrency, requestedRPM)
 	summary := buildAllocationSummary(actor, totalConcurrency, totalRPM, usage)
 	return &summary, nil
+}
+
+func (s *AgentManagementService) UpdateInviteDefaults(ctx context.Context, actorID int64, input AgentInviteDefaultsUpdate) (*AgentProfile, error) {
+	if input.InviteDefaultConcurrency < 0 || input.InviteDefaultRPM < 0 {
+		return nil, ErrAgentManagementInvalidAllocation
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role == RoleAdmin {
+		return nil, ErrAgentManagementForbidden
+	}
+	profile, err := s.repo.GetAgentProfile(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	if profile == nil {
+		profile = &AgentProfile{
+			UserID:                   actor.ID,
+			InviteDefaultConcurrency: DefaultAgentInviteConcurrency,
+			InviteDefaultRPM:         DefaultAgentInviteRPM,
+		}
+	}
+	usage, err := s.repo.GetDirectChildQuotaUsage(ctx, actor.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+	if quotaRequestExceedsCapacity(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency, input.InviteDefaultConcurrency) ||
+		quotaRequestExceedsCapacity(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM, input.InviteDefaultRPM) {
+		return nil, ErrAgentManagementAllocationExceeded
+	}
+	if err := s.repo.UpdateAgentInviteDefaults(ctx, actor.ID, input.InviteDefaultConcurrency, input.InviteDefaultRPM); err != nil {
+		return nil, err
+	}
+	profile.InviteDefaultConcurrency = input.InviteDefaultConcurrency
+	profile.InviteDefaultRPM = input.InviteDefaultRPM
+	return profile, nil
 }
 
 func (s *AgentManagementService) updateDirectAgentPool(ctx context.Context, actor *User, child *User, requestedConcurrency int, requestedRPM int) (*AllocationSummary, error) {

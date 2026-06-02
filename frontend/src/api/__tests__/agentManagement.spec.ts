@@ -62,6 +62,22 @@ describe('agent management api', () => {
     expect(put).toHaveBeenCalledWith('/agent-management/children/12/allocation', payload)
   })
 
+  it('updates agent invitation registration defaults', async () => {
+    const response = {
+      user_id: 12,
+      pool_concurrency: 100,
+      pool_rpm: 1000,
+      invite_default_concurrency: 3,
+      invite_default_rpm: 30,
+    }
+    const payload = { invite_default_concurrency: 3, invite_default_rpm: 30 }
+    put.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.updateInviteDefaults(payload)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/invite-defaults', payload)
+  })
+
   it('creates a direct user through the backend agent management route', async () => {
     const response = { id: 99, email: 'direct@example.com', role: 'user' }
     const payload = {

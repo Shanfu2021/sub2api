@@ -6,8 +6,10 @@ import type {
   AgentGroupDelegationRequest,
   AgentGroupDelegationResponse,
   AgentGroupRate,
+  AgentInviteDefaultsUpdate,
   AgentManagedUser,
   AgentManagementSummary,
+  AgentProfile,
   AgentUpgradeRequest,
   AgentAllocationUpdate
 } from '@/types'
@@ -45,6 +47,11 @@ export async function createDirectUser(payload: AgentDirectUserCreateRequest): P
 
 export async function updateAllocation(childId: number, payload: AgentAllocationUpdate): Promise<AgentAllocationSummary> {
   const { data } = await apiClient.put<AgentAllocationSummary>(`${BASE_PATH}/children/${childId}/allocation`, payload)
+  return data
+}
+
+export async function updateInviteDefaults(payload: AgentInviteDefaultsUpdate): Promise<AgentProfile> {
+  const { data } = await apiClient.put<AgentProfile>(`${BASE_PATH}/invite-defaults`, payload)
   return data
 }
 
@@ -89,6 +96,7 @@ export const agentManagementAPI = {
   listDirectEnterprises,
   createDirectUser,
   updateAllocation,
+  updateInviteDefaults,
   upgradeChild,
   deleteDirectChild,
   listGroups,

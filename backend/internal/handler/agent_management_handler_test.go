@@ -101,6 +101,10 @@ func (s *fakeAgentManagementService) UpdateAllocation(_ context.Context, actorID
 	}, nil
 }
 
+func (s *fakeAgentManagementService) UpdateInviteDefaults(context.Context, int64, service.AgentInviteDefaultsUpdate) (*service.AgentProfile, error) {
+	return &service.AgentProfile{InviteDefaultConcurrency: 1, InviteDefaultRPM: 1}, nil
+}
+
 func (s *fakeAgentManagementService) UpgradeDirectUser(_ context.Context, actorID int64, childID int64, input service.AgentUpgradeInput) (*service.User, error) {
 	s.upgradeCalls++
 	s.upgradeActorID = actorID
@@ -330,11 +334,13 @@ func TestAgentManagedUserResponseIncludesAgentProfilePool(t *testing.T) {
 		Role:         service.RoleAgentLevel2,
 		Concurrency:  5,
 		RPMLimit:     50,
-		AgentProfile: &service.AgentProfile{UserID: userID, PoolConcurrency: 30, PoolRPM: 300},
+		AgentProfile: &service.AgentProfile{UserID: userID, PoolConcurrency: 30, PoolRPM: 300, InviteDefaultConcurrency: 2, InviteDefaultRPM: 20},
 	})
 
 	payload, err := json.Marshal(got)
 	require.NoError(t, err)
 	require.Contains(t, string(payload), `"pool_concurrency":30`)
 	require.Contains(t, string(payload), `"pool_rpm":300`)
+	require.Contains(t, string(payload), `"invite_default_concurrency":2`)
+	require.Contains(t, string(payload), `"invite_default_rpm":20`)
 }

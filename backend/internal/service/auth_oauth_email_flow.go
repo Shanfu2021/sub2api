@@ -134,13 +134,27 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 
 	signupSource = normalizeOAuthSignupSource(signupSource)
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+	var defaultRPMLimit int
+	if s.settingService != nil {
+		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+	}
+	defaultConcurrency := grantPlan.Concurrency
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+		if err != nil {
+			return nil, nil, err
+		}
+		defaultConcurrency = quota.Concurrency
+		defaultRPMLimit = quota.RPM
+	}
 
 	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
+		Concurrency:  defaultConcurrency,
+		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
@@ -220,12 +234,21 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if s.settingService != nil {
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
+	defaultConcurrency := grantPlan.Concurrency
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+		if err != nil {
+			return nil, nil, err
+		}
+		defaultConcurrency = quota.Concurrency
+		defaultRPMLimit = quota.RPM
+	}
 	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
+		Concurrency:  defaultConcurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 		SignupSource: signupSource,

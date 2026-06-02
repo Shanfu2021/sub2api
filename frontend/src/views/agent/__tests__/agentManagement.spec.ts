@@ -15,6 +15,7 @@ const {
   listDirectEnterprises,
   updateAllocation,
   createDirectUser,
+  updateInviteDefaults,
   upgradeChild,
   deleteDirectChild,
   listGroups,
@@ -28,6 +29,7 @@ const {
   listDirectEnterprises: vi.fn(),
   updateAllocation: vi.fn(),
   createDirectUser: vi.fn(),
+  updateInviteDefaults: vi.fn(),
   upgradeChild: vi.fn(),
   deleteDirectChild: vi.fn(),
   listGroups: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock('@/api/agentManagement', () => ({
     listDirectEnterprises,
     updateAllocation,
     createDirectUser,
+    updateInviteDefaults,
     upgradeChild,
     deleteDirectChild,
     listGroups,
@@ -90,6 +93,7 @@ const DataTableStub = {
       <div v-for="row in data" :key="row.id" data-test="row">
         <slot name="cell-email" :row="row" :value="row.email" />
         <slot name="cell-role" :row="row" :value="row.role" />
+        <slot name="cell-balance" :row="row" :value="row.balance" />
         <slot name="cell-allocation" :row="row" />
         <slot name="cell-name" :row="row" :value="row.name" />
         <slot name="cell-source" :row="row" :value="row.source" />
@@ -131,6 +135,9 @@ function makeChild(overrides: Partial<AgentManagedUser> = {}): AgentManagedUser 
     rpm_limit: 100,
     pool_concurrency: 0,
     pool_rpm: 0,
+    invite_default_concurrency: 1,
+    invite_default_rpm: 1,
+    balance: 12.5,
     allocated_concurrency: 3,
     allocated_rpm: 30,
     status: 'active',
@@ -184,6 +191,12 @@ describe('agent management pages', () => {
         allocated_rpm: 30,
         remaining_rpm: 170,
         unlimited_capacity: false,
+        unlimited_concurrency: false,
+        unlimited_rpm: false,
+      },
+      invite_defaults: {
+        invite_default_concurrency: 2,
+        invite_default_rpm: 20,
       },
     })
     listDirectUsers.mockResolvedValue(makeChildrenResponse([makeChild()]))
@@ -197,8 +210,17 @@ describe('agent management pages', () => {
       allocated_rpm: 50,
       remaining_rpm: 150,
       unlimited_capacity: false,
+      unlimited_concurrency: false,
+      unlimited_rpm: false,
     })
     createDirectUser.mockResolvedValue(makeChild({ id: 99, email: 'direct@example.com', username: 'direct' }))
+    updateInviteDefaults.mockResolvedValue({
+      user_id: 1,
+      pool_concurrency: 20,
+      pool_rpm: 200,
+      invite_default_concurrency: 4,
+      invite_default_rpm: 40,
+    })
     upgradeChild.mockResolvedValue(makeChild({ role: 'agent_level1' }))
     deleteDirectChild.mockResolvedValue({ id: 12 })
     listGroups.mockResolvedValue([
@@ -240,10 +262,17 @@ describe('agent management pages', () => {
     const wrapper = mountAgentView(DirectUsersView)
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('Balance')
     expect(wrapper.text()).not.toContain('Recharge')
     expect(wrapper.text()).not.toContain('Disable')
     expect(wrapper.text()).not.toContain('Official Delete')
+  })
+
+  it('renders direct child balance as read-only context', async () => {
+    const wrapper = mountAgentView(DirectUsersView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('12.50')
+    expect(wrapper.find('[data-test="allocation-balance-12"]').exists()).toBe(false)
   })
 
   it('renders concurrency and RPM allocation controls for direct users', async () => {
@@ -252,6 +281,25 @@ describe('agent management pages', () => {
 
     expect(wrapper.get('[data-test="allocation-concurrency-12"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="allocation-rpm-12"]').exists()).toBe(true)
+  })
+
+  it('lets agents save invitation registration defaults on the direct users page', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="invite-default-concurrency"]').element as HTMLInputElement).value).toBe('2')
+    expect((wrapper.get('[data-test="invite-default-rpm"]').element as HTMLInputElement).value).toBe('20')
+
+    await wrapper.get('[data-test="invite-default-concurrency"]').setValue('4')
+    await wrapper.get('[data-test="invite-default-rpm"]').setValue('40')
+    await wrapper.get('[data-test="invite-default-submit"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateInviteDefaults).toHaveBeenCalledWith({
+      invite_default_concurrency: 4,
+      invite_default_rpm: 40,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.direct.inviteDefaultsSaved')
   })
 
   it('sends search query when filtering direct children', async () => {
@@ -334,6 +382,8 @@ describe('agent management pages', () => {
         allocated_rpm: 190,
         remaining_rpm: 10,
         unlimited_capacity: false,
+        unlimited_concurrency: false,
+        unlimited_rpm: false,
       },
     })
     const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
@@ -388,6 +438,32 @@ describe('agent management pages', () => {
 
     expect(wrapper.text()).toContain('agentManagement.direct.remainingConcurrency')
     expect(wrapper.text()).toContain('agentManagement.direct.remainingRpm')
+    expect(wrapper.text()).not.toContain('agentManagement.direct.adminUnlimitedCapacity')
+  })
+
+  it('shows unlimited labels for agents with unlimited pool dimensions', async () => {
+    getSummary.mockResolvedValue({
+      allocation: {
+        total_concurrency: 0,
+        allocated_concurrency: 0,
+        remaining_concurrency: 0,
+        total_rpm: 0,
+        allocated_rpm: 0,
+        remaining_rpm: 0,
+        unlimited_capacity: true,
+        unlimited_concurrency: true,
+        unlimited_rpm: true,
+      },
+      invite_defaults: {
+        invite_default_concurrency: 1,
+        invite_default_rpm: 1,
+      },
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agentManagement.direct.remainingConcurrency: common.unlimited')
+    expect(wrapper.text()).toContain('agentManagement.direct.remainingRpm: common.unlimited')
     expect(wrapper.text()).not.toContain('agentManagement.direct.adminUnlimitedCapacity')
   })
 

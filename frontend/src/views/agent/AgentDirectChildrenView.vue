@@ -43,16 +43,49 @@
               {{ t('agentManagement.direct.adminUnlimitedCapacity') }}
             </span>
             <span v-else class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
-              {{ t('agentManagement.direct.remainingConcurrency') }}: {{ allocation?.remaining_concurrency ?? '-' }}
+              {{ t('agentManagement.direct.remainingConcurrency') }}: {{ remainingConcurrencyText }}
             </span>
             <span v-if="!isAdminUnlimitedCapacity" class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
-              {{ t('agentManagement.direct.remainingRpm') }}: {{ allocation?.remaining_rpm ?? '-' }}
+              {{ t('agentManagement.direct.remainingRpm') }}: {{ remainingRpmText }}
             </span>
             <button class="btn btn-secondary px-3" :disabled="loading" @click="loadData">
               <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
             </button>
           </div>
         </div>
+        <form
+          v-if="showInviteDefaultsForm"
+          data-test="invite-default-submit"
+          class="mt-3 flex flex-wrap items-end gap-3 border-t border-gray-200 pt-3 dark:border-dark-700"
+          @submit.prevent="saveInviteDefaults"
+        >
+          <label class="flex min-w-[150px] flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('agentManagement.direct.inviteDefaultConcurrency') }}</span>
+            <input
+              v-model.number="inviteDefaultsDraft.invite_default_concurrency"
+              data-test="invite-default-concurrency"
+              class="input h-9"
+              type="number"
+              min="0"
+              step="1"
+            />
+          </label>
+          <label class="flex min-w-[150px] flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('agentManagement.direct.inviteDefaultRpm') }}</span>
+            <input
+              v-model.number="inviteDefaultsDraft.invite_default_rpm"
+              data-test="invite-default-rpm"
+              class="input h-9"
+              type="number"
+              min="0"
+              step="1"
+            />
+          </label>
+          <button class="btn btn-secondary h-9 px-3" type="submit" :disabled="savingInviteDefaults || loading">
+            <Icon name="check" size="sm" />
+            <span>{{ t('agentManagement.direct.saveInviteDefaults') }}</span>
+          </button>
+        </form>
       </template>
 
       <template #table>
@@ -66,6 +99,10 @@
 
           <template #cell-role="{ value }">
             <span class="badge badge-gray">{{ roleLabel(value) }}</span>
+          </template>
+
+          <template #cell-balance="{ value }">
+            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ formatCurrency(Number(value || 0)) }}</span>
           </template>
 
           <template #cell-allocation="{ row }">
@@ -116,7 +153,7 @@
 
               <button class="btn btn-secondary btn-sm text-red-600 dark:text-red-400" @click="askDetach(row)">
                 <Icon name="trash" size="sm" />
-                <span>{{ t('agentManagement.direct.detach') }}</span>
+                <span>{{ deleteActionLabel(row) }}</span>
               </button>
             </div>
           </template>
@@ -138,9 +175,9 @@
 
     <ConfirmDialog
       :show="detachDialog.show"
-      :title="t('agentManagement.direct.detachTitle')"
-      :message="t('agentManagement.direct.detachConfirm', { email: detachDialog.child?.email || '' })"
-      :confirm-text="t('agentManagement.direct.detach')"
+      :title="deleteDialogTitle"
+      :message="deleteDialogMessage"
+      :confirm-text="deleteDialogConfirmText"
       danger
       @confirm="confirmDetach"
       @cancel="detachDialog.show = false"
@@ -160,11 +197,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { agentManagementAPI } from '@/api/agentManagement'
 import { useAppStore, useAuthStore } from '@/stores'
+import { formatCurrency } from '@/utils/format'
 import type {
   AgentAllocationSummary,
   AgentAllocationUpdate,
   AgentDirectChildrenResponse,
   AgentDirectUserCreateRequest,
+  AgentInviteDefaultsUpdate,
   AgentManagedUser,
   AgentUpgradeTargetRole,
   UserRole
@@ -193,10 +232,15 @@ const loading = ref(false)
 const savingChildId = ref<number | null>(null)
 const creatingUser = ref(false)
 const showCreateUserModal = ref(false)
+const savingInviteDefaults = ref(false)
 const searchDraft = ref('')
 const activeSearch = ref('')
 const children = ref<AgentManagedUser[]>([])
 const allocation = ref<AgentAllocationSummary | null>(null)
+const inviteDefaultsDraft = reactive<AgentInviteDefaultsUpdate>({
+  invite_default_concurrency: 1,
+  invite_default_rpm: 1,
+})
 const drafts = reactive<Record<number, AgentAllocationUpdate>>({})
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const detachDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>({ show: false, child: null })
@@ -204,6 +248,7 @@ const detachDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
   { key: 'role', label: t('agentManagement.direct.role') },
+  { key: 'balance', label: t('agentManagement.direct.balance') },
   { key: 'allocation', label: t('agentManagement.direct.allocation') },
   { key: 'status', label: t('common.status') },
   { key: 'actions', label: t('common.actions') },
@@ -220,16 +265,29 @@ const upgradeTargets = computed<AgentUpgradeTargetRole[]>(() => {
 
 const canCreateDirectUser = computed(() => props.kind === 'users')
 
-const isAdminUnlimitedCapacity = computed(() => {
-  return authStore.user?.role === 'admin' || allocation.value?.unlimited_capacity === true
-})
+const isAdmin = computed(() => authStore.user?.role === 'admin')
+const isAgent = computed(() => authStore.user?.role === 'agent_level1' || authStore.user?.role === 'agent_level2')
+const showInviteDefaultsForm = computed(() => props.kind === 'users' && isAgent.value)
+const isAdminUnlimitedCapacity = computed(() => isAdmin.value)
 
 const directSubtitle = computed(() => {
-  if (isAdminUnlimitedCapacity.value) {
+  if (isAdmin.value) {
     return t('agentManagement.direct.adminSubtitle')
   }
   return t('agentManagement.direct.subtitle')
 })
+
+const deleteDialogIsTrueDelete = computed(() => isTrueDeleteDirectUser(detachDialog.child))
+const deleteDialogTitle = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteUserTitle') : t('agentManagement.direct.detachTitle'))
+const deleteDialogMessage = computed(() => {
+  const email = detachDialog.child?.email || ''
+  return deleteDialogIsTrueDelete.value
+    ? t('agentManagement.direct.deleteUserConfirm', { email })
+    : t('agentManagement.direct.detachConfirm', { email })
+})
+const deleteDialogConfirmText = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteUser') : t('agentManagement.direct.detach'))
+const remainingConcurrencyText = computed(() => allocation.value?.unlimited_concurrency ? t('common.unlimited') : String(allocation.value?.remaining_concurrency ?? '-'))
+const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
 
 function extractPagination(result: AgentDirectChildrenResponse) {
   const source = result.pagination || {}
@@ -243,6 +301,11 @@ function syncDrafts(items: AgentManagedUser[]) {
   for (const child of items) {
     drafts[child.id] = quotaFor(child)
   }
+}
+
+function syncInviteDefaults(defaults?: AgentInviteDefaultsUpdate) {
+  inviteDefaultsDraft.invite_default_concurrency = normalizedNonNegative(defaults?.invite_default_concurrency ?? 1)
+  inviteDefaultsDraft.invite_default_rpm = normalizedNonNegative(defaults?.invite_default_rpm ?? 1)
 }
 
 function quotaFor(child: AgentManagedUser): AgentAllocationUpdate {
@@ -273,6 +336,9 @@ async function loadData() {
       listChildren(),
     ])
     allocation.value = summary.allocation
+    if (showInviteDefaultsForm.value) {
+      syncInviteDefaults(summary.invite_defaults)
+    }
     children.value = result.items
     syncDrafts(result.items)
     extractPagination(result)
@@ -296,14 +362,28 @@ function draftFor(child: AgentManagedUser): AgentAllocationUpdate {
 }
 
 function updateDraft(childId: number, key: keyof AgentAllocationUpdate, rawValue: string) {
-  const parsed = Math.max(0, Number.parseInt(rawValue || '0', 10) || 0)
+  const parsed = normalizedNonNegative(rawValue)
   drafts[childId] = {
     ...(drafts[childId] || { concurrency: 0, rpm: 0 }),
     [key]: parsed,
   }
 }
 
-function exceedsRemainingAllocation(payload: AgentDirectUserCreateRequest): boolean {
+function normalizedNonNegative(value: unknown): number {
+  return Math.max(0, Number.parseInt(String(value ?? '0'), 10) || 0)
+}
+
+function exceedsQuota(totalRemaining: number, unlimited: boolean | undefined, requested: number): boolean {
+  if (unlimited) {
+    return false
+  }
+  if (requested === 0) {
+    return true
+  }
+  return requested > totalRemaining
+}
+
+function exceedsRemainingAllocation(payload: AgentDirectUserCreateRequest | AgentInviteDefaultsUpdate): boolean {
   if (isAdminUnlimitedCapacity.value) {
     return false
   }
@@ -311,7 +391,10 @@ function exceedsRemainingAllocation(payload: AgentDirectUserCreateRequest): bool
   if (!current) {
     return false
   }
-  return payload.allocated_concurrency > current.remaining_concurrency || payload.allocated_rpm > current.remaining_rpm
+  const requestedConcurrency = 'allocated_concurrency' in payload ? payload.allocated_concurrency : payload.invite_default_concurrency
+  const requestedRPM = 'allocated_rpm' in payload ? payload.allocated_rpm : payload.invite_default_rpm
+  return exceedsQuota(current.remaining_concurrency, current.unlimited_concurrency, requestedConcurrency) ||
+    exceedsQuota(current.remaining_rpm, current.unlimited_rpm, requestedRPM)
 }
 
 async function createDirectUser(payload: AgentDirectUserCreateRequest) {
@@ -329,6 +412,31 @@ async function createDirectUser(payload: AgentDirectUserCreateRequest) {
     appStore.showError((error as { message?: string }).message || t('agentManagement.direct.createFailed'))
   } finally {
     creatingUser.value = false
+  }
+}
+
+async function saveInviteDefaults() {
+  const payload = {
+    invite_default_concurrency: normalizedNonNegative(inviteDefaultsDraft.invite_default_concurrency),
+    invite_default_rpm: normalizedNonNegative(inviteDefaultsDraft.invite_default_rpm),
+  }
+  if (exceedsRemainingAllocation(payload)) {
+    appStore.showError(t('agentManagement.direct.insufficientAllocation'))
+    return
+  }
+  savingInviteDefaults.value = true
+  try {
+    const profile = await agentManagementAPI.updateInviteDefaults(payload)
+    syncInviteDefaults({
+      invite_default_concurrency: profile.invite_default_concurrency,
+      invite_default_rpm: profile.invite_default_rpm,
+    })
+    appStore.showSuccess(t('agentManagement.direct.inviteDefaultsSaved'))
+    await loadData()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.direct.inviteDefaultsFailed'))
+  } finally {
+    savingInviteDefaults.value = false
   }
 }
 
@@ -373,6 +481,14 @@ function askDetach(child: AgentManagedUser) {
   detachDialog.show = true
 }
 
+function isTrueDeleteDirectUser(child: AgentManagedUser | null): boolean {
+  return isAdmin.value && props.kind === 'users' && child?.role === 'user'
+}
+
+function deleteActionLabel(child: AgentManagedUser): string {
+  return isTrueDeleteDirectUser(child) ? t('agentManagement.direct.deleteUser') : t('agentManagement.direct.detach')
+}
+
 async function confirmDetach() {
   if (!detachDialog.child) return
   const child = detachDialog.child
@@ -380,7 +496,7 @@ async function confirmDetach() {
   savingChildId.value = child.id
   try {
     await agentManagementAPI.deleteDirectChild(child.id)
-    appStore.showSuccess(t('agentManagement.direct.detached'))
+    appStore.showSuccess(isTrueDeleteDirectUser(child) ? t('agentManagement.direct.userDeleted') : t('agentManagement.direct.detached'))
     await loadData()
   } catch (error) {
     appStore.showError((error as { message?: string }).message || t('agentManagement.direct.detachFailed'))

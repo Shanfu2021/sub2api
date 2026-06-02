@@ -409,6 +409,35 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 	)
 }
 
+func finiteAgentInviteProfile(userID int64) AgentProfile {
+	return AgentProfile{
+		UserID:                   userID,
+		PoolConcurrency:          10,
+		PoolRPM:                  100,
+		InviteDefaultConcurrency: DefaultAgentInviteConcurrency,
+		InviteDefaultRPM:         DefaultAgentInviteRPM,
+	}
+}
+
+func attachAgentManagementForRegistrationTest(authService *AuthService, repo *userRepoStub, profiles map[int64]AgentProfile) {
+	usersByID := map[int64]*User{}
+	if repo.user != nil {
+		clone := *repo.user
+		usersByID[clone.ID] = &clone
+	}
+	for _, user := range repo.usersByEmail {
+		clone := *user
+		usersByID[clone.ID] = &clone
+	}
+	users := make([]*User, 0, len(usersByID))
+	for _, user := range usersByID {
+		users = append(users, user)
+	}
+	agentRepo := newAgentManagementRepoStub(users...)
+	agentRepo.agentProfiles = profiles
+	authService.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+}
+
 func TestAuthService_Register_Disabled(t *testing.T) {
 	repo := &userRepoStub{}
 	service := newAuthService(repo, map[string]string{
@@ -642,6 +671,9 @@ func TestRegisterInvitationOnlyAcceptsAffiliateCodeAsInvitation(t *testing.T) {
 		SettingKeyAffiliateEnabled:      "true",
 	}, nil, nil)
 	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	attachAgentManagementForRegistrationTest(service, repo, map[int64]AgentProfile{
+		2: finiteAgentInviteProfile(2),
+	})
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "affiliate-only@test.com", "password", "", "", "", "AGENTAFF")
 	require.NoError(t, err)
@@ -670,6 +702,9 @@ func TestRegisterAcceptsAffiliateCodeEnteredAsInvitationCode(t *testing.T) {
 	}, nil, nil)
 	service.redeemRepo = &authInvitationRedeemRepoStub{}
 	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	attachAgentManagementForRegistrationTest(service, repo, map[int64]AgentProfile{
+		2: finiteAgentInviteProfile(2),
+	})
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "affiliate-field@test.com", "password", "", "", "AGENTAFF", "")
 	require.NoError(t, err)
@@ -696,11 +731,93 @@ func TestRegisterAssignsParentToAgentInviter(t *testing.T) {
 		SettingKeyAffiliateEnabled:      "true",
 	}, nil, nil)
 	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	attachAgentManagementForRegistrationTest(service, repo, map[int64]AgentProfile{
+		parentID: finiteAgentInviteProfile(parentID),
+	})
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "agent-child@test.com", "password", "", "", "", "AGENTAFF")
 	require.NoError(t, err)
 	require.NotNil(t, user.ParentUserID)
 	require.Equal(t, parentID, *user.ParentUserID)
+}
+
+func TestRegisterWithAgentInvitationUsesAgentInviteDefaultQuota(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	repo := &userRepoStub{
+		nextID: 105,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"agent@test.com": {ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyInvitationCodeEnabled:               "true",
+		SettingKeyAffiliateEnabled:                    "true",
+		SettingKeyAuthSourceDefaultEmailConcurrency:   "9",
+		SettingKeyAuthSourceDefaultEmailGrantOnSignup: "true",
+		SettingKeyDefaultUserRPMLimit:                 "90",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {
+			UserID:                   agentID,
+			PoolConcurrency:          10,
+			PoolRPM:                  100,
+			InviteDefaultConcurrency: 3,
+			InviteDefaultRPM:         30,
+		},
+	}
+	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "agent-invite@test.com", "password", "", "", "", "AGENTAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, agentID, *user.ParentUserID)
+	require.Equal(t, 3, user.Concurrency)
+	require.Equal(t, 30, user.RPMLimit)
+}
+
+func TestRegisterWithAgentInvitationRejectsWhenAgentInviteQuotaUnavailable(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	existingChildID := int64(3)
+	repo := &userRepoStub{
+		nextID: 106,
+		usersByEmail: map[string]*User{
+			"admin@test.com":    {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"agent@test.com":    {ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+			"existing@test.com": {ID: existingChildID, Email: "existing@test.com", Role: RoleUser, ParentUserID: &agentID, Concurrency: 10, RPMLimit: 100, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: existingChildID, Email: "existing@test.com", Role: RoleUser, ParentUserID: &agentID, Concurrency: 10, RPMLimit: 100, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {UserID: agentID, PoolConcurrency: 10, PoolRPM: 100, InviteDefaultConcurrency: 1, InviteDefaultRPM: 1},
+	}
+	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "blocked@test.com", "password", "", "", "", "AGENTAFF")
+	require.ErrorIs(t, err, ErrInvitationAgentQuotaInsufficient)
+	require.Nil(t, user)
+	require.Empty(t, repo.created)
+	require.Empty(t, affiliateRepo.bindCalls)
 }
 
 func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
@@ -712,7 +829,7 @@ func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
 		usersByEmail: map[string]*User{
 			"admin@test.com":    {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
 			"agent2@test.com":   {ID: level2ID, Email: "agent2@test.com", Role: RoleAgentLevel2, ParentUserID: &rootID, Status: StatusActive},
-			"ordinary@test.com": {ID: ordinaryID, Email: "ordinary@test.com", Role: RoleUser, ParentUserID: &level2ID, Status: StatusActive},
+			"ordinary@test.com": {ID: ordinaryID, Email: "ordinary@test.com", Role: RoleUser, ParentUserID: &level2ID, Concurrency: 1, RPMLimit: 1, Status: StatusActive},
 		},
 	}
 	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": ordinaryID}}
@@ -722,6 +839,9 @@ func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
 		SettingKeyAffiliateEnabled:      "true",
 	}, nil, nil)
 	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	attachAgentManagementForRegistrationTest(service, repo, map[int64]AgentProfile{
+		level2ID: finiteAgentInviteProfile(level2ID),
+	})
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "ordinary-child@test.com", "password", "", "", "", "USERAFF")
 	require.NoError(t, err)
@@ -994,6 +1114,53 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(22), assigner.calls[0].GroupID)
 	require.Equal(t, 14, assigner.calls[0].ValidityDays)
+}
+
+func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesAgentInviteDefaultQuota(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	repo := &userRepoStub{
+		nextID: 62,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"agent@test.com": {ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                   "true",
+		SettingKeyInvitationCodeEnabled:                 "true",
+		SettingKeyAffiliateEnabled:                      "true",
+		SettingKeyAuthSourceDefaultLinuxDoBalance:       "21.75",
+		SettingKeyAuthSourceDefaultLinuxDoConcurrency:   "9",
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup: "true",
+		SettingKeyDefaultUserRPMLimit:                   "90",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {
+			UserID:                   agentID,
+			PoolConcurrency:          10,
+			PoolRPM:                  100,
+			InviteDefaultConcurrency: 5,
+			InviteDefaultRPM:         50,
+		},
+	}
+	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+
+	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), "linuxdo-456@linuxdo-connect.invalid", "linuxdo_user", "AGENTAFF", "", "linuxdo")
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Equal(t, 5, user.Concurrency)
+	require.Equal(t, 50, user.RPMLimit)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, agentID, *user.ParentUserID)
 }
 
 func TestAuthService_LoginOrRegisterOAuthWithTokenPair_ExistingUserDoesNotGrantAgain(t *testing.T) {

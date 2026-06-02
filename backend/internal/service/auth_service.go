@@ -24,25 +24,26 @@ import (
 )
 
 var (
-	ErrInvalidCredentials      = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
-	ErrUserNotActive           = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
-	ErrEmailExists             = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
-	ErrEmailReserved           = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
-	ErrInvalidToken            = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
-	ErrTokenExpired            = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
-	ErrAccessTokenExpired      = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
-	ErrTokenTooLarge           = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
-	ErrTokenRevoked            = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
-	ErrRefreshTokenInvalid     = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
-	ErrRefreshTokenExpired     = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
-	ErrRefreshTokenReused      = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
-	ErrEmailVerifyRequired     = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
-	ErrEmailSuffixNotAllowed   = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
-	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
-	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
-	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
-	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
+	ErrInvalidCredentials               = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
+	ErrUserNotActive                    = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists                      = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved                    = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrInvalidToken                     = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired                     = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrAccessTokenExpired               = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
+	ErrTokenTooLarge                    = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
+	ErrTokenRevoked                     = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrRefreshTokenInvalid              = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
+	ErrRefreshTokenExpired              = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
+	ErrRefreshTokenReused               = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
+	ErrEmailVerifyRequired              = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrEmailSuffixNotAllowed            = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	ErrRegDisabled                      = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrServiceUnavailable               = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
+	ErrInvitationCodeRequired           = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
+	ErrInvitationCodeInvalid            = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
+	ErrInvitationAgentQuotaInsufficient = infraerrors.BadRequest("INVITATION_AGENT_QUOTA_INSUFFICIENT", "invitation code is valid, but inviter agent quota is insufficient")
+	ErrOAuthInvitationRequired          = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -276,6 +277,60 @@ func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitat
 	return resolved, nil
 }
 
+type registrationQuota struct {
+	Concurrency int
+	RPM         int
+}
+
+func (s *AuthService) resolveInvitationRegistrationQuota(ctx context.Context, parentID int64, fallbackConcurrency int, fallbackRPM int) (registrationQuota, error) {
+	quota := registrationQuota{Concurrency: fallbackConcurrency, RPM: fallbackRPM}
+	if parentID <= 0 || s == nil || s.userRepo == nil {
+		return quota, nil
+	}
+	parent, err := s.userRepo.GetByID(ctx, parentID)
+	if err != nil {
+		return quota, err
+	}
+	if parent.Role == RoleAdmin {
+		return quota, nil
+	}
+	if !isAgentManagerRole(parent.Role) {
+		return quota, nil
+	}
+	quota = registrationQuota{Concurrency: DefaultAgentInviteConcurrency, RPM: DefaultAgentInviteRPM}
+	if s.agentManagementService == nil || s.agentManagementService.repo == nil {
+		return quota, ErrInvitationAgentQuotaInsufficient
+	}
+	profile, err := s.agentManagementService.repo.GetAgentProfile(ctx, parentID)
+	if err != nil {
+		return quota, err
+	}
+	if profile != nil {
+		quota.Concurrency = normalizedAgentInviteDefault(profile.InviteDefaultConcurrency, DefaultAgentInviteConcurrency)
+		quota.RPM = normalizedAgentInviteDefault(profile.InviteDefaultRPM, DefaultAgentInviteRPM)
+	}
+	totalConcurrency, totalRPM, err := s.agentManagementService.managerCapacity(ctx, parent)
+	if err != nil {
+		return quota, err
+	}
+	usage, err := s.agentManagementService.repo.GetDirectChildQuotaUsage(ctx, parentID, nil)
+	if err != nil {
+		return quota, err
+	}
+	if quotaRequestExceedsCapacity(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency, quota.Concurrency) ||
+		quotaRequestExceedsCapacity(totalRPM, usage.RPM, usage.UnlimitedRPM, quota.RPM) {
+		return quota, ErrInvitationAgentQuotaInsufficient
+	}
+	return quota, nil
+}
+
+func normalizedAgentInviteDefault(value int, fallback int) int {
+	if value < 0 {
+		return fallback
+	}
+	return value
+}
+
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
@@ -342,6 +397,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if s.settingService != nil {
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
+	defaultConcurrency := grantPlan.Concurrency
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+		if err != nil {
+			return "", nil, err
+		}
+		defaultConcurrency = quota.Concurrency
+		defaultRPMLimit = quota.RPM
+	}
 
 	// 创建用户
 	user := &User{
@@ -349,7 +413,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
+		Concurrency:  defaultConcurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 	}
@@ -782,6 +846,15 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			if s.settingService != nil {
 				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 			}
+			defaultConcurrency := grantPlan.Concurrency
+			if invitationResolution != nil && invitationResolution.ParentID != nil {
+				quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+				if err != nil {
+					return nil, nil, err
+				}
+				defaultConcurrency = quota.Concurrency
+				defaultRPMLimit = quota.RPM
+			}
 
 			newUser := &User{
 				Email:        email,
@@ -789,7 +862,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
-				Concurrency:  grantPlan.Concurrency,
+				Concurrency:  defaultConcurrency,
 				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
 				SignupSource: signupSource,
