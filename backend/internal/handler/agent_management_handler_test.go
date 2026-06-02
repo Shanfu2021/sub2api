@@ -24,7 +24,7 @@ type fakeAgentManagementService struct {
 	updateAllocation      service.AllocationUpdate
 	upgradeActorID        int64
 	upgradeChildID        int64
-	upgradeTargetRole     string
+	upgradeInput          service.AgentUpgradeInput
 }
 
 func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*service.DirectChildrenResult, error) {
@@ -76,12 +76,12 @@ func (s *fakeAgentManagementService) UpdateAllocation(_ context.Context, actorID
 	}, nil
 }
 
-func (s *fakeAgentManagementService) UpgradeDirectUser(_ context.Context, actorID int64, childID int64, targetRole string) (*service.User, error) {
+func (s *fakeAgentManagementService) UpgradeDirectUser(_ context.Context, actorID int64, childID int64, input service.AgentUpgradeInput) (*service.User, error) {
 	s.upgradeCalls++
 	s.upgradeActorID = actorID
 	s.upgradeChildID = childID
-	s.upgradeTargetRole = targetRole
-	return &service.User{ID: childID, Role: targetRole}, nil
+	s.upgradeInput = input
+	return &service.User{ID: childID, Role: input.TargetRole}, nil
 }
 
 func (s *fakeAgentManagementService) DeleteDirectChild(context.Context, int64, int64) error {
@@ -200,7 +200,11 @@ func TestAgentManagementHandlerUpgradePayload(t *testing.T) {
 	svc := &fakeAgentManagementService{}
 	router := newAgentManagementHandlerTestRouter(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/children/7/upgrade", strings.NewReader(`{"target_role":"agent_level1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/children/7/upgrade", strings.NewReader(`{
+		"target_role": "agent_level1",
+		"pool_concurrency": 100,
+		"pool_rpm": 1000
+	}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -209,5 +213,9 @@ func TestAgentManagementHandlerUpgradePayload(t *testing.T) {
 	require.Equal(t, 1, svc.upgradeCalls)
 	require.Equal(t, int64(42), svc.upgradeActorID)
 	require.Equal(t, int64(7), svc.upgradeChildID)
-	require.Equal(t, service.RoleAgentLevel1, svc.upgradeTargetRole)
+	require.Equal(t, service.AgentUpgradeInput{
+		TargetRole:      service.RoleAgentLevel1,
+		PoolConcurrency: 100,
+		PoolRPM:         1000,
+	}, svc.upgradeInput)
 }

@@ -22,7 +22,7 @@ type agentManagementService interface {
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
-	UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, targetRole string) (*service.User, error)
+	UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, input service.AgentUpgradeInput) (*service.User, error)
 	DeleteDirectChild(ctx context.Context, actorID int64, childID int64) error
 	ListMyGroups(ctx context.Context, actorID int64) ([]service.AgentGroupRate, error)
 	SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input service.ChildGroupDelegationInput) error
@@ -113,14 +113,12 @@ func (h *AgentManagementHandler) UpgradeDirectUser(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var req struct {
-		TargetRole string `json:"target_role" binding:"required"`
-	}
+	var req service.AgentUpgradeInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	user, err := h.service.UpgradeDirectUser(c.Request.Context(), actorID, childID, req.TargetRole)
+	user, err := h.service.UpgradeDirectUser(c.Request.Context(), actorID, childID, req)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
