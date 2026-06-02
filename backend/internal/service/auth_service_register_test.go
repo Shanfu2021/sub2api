@@ -784,6 +784,59 @@ func TestRegisterWithAgentInvitationUsesAgentInviteDefaultQuota(t *testing.T) {
 	require.Equal(t, 30, user.RPMLimit)
 }
 
+func TestRegisterWithAgentInvitationAppliesInviteGroupDefaults(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	groupID := int64(20)
+	repo := &userRepoStub{
+		nextID: 107,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"agent@test.com": {ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {UserID: agentID, PoolConcurrency: 10, PoolRPM: 100, InviteDefaultConcurrency: 2, InviteDefaultRPM: 20},
+	}
+	agentRepo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: agentID, groupID: groupID, rateMultiplier: 2.4},
+	}
+	repo.onCreate = func(user *User) {
+		clone := *user
+		agentRepo.users[user.ID] = &clone
+	}
+	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "agent-group@test.com", "password", "", "", "", "AGENTAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(107), user.ID)
+	require.ElementsMatch(t, []int64{groupID}, user.AllowedGroups)
+	require.Equal(t, []agentGroupDelegationRecord{
+		{managerID: agentID, childID: user.ID, groupID: groupID, rateMultiplier: 2.4, canDelegate: false},
+	}, agentRepo.groupDelegations)
+	require.Equal(t, []struct {
+		userID  int64
+		groupID int64
+	}{{userID: user.ID, groupID: groupID}}, repo.addedAllowedGroups)
+	require.Equal(t, []struct {
+		userID      int64
+		concurrency int
+		rpm         int
+	}{{userID: agentID, concurrency: 8, rpm: 80}}, agentRepo.setEffectiveQuotas)
+}
+
 func TestRegisterWithAgentInvitationRejectsWhenAgentInviteQuotaUnavailable(t *testing.T) {
 	rootID := int64(1)
 	agentID := int64(2)

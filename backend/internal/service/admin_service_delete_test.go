@@ -13,20 +13,25 @@ import (
 )
 
 type userRepoStub struct {
-	user           *User
-	getErr         error
-	createErr      error
-	deleteErr      error
-	exists         bool
-	existsErr      error
-	nextID         int64
-	created        []*User
-	updated        []*User
-	deletedIDs     []int64
-	hardDeletedIDs []int64
-	deleteContexts []context.Context
-	usersByEmail   map[string]*User
-	getByEmailErr  error
+	user               *User
+	getErr             error
+	createErr          error
+	deleteErr          error
+	exists             bool
+	existsErr          error
+	nextID             int64
+	created            []*User
+	updated            []*User
+	deletedIDs         []int64
+	hardDeletedIDs     []int64
+	deleteContexts     []context.Context
+	usersByEmail       map[string]*User
+	getByEmailErr      error
+	onCreate           func(*User)
+	addedAllowedGroups []struct {
+		userID  int64
+		groupID int64
+	}
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -42,6 +47,9 @@ func (s *userRepoStub) Create(ctx context.Context, user *User) error {
 	}
 	s.usersByEmail[user.Email] = user
 	s.user = user
+	if s.onCreate != nil {
+		s.onCreate(user)
+	}
 	return nil
 }
 
@@ -179,7 +187,32 @@ func (s *userRepoStub) RemoveGroupFromUserAllowedGroups(ctx context.Context, use
 }
 
 func (s *userRepoStub) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
-	panic("unexpected AddGroupToAllowedGroups call")
+	s.addedAllowedGroups = append(s.addedAllowedGroups, struct {
+		userID  int64
+		groupID int64
+	}{userID: userID, groupID: groupID})
+	if s.usersByEmail != nil {
+		for _, user := range s.usersByEmail {
+			if user.ID == userID {
+				for _, allowedID := range user.AllowedGroups {
+					if allowedID == groupID {
+						return nil
+					}
+				}
+				user.AllowedGroups = append(user.AllowedGroups, groupID)
+				return nil
+			}
+		}
+	}
+	if s.user != nil && s.user.ID == userID {
+		for _, allowedID := range s.user.AllowedGroups {
+			if allowedID == groupID {
+				return nil
+			}
+		}
+		s.user.AllowedGroups = append(s.user.AllowedGroups, groupID)
+	}
+	return nil
 }
 
 func (s *userRepoStub) ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error) {

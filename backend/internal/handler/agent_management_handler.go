@@ -34,6 +34,9 @@ type agentManagementService interface {
 	ListChildGroupDelegationOptions(ctx context.Context, actorID int64, childID int64) ([]service.ChildGroupDelegationOption, error)
 	SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input service.ChildGroupDelegationInput) error
 	RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error
+	ListInviteGroupDefaultOptions(ctx context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error)
+	SetInviteGroupDefault(ctx context.Context, actorID int64, groupID int64, input service.AgentInviteGroupDefaultInput) error
+	RemoveInviteGroupDefault(ctx context.Context, actorID int64, groupID int64) error
 }
 
 type AgentManagementHandler struct {
@@ -258,6 +261,60 @@ func (h *AgentManagementHandler) RemoveChildGroupDelegation(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"child_id": childID, "group_id": groupID})
+}
+
+func (h *AgentManagementHandler) ListInviteGroupDefaultOptions(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	options, err := h.service.ListInviteGroupDefaultOptions(c.Request.Context(), actorID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]childGroupDelegationOptionResponse, 0, len(options))
+	for i := range options {
+		out = append(out, childGroupDelegationOptionFromService(options[i]))
+	}
+	response.Success(c, out)
+}
+
+func (h *AgentManagementHandler) SetInviteGroupDefault(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	groupID, ok := parsePositiveID(c, "group_id", "Invalid group ID")
+	if !ok {
+		return
+	}
+	var req service.AgentInviteGroupDefaultInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.service.SetInviteGroupDefault(c.Request.Context(), actorID, groupID, req); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"group_id": groupID})
+}
+
+func (h *AgentManagementHandler) RemoveInviteGroupDefault(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	groupID, ok := parsePositiveID(c, "group_id", "Invalid group ID")
+	if !ok {
+		return
+	}
+	if err := h.service.RemoveInviteGroupDefault(c.Request.Context(), actorID, groupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"group_id": groupID})
 }
 
 func (h *AgentManagementHandler) listDirectChildren(c *gin.Context, list func(context.Context, int64, service.DirectChildrenQuery) (*service.DirectChildrenResult, error)) {

@@ -16,23 +16,32 @@ import (
 )
 
 type fakeAgentManagementService struct {
-	updateAllocationCalls int
-	upgradeCalls          int
-	createDirectUserCalls int
-	listDirectUsersCalls  int
-	listSearch            string
-	createActorID         int64
-	createInput           service.CreateDirectUserInput
-	updateActorID         int64
-	updateChildID         int64
-	updateAllocation      service.AllocationUpdate
-	updateAllocationErr   error
-	upgradeActorID        int64
-	upgradeChildID        int64
-	upgradeInput          service.AgentUpgradeInput
-	listChildGroupsCalls  int
-	listChildGroupsActor  int64
-	listChildGroupsChild  int64
+	updateAllocationCalls         int
+	upgradeCalls                  int
+	createDirectUserCalls         int
+	listDirectUsersCalls          int
+	listSearch                    string
+	createActorID                 int64
+	createInput                   service.CreateDirectUserInput
+	updateActorID                 int64
+	updateChildID                 int64
+	updateAllocation              service.AllocationUpdate
+	updateAllocationErr           error
+	upgradeActorID                int64
+	upgradeChildID                int64
+	upgradeInput                  service.AgentUpgradeInput
+	listChildGroupsCalls          int
+	listChildGroupsActor          int64
+	listChildGroupsChild          int64
+	listInviteDefaultGroupsCalls  int
+	listInviteDefaultGroupsActor  int64
+	setInviteDefaultGroupCalls    int
+	setInviteDefaultGroupActor    int64
+	setInviteDefaultGroupID       int64
+	setInviteDefaultGroupInput    service.AgentInviteGroupDefaultInput
+	removeInviteDefaultGroupCalls int
+	removeInviteDefaultGroupActor int64
+	removeInviteDefaultGroupID    int64
 }
 
 func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*service.DirectChildrenResult, error) {
@@ -149,6 +158,37 @@ func (s *fakeAgentManagementService) RemoveChildGroupDelegation(context.Context,
 	return nil
 }
 
+func (s *fakeAgentManagementService) ListInviteGroupDefaultOptions(_ context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error) {
+	s.listInviteDefaultGroupsCalls++
+	s.listInviteDefaultGroupsActor = actorID
+	return []service.ChildGroupDelegationOption{
+		{
+			Group:               service.Group{ID: 20, Name: "exclusive", RateMultiplier: 1.5, IsExclusive: true, Status: service.StatusActive},
+			EffectiveRate:       1.5,
+			CanDelegate:         true,
+			Source:              "delegated",
+			Assigned:            true,
+			ChildRateMultiplier: 2.4,
+			ChildCanDelegate:    false,
+		},
+	}, nil
+}
+
+func (s *fakeAgentManagementService) SetInviteGroupDefault(_ context.Context, actorID int64, groupID int64, input service.AgentInviteGroupDefaultInput) error {
+	s.setInviteDefaultGroupCalls++
+	s.setInviteDefaultGroupActor = actorID
+	s.setInviteDefaultGroupID = groupID
+	s.setInviteDefaultGroupInput = input
+	return nil
+}
+
+func (s *fakeAgentManagementService) RemoveInviteGroupDefault(_ context.Context, actorID int64, groupID int64) error {
+	s.removeInviteDefaultGroupCalls++
+	s.removeInviteDefaultGroupActor = actorID
+	s.removeInviteDefaultGroupID = groupID
+	return nil
+}
+
 func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	h := newAgentManagementHandler(svc)
@@ -162,6 +202,9 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	r.POST("/children/:id/upgrade", h.UpgradeDirectUser)
 	r.POST("/direct-users", h.CreateDirectUser)
 	r.GET("/children/:id/groups", h.ListChildGroupDelegationOptions)
+	r.GET("/invite-default-groups", h.ListInviteGroupDefaultOptions)
+	r.PUT("/invite-default-groups/:group_id", h.SetInviteGroupDefault)
+	r.DELETE("/invite-default-groups/:group_id", h.RemoveInviteGroupDefault)
 	return r
 }
 
@@ -322,6 +365,40 @@ func TestAgentManagementHandlerListsChildGroupDelegationOptions(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"child_rate_multiplier":2.4`)
 	require.Contains(t, rec.Body.String(), `"child_can_delegate":false`)
 	require.NotContains(t, rec.Body.String(), `"rate_multiplier":0.3`)
+}
+
+func TestAgentManagementHandlerInviteDefaultGroupEndpointsUseAuthenticatedUser(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/invite-default-groups", nil)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+
+	require.Equal(t, http.StatusOK, listRec.Code)
+	require.Equal(t, 1, svc.listInviteDefaultGroupsCalls)
+	require.Equal(t, int64(42), svc.listInviteDefaultGroupsActor)
+	require.Contains(t, listRec.Body.String(), `"assigned":true`)
+
+	putReq := httptest.NewRequest(http.MethodPut, "/invite-default-groups/20", strings.NewReader(`{"rate_multiplier":2.4}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putRec := httptest.NewRecorder()
+	router.ServeHTTP(putRec, putReq)
+
+	require.Equal(t, http.StatusOK, putRec.Code)
+	require.Equal(t, 1, svc.setInviteDefaultGroupCalls)
+	require.Equal(t, int64(42), svc.setInviteDefaultGroupActor)
+	require.Equal(t, int64(20), svc.setInviteDefaultGroupID)
+	require.Equal(t, service.AgentInviteGroupDefaultInput{RateMultiplier: 2.4}, svc.setInviteDefaultGroupInput)
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/invite-default-groups/20", nil)
+	deleteRec := httptest.NewRecorder()
+	router.ServeHTTP(deleteRec, deleteReq)
+
+	require.Equal(t, http.StatusOK, deleteRec.Code)
+	require.Equal(t, 1, svc.removeInviteDefaultGroupCalls)
+	require.Equal(t, int64(42), svc.removeInviteDefaultGroupActor)
+	require.Equal(t, int64(20), svc.removeInviteDefaultGroupID)
 }
 
 func TestAgentManagementHandlerRejectsBalanceOnDirectUserCreate(t *testing.T) {

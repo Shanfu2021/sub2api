@@ -127,6 +127,18 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "agent_profiles", "deleted_at", "timestamp with time zone", 0, true)
 	requireIndex(t, tx, "agent_profiles", "agent_profiles_pkey")
 	requireForeignKeyOnDelete(t, tx, "agent_profiles", "user_id", "users", "CASCADE")
+
+	// agent_invite_group_defaults: invite signup exclusive-group propagation template.
+	var inviteGroupDefaultsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.agent_invite_group_defaults')").Scan(&inviteGroupDefaultsRegclass))
+	require.True(t, inviteGroupDefaultsRegclass.Valid, "expected agent_invite_group_defaults table to exist")
+	requireColumn(t, tx, "agent_invite_group_defaults", "agent_user_id", "bigint", 0, false)
+	requireColumn(t, tx, "agent_invite_group_defaults", "group_id", "bigint", 0, false)
+	requireColumn(t, tx, "agent_invite_group_defaults", "rate_multiplier", "numeric", 0, false)
+	requireColumn(t, tx, "agent_invite_group_defaults", "deleted_at", "timestamp with time zone", 0, true)
+	requireIndex(t, tx, "agent_invite_group_defaults", "agent_invite_group_defaults_agent_group_active_key")
+	requireForeignKeyOnDelete(t, tx, "agent_invite_group_defaults", "agent_user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "agent_invite_group_defaults", "group_id", "groups", "CASCADE")
 }
 
 func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {

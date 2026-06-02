@@ -430,6 +430,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, ErrServiceUnavailable
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
+	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		return "", nil, err
+	}
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -901,6 +904,9 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					}
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
+					if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+						return nil, nil, err
+					}
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -925,6 +931,9 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				} else {
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
+					if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+						return nil, nil, err
+					}
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -977,6 +986,23 @@ func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, ite
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 		}
 	}
+}
+
+func (s *AuthService) applyInvitationPostCreateDefaults(ctx context.Context, user *User) error {
+	if s == nil || user == nil || user.ID <= 0 || user.ParentUserID == nil || s.agentManagementService == nil {
+		return nil
+	}
+	parent, err := s.userRepo.GetByID(ctx, *user.ParentUserID)
+	if err != nil {
+		return err
+	}
+	if parent.Role == RoleAdmin || !isAgentManagerRole(parent.Role) {
+		return nil
+	}
+	if err := s.agentManagementService.ApplyInviteGroupDefaultsToChild(ctx, parent.ID, user.ID); err != nil {
+		return err
+	}
+	return s.agentManagementService.recalculateAgentEffectiveQuota(ctx, parent.ID)
 }
 
 func (s *AuthService) resolveSignupGrantPlan(ctx context.Context, signupSource string) signupGrantPlan {

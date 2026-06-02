@@ -143,6 +143,18 @@ type ChildGroupDelegationInput struct {
 	CanDelegate    bool    `json:"can_delegate"`
 }
 
+type AgentInviteGroupDefault struct {
+	ID             int64
+	AgentUserID    int64
+	GroupID        int64
+	RateMultiplier float64
+	Group          *Group
+}
+
+type AgentInviteGroupDefaultInput struct {
+	RateMultiplier float64 `json:"rate_multiplier"`
+}
+
 type AgentManagementRepository interface {
 	GetRootAdmin(ctx context.Context) (*User, error)
 	CreateUser(ctx context.Context, user *User) error
@@ -165,6 +177,9 @@ type AgentManagementRepository interface {
 	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
 	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
+	ListInviteGroupDefaults(ctx context.Context, agentID int64) ([]AgentInviteGroupDefault, error)
+	UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error
+	DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error
 	RehomeAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
 	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
@@ -742,7 +757,131 @@ func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context,
 	return nil
 }
 
+func (s *AgentManagementService) ListInviteGroupDefaultOptions(ctx context.Context, actorID int64) ([]ChildGroupDelegationOption, error) {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role == RoleAdmin {
+		return []ChildGroupDelegationOption{}, nil
+	}
+	groups, err := s.ListMyGroups(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := s.repo.ListInviteGroupDefaults(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	defaultsByGroupID := make(map[int64]AgentInviteGroupDefault, len(defaults))
+	for i := range defaults {
+		defaultsByGroupID[defaults[i].GroupID] = defaults[i]
+	}
+
+	out := make([]ChildGroupDelegationOption, 0, len(groups))
+	for i := range groups {
+		if !groups[i].Group.IsExclusive || !groups[i].CanDelegate {
+			continue
+		}
+		group := groups[i].Group
+		group.RateMultiplier = groups[i].EffectiveRate
+		option := ChildGroupDelegationOption{
+			Group:               group,
+			EffectiveRate:       groups[i].EffectiveRate,
+			CanDelegate:         groups[i].CanDelegate,
+			Source:              groups[i].Source,
+			ChildRateMultiplier: groups[i].EffectiveRate,
+			ChildCanDelegate:    false,
+		}
+		if configured, ok := defaultsByGroupID[groups[i].Group.ID]; ok {
+			option.Assigned = true
+			option.ChildRateMultiplier = configured.RateMultiplier
+		}
+		out = append(out, option)
+	}
+	return out, nil
+}
+
+func (s *AgentManagementService) SetInviteGroupDefault(ctx context.Context, actorID int64, groupID int64, input AgentInviteGroupDefaultInput) error {
+	if input.RateMultiplier <= 0 {
+		return ErrAgentManagementInvalidGroupRate
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor.Role == RoleAdmin {
+		return ErrAgentManagementForbidden
+	}
+	if s.groupRepo == nil {
+		return ErrAgentManagementInvalidGroup
+	}
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if !group.IsActive() || !group.IsExclusive {
+		return ErrAgentManagementInvalidGroup
+	}
+	if err := s.requireGroupDelegationAccess(ctx, actor, groupID); err != nil {
+		return err
+	}
+	return s.repo.UpsertInviteGroupDefault(ctx, actor.ID, groupID, input.RateMultiplier)
+}
+
+func (s *AgentManagementService) RemoveInviteGroupDefault(ctx context.Context, actorID int64, groupID int64) error {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor.Role == RoleAdmin {
+		return ErrAgentManagementForbidden
+	}
+	return s.repo.DeleteInviteGroupDefault(ctx, actor.ID, groupID)
+}
+
+func (s *AgentManagementService) ApplyInviteGroupDefaultsToChild(ctx context.Context, actorID int64, childID int64) error {
+	if actorID <= 0 || childID <= 0 || s == nil || s.repo == nil {
+		return nil
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor.Role == RoleAdmin {
+		return nil
+	}
+	child, err := s.requireDirectChild(ctx, actor, childID)
+	if err != nil {
+		return err
+	}
+	defaults, err := s.repo.ListInviteGroupDefaults(ctx, actor.ID)
+	if err != nil {
+		return err
+	}
+	for i := range defaults {
+		if defaults[i].RateMultiplier <= 0 {
+			continue
+		}
+		if err := s.repo.UpsertGroupDelegation(ctx, actor.ID, child.ID, defaults[i].GroupID, defaults[i].RateMultiplier, false); err != nil {
+			return err
+		}
+		if s.userRepo != nil {
+			if err := s.userRepo.AddGroupToAllowedGroups(ctx, child.ID, defaults[i].GroupID); err != nil {
+				return err
+			}
+		}
+	}
+	s.invalidateUser(ctx, child.ID)
+	return nil
+}
+
 func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx context.Context, userID int64, groupID int64) error {
+	if isAgentManagerRoleForInviteDefaults(ctx, s.userRepo, userID) {
+		if err := s.repo.DeleteInviteGroupDefault(ctx, userID, groupID); err != nil {
+			return err
+		}
+	}
 	if s.userRepo != nil {
 		if err := s.userRepo.RemoveGroupFromUserAllowedGroups(ctx, userID, groupID); err != nil {
 			return err
@@ -763,6 +902,17 @@ func (s *AgentManagementService) removeGroupFromUserAndDelegatedDescendants(ctx 
 		}
 	}
 	return nil
+}
+
+func isAgentManagerRoleForInviteDefaults(ctx context.Context, repo UserRepository, userID int64) bool {
+	if repo == nil || userID <= 0 {
+		return false
+	}
+	user, err := repo.GetByID(ctx, userID)
+	if err != nil {
+		return false
+	}
+	return user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2
 }
 
 func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context.Context, managerID int64, groupID int64) error {

@@ -658,6 +658,81 @@ func (r *agentManagementRepository) DeleteGroupDelegation(ctx context.Context, m
 	return err
 }
 
+func (r *agentManagementRepository) ListInviteGroupDefaults(ctx context.Context, agentID int64) ([]service.AgentInviteGroupDefault, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT id, agent_user_id, group_id, rate_multiplier
+FROM agent_invite_group_defaults
+WHERE agent_user_id = $1 AND deleted_at IS NULL
+ORDER BY group_id`,
+		agentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.AgentInviteGroupDefault, 0)
+	for rows.Next() {
+		var item service.AgentInviteGroupDefault
+		if err := rows.Scan(&item.ID, &item.AgentUserID, &item.GroupID, &item.RateMultiplier); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *agentManagementRepository) UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	updated, err := exec.ExecContext(ctx, `
+UPDATE agent_invite_group_defaults
+SET rate_multiplier = $3,
+    updated_at = CURRENT_TIMESTAMP,
+    deleted_at = NULL
+WHERE agent_user_id = $1
+  AND group_id = $2
+  AND deleted_at IS NULL`,
+		agentID,
+		groupID,
+		rateMultiplier,
+	)
+	if err != nil {
+		return err
+	}
+	if affected, _ := updated.RowsAffected(); affected > 0 {
+		return nil
+	}
+	_, err = exec.ExecContext(ctx, `
+INSERT INTO agent_invite_group_defaults (agent_user_id, group_id, rate_multiplier, created_at, updated_at)
+VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		agentID,
+		groupID,
+		rateMultiplier,
+	)
+	return err
+}
+
+func (r *agentManagementRepository) DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+DELETE FROM agent_invite_group_defaults
+WHERE agent_user_id = $1 AND group_id = $2 AND deleted_at IS NULL`,
+		agentID,
+		groupID,
+	)
+	return err
+}
+
 func agentGroupDelegationEntityToService(m *dbent.AgentGroupDelegation) *service.AgentGroupDelegation {
 	if m == nil {
 		return nil

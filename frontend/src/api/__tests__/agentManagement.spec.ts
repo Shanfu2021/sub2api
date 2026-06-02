@@ -119,4 +119,25 @@ describe('agent management api', () => {
 
     expect(get).toHaveBeenCalledWith('/agent-management/children/12/groups')
   })
+
+  it('loads invitation default group options', async () => {
+    const response = [{ group: { id: 7, name: 'Exclusive Retail' }, assigned: true }]
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.listInviteGroupDefaultOptions()).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/invite-default-groups')
+  })
+
+  it('updates and removes invitation default group assignments', async () => {
+    const response = { group_id: 7 }
+    put.mockResolvedValueOnce({ data: response })
+    del.mockResolvedValueOnce({ data: response })
+
+    await expect(agentManagementAPI.setInviteGroupDefault(7, { rate_multiplier: 2.4 })).resolves.toEqual(response)
+    await expect(agentManagementAPI.removeInviteGroupDefault(7)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/invite-default-groups/7', { rate_multiplier: 2.4 })
+    expect(del).toHaveBeenCalledWith('/agent-management/invite-default-groups/7')
+  })
 })

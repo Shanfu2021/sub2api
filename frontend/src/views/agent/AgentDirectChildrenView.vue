@@ -85,6 +85,16 @@
             <Icon name="check" size="sm" />
             <span>{{ t('agentManagement.direct.saveInviteDefaults') }}</span>
           </button>
+          <button
+            data-test="manage-invite-default-groups"
+            class="btn btn-secondary h-9 px-3"
+            type="button"
+            :disabled="savingInviteDefaults || loading"
+            @click="openInviteGroupDialog"
+          >
+            <Icon name="grid" size="sm" />
+            <span>{{ t('agentManagement.groups.manageInviteDefaults') }}</span>
+          </button>
         </form>
       </template>
 
@@ -288,6 +298,81 @@
         </div>
       </div>
     </BaseDialog>
+
+    <BaseDialog
+      :show="inviteGroupDialog.show"
+      :title="t('agentManagement.groups.inviteDefaultsTitle')"
+      width="wide"
+      @close="closeInviteGroupDialog"
+    >
+      <div class="space-y-4" data-test="invite-default-groups-modal">
+        <div v-if="inviteGroupDialog.loading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+
+        <div
+          v-else-if="inviteGroupDialog.groups.length === 0"
+          class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+        >
+          {{ t('agentManagement.groups.emptyDelegable') }}
+        </div>
+
+        <div v-else class="space-y-3">
+          <div
+            v-for="groupRate in inviteGroupDialog.groups"
+            :key="groupRate.group.id"
+            class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+          >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <input
+                    :data-test="`invite-group-assigned-${groupRate.group.id}`"
+                    class="checkbox"
+                    type="checkbox"
+                    :checked="inviteGroupDraftFor(groupRate).assigned"
+                    @change="updateInviteGroupAssignedDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                  <h4 class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ groupRate.group.name }}
+                  </h4>
+                  <span class="badge badge-gray">{{ sourceLabel(groupRate.source) }}</span>
+                </div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('agentManagement.groups.effectiveRate') }}: {{ groupRate.effective_rate }}
+                </div>
+              </div>
+
+              <div class="grid w-full gap-3 sm:grid-cols-[minmax(140px,1fr)_auto] lg:w-auto lg:grid-cols-[160px_auto] lg:items-end">
+                <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                  <span>{{ t('agentManagement.groups.inviteDefaultRate') }}</span>
+                  <input
+                    :data-test="`invite-group-rate-${groupRate.group.id}`"
+                    class="input h-9"
+                    type="number"
+                    min="0.000001"
+                    step="0.000001"
+                    :disabled="!inviteGroupDraftFor(groupRate).assigned"
+                    :value="inviteGroupDraftFor(groupRate).rate_multiplier"
+                    @input="updateInviteGroupRateDraft(groupRate.group.id, ($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+
+                <button
+                  :data-test="`save-invite-group-${groupRate.group.id}`"
+                  class="btn btn-primary btn-sm"
+                  :disabled="inviteGroupDialog.savingGroupId === groupRate.group.id"
+                  @click="saveInviteGroupDefault(groupRate)"
+                >
+                  <Icon name="check" size="sm" />
+                  <span>{{ t('agentManagement.groups.saveInviteDefaultGroup') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -359,6 +444,18 @@ const groupDialog = reactive<{
   groups: [],
 })
 const groupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number; can_delegate: boolean }>>({})
+const inviteGroupDialog = reactive<{
+  show: boolean
+  loading: boolean
+  savingGroupId: number | null
+  groups: AgentChildGroupDelegationOption[]
+}>({
+  show: false,
+  loading: false,
+  savingGroupId: null,
+  groups: [],
+})
+const inviteGroupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number }>>({})
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
@@ -654,6 +751,46 @@ function updateGroupCanDelegateDraft(groupID: number, canDelegate: boolean) {
   }
 }
 
+function clearInviteGroupDrafts() {
+  for (const key of Object.keys(inviteGroupDrafts)) {
+    delete inviteGroupDrafts[Number(key)]
+  }
+}
+
+function syncInviteGroupDrafts(groups: AgentChildGroupDelegationOption[]) {
+  clearInviteGroupDrafts()
+  for (const item of groups) {
+    inviteGroupDrafts[item.group.id] = {
+      assigned: item.assigned,
+      rate_multiplier: item.assigned ? item.child_rate_multiplier : item.effective_rate,
+    }
+  }
+}
+
+function inviteGroupDraftFor(groupRate: AgentChildGroupDelegationOption) {
+  if (!inviteGroupDrafts[groupRate.group.id]) {
+    inviteGroupDrafts[groupRate.group.id] = {
+      assigned: groupRate.assigned,
+      rate_multiplier: groupRate.assigned ? groupRate.child_rate_multiplier : groupRate.effective_rate,
+    }
+  }
+  return inviteGroupDrafts[groupRate.group.id]
+}
+
+function updateInviteGroupRateDraft(groupID: number, rawValue: string) {
+  inviteGroupDrafts[groupID] = {
+    ...(inviteGroupDrafts[groupID] || { assigned: true, rate_multiplier: 0 }),
+    rate_multiplier: normalizedPositiveFloat(rawValue),
+  }
+}
+
+function updateInviteGroupAssignedDraft(groupID: number, assigned: boolean) {
+  inviteGroupDrafts[groupID] = {
+    ...(inviteGroupDrafts[groupID] || { assigned: false, rate_multiplier: 0 }),
+    assigned,
+  }
+}
+
 async function openGroupDialog(child: AgentManagedUser) {
   groupDialog.child = child
   groupDialog.show = true
@@ -671,12 +808,35 @@ async function openGroupDialog(child: AgentManagedUser) {
   }
 }
 
+async function openInviteGroupDialog() {
+  inviteGroupDialog.show = true
+  inviteGroupDialog.loading = true
+  inviteGroupDialog.groups = []
+  clearInviteGroupDrafts()
+  try {
+    const groups = await agentManagementAPI.listInviteGroupDefaultOptions()
+    inviteGroupDialog.groups = groups.filter((item) => item.can_delegate && item.group.is_exclusive)
+    syncInviteGroupDrafts(inviteGroupDialog.groups)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    inviteGroupDialog.loading = false
+  }
+}
+
 function closeGroupDialog() {
   groupDialog.show = false
   groupDialog.child = null
   groupDialog.groups = []
   groupDialog.savingGroupId = null
   clearGroupDrafts()
+}
+
+function closeInviteGroupDialog() {
+  inviteGroupDialog.show = false
+  inviteGroupDialog.groups = []
+  inviteGroupDialog.savingGroupId = null
+  clearInviteGroupDrafts()
 }
 
 async function saveGroupDelegation(groupRate: AgentChildGroupDelegationOption) {
@@ -704,6 +864,29 @@ async function saveGroupDelegation(groupRate: AgentChildGroupDelegationOption) {
   }
 }
 
+async function saveInviteGroupDefault(groupRate: AgentChildGroupDelegationOption) {
+  const draft = inviteGroupDraftFor(groupRate)
+  if (!draft.assigned) {
+    await removeInviteGroupDefault(groupRate)
+    return
+  }
+  if (draft.rate_multiplier <= 0) {
+    appStore.showError(t('agentManagement.groups.invalidRate'))
+    return
+  }
+  inviteGroupDialog.savingGroupId = groupRate.group.id
+  try {
+    await agentManagementAPI.setInviteGroupDefault(groupRate.group.id, {
+      rate_multiplier: draft.rate_multiplier,
+    })
+    appStore.showSuccess(t('agentManagement.groups.inviteDefaultGroupSaved'))
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.inviteDefaultGroupFailed'))
+  } finally {
+    inviteGroupDialog.savingGroupId = null
+  }
+}
+
 async function removeGroupDelegation(groupRate: AgentChildGroupDelegationOption) {
   if (!groupDialog.child) return
   groupDialog.savingGroupId = groupRate.group.id
@@ -714,6 +897,18 @@ async function removeGroupDelegation(groupRate: AgentChildGroupDelegationOption)
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.removeFailed'))
   } finally {
     groupDialog.savingGroupId = null
+  }
+}
+
+async function removeInviteGroupDefault(groupRate: AgentChildGroupDelegationOption) {
+  inviteGroupDialog.savingGroupId = groupRate.group.id
+  try {
+    await agentManagementAPI.removeInviteGroupDefault(groupRate.group.id)
+    appStore.showSuccess(t('agentManagement.groups.inviteDefaultGroupRemoved'))
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.inviteDefaultGroupRemoveFailed'))
+  } finally {
+    inviteGroupDialog.savingGroupId = null
   }
 }
 

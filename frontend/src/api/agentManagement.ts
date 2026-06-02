@@ -7,6 +7,8 @@ import type {
   AgentGroupDelegationRequest,
   AgentGroupDelegationResponse,
   AgentGroupRate,
+  AgentInviteGroupDefaultRequest,
+  AgentInviteGroupDefaultResponse,
   AgentInviteDefaultsUpdate,
   AgentManagedUser,
   AgentManagementSummary,
@@ -76,6 +78,11 @@ export async function listChildGroupDelegationOptions(childId: number): Promise<
   return data
 }
 
+export async function listInviteGroupDefaultOptions(): Promise<AgentChildGroupDelegationOption[]> {
+  const { data } = await apiClient.get<AgentChildGroupDelegationOption[]>(`${BASE_PATH}/invite-default-groups`)
+  return data
+}
+
 export async function setChildGroupDelegation(
   childId: number,
   groupId: number,
@@ -95,6 +102,24 @@ export async function removeChildGroupDelegation(childId: number, groupId: numbe
   return data
 }
 
+export async function setInviteGroupDefault(
+  groupId: number,
+  payload: AgentInviteGroupDefaultRequest
+): Promise<AgentInviteGroupDefaultResponse> {
+  const { data } = await apiClient.put<AgentInviteGroupDefaultResponse>(
+    `${BASE_PATH}/invite-default-groups/${groupId}`,
+    payload
+  )
+  return data
+}
+
+export async function removeInviteGroupDefault(groupId: number): Promise<AgentInviteGroupDefaultResponse> {
+  const { data } = await apiClient.delete<AgentInviteGroupDefaultResponse>(
+    `${BASE_PATH}/invite-default-groups/${groupId}`
+  )
+  return data
+}
+
 export const agentManagementAPI = {
   getSummary,
   listDirectUsers,
@@ -107,8 +132,11 @@ export const agentManagementAPI = {
   deleteDirectChild,
   listGroups,
   listChildGroupDelegationOptions,
+  listInviteGroupDefaultOptions,
   setChildGroupDelegation,
   removeChildGroupDelegation,
+  setInviteGroupDefault,
+  removeInviteGroupDefault,
 }
 
 export default agentManagementAPI

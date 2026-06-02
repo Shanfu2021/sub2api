@@ -47,7 +47,10 @@ type agentManagementRepoStub struct {
 		agentID     int64
 		rootAdminID int64
 	}
-	groupDelegations []agentGroupDelegationRecord
+	groupDelegations      []agentGroupDelegationRecord
+	inviteGroupDefaults   []agentGroupDelegationRecord
+	upsertInviteDefaults  []agentGroupDelegationRecord
+	deletedInviteDefaults []agentGroupDelegationRecord
 }
 
 func newAgentManagementRepoStub(users ...*User) *agentManagementRepoStub {
@@ -405,6 +408,49 @@ func (r *agentManagementRepoStub) DeleteGroupDelegation(_ context.Context, manag
 		filtered = append(filtered, delegation)
 	}
 	r.groupDelegations = filtered
+	return nil
+}
+
+func (r *agentManagementRepoStub) ListInviteGroupDefaults(_ context.Context, agentID int64) ([]AgentInviteGroupDefault, error) {
+	out := make([]AgentInviteGroupDefault, 0)
+	for _, record := range r.inviteGroupDefaults {
+		if record.managerID != agentID {
+			continue
+		}
+		group := Group{ID: record.groupID}
+		out = append(out, AgentInviteGroupDefault{
+			AgentUserID:    record.managerID,
+			GroupID:        record.groupID,
+			RateMultiplier: record.rateMultiplier,
+			Group:          &group,
+		})
+	}
+	return out, nil
+}
+
+func (r *agentManagementRepoStub) UpsertInviteGroupDefault(_ context.Context, agentID int64, groupID int64, rateMultiplier float64) error {
+	record := agentGroupDelegationRecord{managerID: agentID, groupID: groupID, rateMultiplier: rateMultiplier}
+	r.upsertInviteDefaults = append(r.upsertInviteDefaults, record)
+	for i := range r.inviteGroupDefaults {
+		if r.inviteGroupDefaults[i].managerID == agentID && r.inviteGroupDefaults[i].groupID == groupID {
+			r.inviteGroupDefaults[i].rateMultiplier = rateMultiplier
+			return nil
+		}
+	}
+	r.inviteGroupDefaults = append(r.inviteGroupDefaults, record)
+	return nil
+}
+
+func (r *agentManagementRepoStub) DeleteInviteGroupDefault(_ context.Context, agentID int64, groupID int64) error {
+	r.deletedInviteDefaults = append(r.deletedInviteDefaults, agentGroupDelegationRecord{managerID: agentID, groupID: groupID})
+	filtered := r.inviteGroupDefaults[:0]
+	for _, record := range r.inviteGroupDefaults {
+		if record.managerID == agentID && record.groupID == groupID {
+			continue
+		}
+		filtered = append(filtered, record)
+	}
+	r.inviteGroupDefaults = filtered
 	return nil
 }
 
@@ -1542,6 +1588,84 @@ func TestChildGroupDelegationOptionsShowsAssignedStateForDirectChild(t *testing.
 	require.True(t, options[0].Assigned)
 	require.Equal(t, 2.4, options[0].ChildRateMultiplier)
 	require.False(t, options[0].ChildCanDelegate)
+}
+
+func TestInviteGroupDefaultOptionsShowsAssignedState(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
+	}
+	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: level1ID, groupID: 20, rateMultiplier: 2.4},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(
+		Group{ID: 10, Name: "public", RateMultiplier: 1.2, Status: StatusActive},
+		Group{ID: 20, Name: "exclusive", RateMultiplier: 0.3, IsExclusive: true, Status: StatusActive},
+	)
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	options, err := svc.ListInviteGroupDefaultOptions(context.Background(), level1ID)
+	require.NoError(t, err)
+
+	require.Len(t, options, 1)
+	require.Equal(t, int64(20), options[0].Group.ID)
+	require.Equal(t, 1.5, options[0].EffectiveRate)
+	require.True(t, options[0].CanDelegate)
+	require.True(t, options[0].Assigned)
+	require.Equal(t, 2.4, options[0].ChildRateMultiplier)
+	require.False(t, options[0].ChildCanDelegate)
+}
+
+func TestSetInviteGroupDefaultRequiresDelegableAccess(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: 20, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	err := svc.SetInviteGroupDefault(context.Background(), level1ID, 20, AgentInviteGroupDefaultInput{RateMultiplier: 2.1})
+	require.ErrorIs(t, err, ErrAgentManagementForbidden)
+
+	repo.groupDelegations = append(repo.groupDelegations, agentGroupDelegationRecord{
+		managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true,
+	})
+	require.NoError(t, svc.SetInviteGroupDefault(context.Background(), level1ID, 20, AgentInviteGroupDefaultInput{RateMultiplier: 2.1}))
+	require.Equal(t, []agentGroupDelegationRecord{{managerID: level1ID, groupID: 20, rateMultiplier: 2.1}}, repo.upsertInviteDefaults)
+}
+
+func TestApplyInviteGroupDefaultsToRegisteredChild(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	childID := int64(3)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: childID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
+	)
+	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: level1ID, groupID: groupID, rateMultiplier: 2.4},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	require.NoError(t, svc.ApplyInviteGroupDefaultsToChild(context.Background(), level1ID, childID))
+
+	require.Equal(t, []agentGroupDelegationRecord{
+		{managerID: level1ID, childID: childID, groupID: groupID, rateMultiplier: 2.4, canDelegate: false},
+	}, repo.groupDelegations)
+	require.Equal(t, []int64{groupID}, repo.users[childID].AllowedGroups)
 }
 
 func TestDelegateExclusiveGroupRequiresManagerAccess(t *testing.T) {

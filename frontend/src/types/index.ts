@@ -355,8 +355,16 @@ export interface AgentGroupDelegationRequest {
   can_delegate: boolean
 }
 
+export interface AgentInviteGroupDefaultRequest {
+  rate_multiplier: number
+}
+
 export interface AgentGroupDelegationResponse {
   child_id: number
+  group_id: number
+}
+
+export interface AgentInviteGroupDefaultResponse {
   group_id: number
 }
 

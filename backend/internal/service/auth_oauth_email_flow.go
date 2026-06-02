@@ -169,6 +169,9 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
+	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		return nil, nil, err
+	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
@@ -263,6 +266,9 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		}
 		return nil, nil, ErrServiceUnavailable
 	}
+	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		return nil, nil, err
+	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
@@ -297,6 +303,9 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	}
 
 	s.updateOAuthSignupSource(ctx, user.ID, signupSource)
+	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+		return err
+	}
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
