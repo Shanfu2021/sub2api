@@ -77,10 +77,29 @@ Add `enterprise_profiles` to store the enterprise quota pool:
 - `updated_at`
 - `deleted_at`
 
-Balance does not need a separate pool table:
+Employee balance keeps using the official `users.balance` field for API billing compatibility, but it is not an independent wallet:
 
-- enterprise `users.balance` is its current unallocated/self-use balance;
-- employee `users.balance` is the employee's assigned balance.
+- enterprise `users.balance` is the enterprise's current unallocated/self-use balance;
+- employee `users.balance` is the employee's assigned API-consumable allocation;
+- employee balance can only be changed by enterprise employee-management allocation flows or employee usage deduction;
+- employees cannot create, redeem, recharge, transfer affiliate rebate, or otherwise fund this balance directly.
+
+Add an enterprise employee balance ledger for audit and reconciliation:
+
+- `enterprise_employee_balance_logs`
+- fields:
+  - `enterprise_user_id`;
+  - `employee_user_id`;
+  - `operator_user_id`;
+  - `delta`;
+  - `enterprise_balance_before`;
+  - `enterprise_balance_after`;
+  - `employee_balance_before`;
+  - `employee_balance_after`;
+  - `reason`;
+  - `created_at`.
+
+The ledger records internal enterprise allocation changes only. It does not generate redeem codes and does not write recharge records.
 
 Concurrency and RPM follow the same pattern as agents:
 
@@ -93,6 +112,15 @@ Concurrency and RPM follow the same pattern as agents:
 ## Employee Allocation
 
 Enterprise employee management edits employees directly, without redeem codes.
+
+Employee balance is edited as a target assigned balance, not as a recharge:
+
+- the API receives the desired employee balance;
+- the service calculates `delta = desired_employee_balance - current_employee_balance`;
+- positive delta moves balance from enterprise to employee;
+- negative delta moves balance from employee back to enterprise;
+- every delta is executed in one transaction and written to `enterprise_employee_balance_logs`;
+- employees still spend from `users.balance` during normal API billing, but the only funding source is enterprise allocation.
 
 Creating an employee:
 
