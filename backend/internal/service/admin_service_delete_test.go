@@ -225,6 +225,43 @@ func (s *agentUserDeletionCleanupRepoStub) RecalculateAgentQuota(_ context.Conte
 	return s.err
 }
 
+type enterpriseAdminCleanupRepoStub struct {
+	deleteEmployeeCalls []struct {
+		enterpriseID int64
+		employeeID   int64
+		operatorID   int64
+	}
+	hardDeleteEnterpriseIDs []int64
+	cascadeStatusCalls      []struct {
+		enterpriseID int64
+		status       string
+	}
+	affectedUserIDs []int64
+	err             error
+}
+
+func (s *enterpriseAdminCleanupRepoStub) DeleteEmployeeAndReturnAllocation(_ context.Context, enterpriseID int64, employeeID int64, operatorID int64) ([]int64, error) {
+	s.deleteEmployeeCalls = append(s.deleteEmployeeCalls, struct {
+		enterpriseID int64
+		employeeID   int64
+		operatorID   int64
+	}{enterpriseID: enterpriseID, employeeID: employeeID, operatorID: operatorID})
+	return s.affectedUserIDs, s.err
+}
+
+func (s *enterpriseAdminCleanupRepoStub) HardDeleteEnterpriseWithEmployees(_ context.Context, enterpriseID int64) ([]int64, error) {
+	s.hardDeleteEnterpriseIDs = append(s.hardDeleteEnterpriseIDs, enterpriseID)
+	return s.affectedUserIDs, s.err
+}
+
+func (s *enterpriseAdminCleanupRepoStub) CascadeEnterpriseStatus(_ context.Context, enterpriseID int64, targetStatus string) ([]int64, error) {
+	s.cascadeStatusCalls = append(s.cascadeStatusCalls, struct {
+		enterpriseID int64
+		status       string
+	}{enterpriseID: enterpriseID, status: targetStatus})
+	return s.affectedUserIDs, s.err
+}
+
 type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
@@ -578,12 +615,50 @@ func TestAdminService_DeleteUser_RegularChildRecalculatesParentAgentQuota(t *tes
 
 func TestAdminService_DeleteUser_EnterpriseUserHardDeletes(t *testing.T) {
 	repo := &userRepoStub{user: &User{ID: 8, Role: RoleEnterprise}}
-	svc := &adminServiceImpl{userRepo: repo}
+	cleanup := &enterpriseAdminCleanupRepoStub{affectedUserIDs: []int64{8, 9, 10}}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := &adminServiceImpl{userRepo: repo, enterpriseCleanupRepo: cleanup, authCacheInvalidator: cache}
 
 	err := svc.DeleteUser(context.Background(), 8)
 	require.NoError(t, err)
 	require.Empty(t, repo.deletedIDs)
-	require.Equal(t, []int64{8}, repo.hardDeletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
+	require.Equal(t, []int64{8}, cleanup.hardDeleteEnterpriseIDs)
+	require.ElementsMatch(t, []int64{8, 9, 10}, cache.userIDs)
+}
+
+func TestAdminService_DeleteUser_EmployeeReturnsAllocationToEnterprise(t *testing.T) {
+	enterpriseID := int64(3)
+	repo := &userRepoStub{user: &User{ID: 9, Role: RoleEmployee, ParentUserID: &enterpriseID}}
+	cleanup := &enterpriseAdminCleanupRepoStub{affectedUserIDs: []int64{3, 9}}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := &adminServiceImpl{userRepo: repo, enterpriseCleanupRepo: cleanup, authCacheInvalidator: cache}
+
+	err := svc.DeleteUser(context.Background(), 9)
+	require.NoError(t, err)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
+	require.Len(t, cleanup.deleteEmployeeCalls, 1)
+	require.Equal(t, enterpriseID, cleanup.deleteEmployeeCalls[0].enterpriseID)
+	require.Equal(t, int64(9), cleanup.deleteEmployeeCalls[0].employeeID)
+	require.Equal(t, enterpriseID, cleanup.deleteEmployeeCalls[0].operatorID)
+	require.ElementsMatch(t, []int64{3, 9}, cache.userIDs)
+}
+
+func TestAdminService_UpdateUser_EnterpriseStatusCascadesToEmployees(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 8, Role: RoleEnterprise, Status: StatusActive}}
+	cleanup := &enterpriseAdminCleanupRepoStub{affectedUserIDs: []int64{8, 9, 10}}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := &adminServiceImpl{userRepo: repo, enterpriseCleanupRepo: cleanup, authCacheInvalidator: cache}
+
+	updated, err := svc.UpdateUser(context.Background(), 8, &UpdateUserInput{Status: StatusDisabled})
+	require.NoError(t, err)
+	require.Equal(t, StatusDisabled, updated.Status)
+	require.Len(t, cleanup.cascadeStatusCalls, 1)
+	require.Equal(t, int64(8), cleanup.cascadeStatusCalls[0].enterpriseID)
+	require.Equal(t, StatusDisabled, cleanup.cascadeStatusCalls[0].status)
+	require.Empty(t, repo.updated)
+	require.ElementsMatch(t, []int64{8, 9, 10}, cache.userIDs)
 }
 
 func TestAdminService_DeleteUser_AgentRehomesWithoutDeletingAccount(t *testing.T) {

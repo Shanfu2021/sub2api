@@ -66,6 +66,12 @@ type EnterpriseManagementRepository interface {
 	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
 }
 
+type EnterpriseAdminCleanupRepository interface {
+	DeleteEmployeeAndReturnAllocation(ctx context.Context, enterpriseID int64, employeeID int64, operatorID int64) ([]int64, error)
+	HardDeleteEnterpriseWithEmployees(ctx context.Context, enterpriseID int64) ([]int64, error)
+	CascadeEnterpriseStatus(ctx context.Context, enterpriseID int64, targetStatus string) ([]int64, error)
+}
+
 type EnterpriseManagementService struct {
 	repo                 EnterpriseManagementRepository
 	userRepo             UserRepository

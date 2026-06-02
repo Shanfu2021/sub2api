@@ -534,6 +534,7 @@ type adminServiceImpl struct {
 	redeemCodeRepo           RedeemCodeRepository
 	userGroupRateRepo        UserGroupRateRepository
 	agentDeletionCleanupRepo AgentUserDeletionCleanupRepository
+	enterpriseCleanupRepo    EnterpriseAdminCleanupRepository
 	userRPMCache             UserRPMCache
 	billingCacheService      *BillingCacheService
 	proxyProber              ProxyExitInfoProber
@@ -561,6 +562,7 @@ func NewAdminService(
 	redeemCodeRepo RedeemCodeRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	agentDeletionCleanupRepo AgentUserDeletionCleanupRepository,
+	enterpriseCleanupRepo EnterpriseAdminCleanupRepository,
 	userRPMCache UserRPMCache,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -582,6 +584,7 @@ func NewAdminService(
 		redeemCodeRepo:           redeemCodeRepo,
 		userGroupRateRepo:        userGroupRateRepo,
 		agentDeletionCleanupRepo: agentDeletionCleanupRepo,
+		enterpriseCleanupRepo:    enterpriseCleanupRepo,
 		userRPMCache:             userRPMCache,
 		billingCacheService:      billingCacheService,
 		proxyProber:              proxyProber,
@@ -776,6 +779,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if input.Status != "" {
+		if user.Role == RoleEnterprise && user.Status != input.Status {
+			affectedUserIDs, err := s.cascadeEnterpriseStatusFromAdminUsers(ctx, user.ID, input.Status)
+			if err != nil {
+				return nil, err
+			}
+			user.Status = input.Status
+			s.invalidateDeletedUserAuthCache(ctx, user.ID, affectedUserIDs)
+			return user, nil
+		}
 		user.Status = input.Status
 	}
 
@@ -853,6 +865,27 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		return nil
 	}
 
+	if user.Role == RoleEnterprise {
+		affectedUserIDs, err := s.hardDeleteEnterpriseFromAdminUsers(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
+	}
+
+	if user.Role == RoleEmployee {
+		if user.ParentUserID == nil {
+			return ErrEnterpriseManagementNotEmployee
+		}
+		affectedUserIDs, err := s.deleteEmployeeFromAdminUsers(ctx, *user.ParentUserID, user.ID)
+		if err != nil {
+			return err
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
+	}
+
 	parentID := user.ParentUserID
 	if err := s.userRepo.HardDelete(ctx, id); err != nil {
 		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", id, err)
@@ -891,6 +924,87 @@ func (s *adminServiceImpl) rehomeDeletedAgentFromAdminUsers(ctx context.Context,
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("commit agent rehome transaction: %w", err)
+		}
+	}
+	return affectedUserIDs, nil
+}
+
+func (s *adminServiceImpl) hardDeleteEnterpriseFromAdminUsers(ctx context.Context, enterpriseID int64) ([]int64, error) {
+	if s.enterpriseCleanupRepo == nil {
+		return nil, ErrAgentManagementNotImplemented
+	}
+	opCtx := ctx
+	var tx *dbent.Tx
+	var err error
+	if s.entClient != nil {
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin enterprise hard delete transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx = dbent.NewTxContext(ctx, tx)
+	}
+	affectedUserIDs, err := s.enterpriseCleanupRepo.HardDeleteEnterpriseWithEmployees(opCtx, enterpriseID)
+	if err != nil {
+		return nil, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit enterprise hard delete transaction: %w", err)
+		}
+	}
+	return affectedUserIDs, nil
+}
+
+func (s *adminServiceImpl) deleteEmployeeFromAdminUsers(ctx context.Context, enterpriseID int64, employeeID int64) ([]int64, error) {
+	if s.enterpriseCleanupRepo == nil {
+		return nil, ErrAgentManagementNotImplemented
+	}
+	opCtx := ctx
+	var tx *dbent.Tx
+	var err error
+	if s.entClient != nil {
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin employee delete transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx = dbent.NewTxContext(ctx, tx)
+	}
+	affectedUserIDs, err := s.enterpriseCleanupRepo.DeleteEmployeeAndReturnAllocation(opCtx, enterpriseID, employeeID, enterpriseID)
+	if err != nil {
+		return nil, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit employee delete transaction: %w", err)
+		}
+	}
+	return affectedUserIDs, nil
+}
+
+func (s *adminServiceImpl) cascadeEnterpriseStatusFromAdminUsers(ctx context.Context, enterpriseID int64, targetStatus string) ([]int64, error) {
+	if s.enterpriseCleanupRepo == nil {
+		return nil, ErrAgentManagementNotImplemented
+	}
+	opCtx := ctx
+	var tx *dbent.Tx
+	var err error
+	if s.entClient != nil {
+		tx, err = s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("begin enterprise status cascade transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx = dbent.NewTxContext(ctx, tx)
+	}
+	affectedUserIDs, err := s.enterpriseCleanupRepo.CascadeEnterpriseStatus(opCtx, enterpriseID, targetStatus)
+	if err != nil {
+		return nil, err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit enterprise status cascade transaction: %w", err)
 		}
 	}
 	return affectedUserIDs, nil
