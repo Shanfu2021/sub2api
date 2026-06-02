@@ -21,7 +21,8 @@ type agentGroupDelegationRecord struct {
 }
 
 type agentManagementRepoStub struct {
-	users map[int64]*User
+	users  map[int64]*User
+	nextID int64
 
 	setAllocations []AllocationUpdate
 	setParents     []struct {
@@ -41,10 +42,13 @@ type agentManagementRepoStub struct {
 }
 
 func newAgentManagementRepoStub(users ...*User) *agentManagementRepoStub {
-	out := &agentManagementRepoStub{users: map[int64]*User{}}
+	out := &agentManagementRepoStub{users: map[int64]*User{}, nextID: 1000}
 	for _, user := range users {
 		clone := *user
 		out.users[user.ID] = &clone
+		if user.ID >= out.nextID {
+			out.nextID = user.ID + 1
+		}
 	}
 	return out
 }
@@ -57,6 +61,18 @@ func (r *agentManagementRepoStub) GetRootAdmin(context.Context) (*User, error) {
 		}
 	}
 	return nil, ErrUserNotFound
+}
+
+func (r *agentManagementRepoStub) CreateUser(_ context.Context, user *User) error {
+	if user == nil {
+		return nil
+	}
+	r.nextID++
+	clone := *user
+	clone.ID = r.nextID
+	user.ID = clone.ID
+	r.users[clone.ID] = &clone
+	return nil
 }
 
 func (r *agentManagementRepoStub) ListDirectChildren(_ context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
@@ -473,6 +489,61 @@ func TestAgentManagementAdminSummaryUsesUnlimitedCapacity(t *testing.T) {
 	require.Equal(t, 11000, summary.Allocation.AllocatedRPM)
 	require.GreaterOrEqual(t, summary.Allocation.RemainingConcurrency, 0)
 	require.GreaterOrEqual(t, summary.Allocation.RemainingRPM, 0)
+}
+
+func TestAgentManagementCreateDirectUserForAdminIsUnconstrained(t *testing.T) {
+	adminID := int64(1)
+	repo := newAgentManagementRepoStub(
+		&User{ID: adminID, Role: RoleAdmin, Concurrency: 5, RPMLimit: 50},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	created, err := svc.CreateDirectUser(context.Background(), adminID, CreateDirectUserInput{
+		Email:                "created@example.com",
+		Password:             "secret123",
+		Username:             "created",
+		AllocatedConcurrency: 500,
+		AllocatedRPM:         5000,
+	})
+	require.NoError(t, err)
+	require.Equal(t, RoleUser, created.Role)
+	require.NotNil(t, created.ParentUserID)
+	require.Equal(t, adminID, *created.ParentUserID)
+	require.Equal(t, 500, created.AllocatedConcurrency)
+	require.Equal(t, 5000, created.AllocatedRPM)
+	require.Equal(t, 500, created.Concurrency)
+	require.Equal(t, 5000, created.RPMLimit)
+}
+
+func TestAgentManagementCreateDirectUserCannotExceedAgentRemaining(t *testing.T) {
+	managerID := int64(2)
+	otherChildID := int64(11)
+	repo := newAgentManagementRepoStub(
+		&User{ID: managerID, Role: RoleAgentLevel1, AllocatedConcurrency: 10, AllocatedRPM: 100},
+		&User{ID: otherChildID, Role: RoleUser, ParentUserID: &managerID, AllocatedConcurrency: 7, AllocatedRPM: 70},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	_, err := svc.CreateDirectUser(context.Background(), managerID, CreateDirectUserInput{
+		Email:                "too-much@example.com",
+		Password:             "secret123",
+		AllocatedConcurrency: 4,
+		AllocatedRPM:         40,
+	})
+	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
+
+	created, err := svc.CreateDirectUser(context.Background(), managerID, CreateDirectUserInput{
+		Email:                "within@example.com",
+		Password:             "secret123",
+		AllocatedConcurrency: 3,
+		AllocatedRPM:         30,
+	})
+	require.NoError(t, err)
+	require.Equal(t, managerID, *created.ParentUserID)
+	require.Equal(t, 3, created.AllocatedConcurrency)
+	require.Equal(t, 30, created.AllocatedRPM)
 }
 
 func TestAgentManagementDeleteRules(t *testing.T) {

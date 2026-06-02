@@ -36,6 +36,7 @@ func TestAgentManagementRoutesAreRegisteredUnderAuthenticatedUserRoutes(t *testi
 	}{
 		{http.MethodGet, "/api/v1/agent-management/summary"},
 		{http.MethodGet, "/api/v1/agent-management/direct-users"},
+		{http.MethodPost, "/api/v1/agent-management/direct-users"},
 		{http.MethodGet, "/api/v1/agent-management/direct-agents"},
 		{http.MethodGet, "/api/v1/agent-management/direct-enterprises"},
 		{http.MethodPut, "/api/v1/agent-management/children/:id/allocation"},

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
@@ -13,10 +14,11 @@ import (
 
 type agentManagementRepository struct {
 	client *dbent.Client
+	sql    sqlExecutor
 }
 
-func NewAgentManagementRepository(client *dbent.Client) service.AgentManagementRepository {
-	return &agentManagementRepository{client: client}
+func NewAgentManagementRepository(client *dbent.Client, sqlDB *sql.DB) service.AgentManagementRepository {
+	return &agentManagementRepository{client: client, sql: sqlDB}
 }
 
 func (r *agentManagementRepository) GetRootAdmin(ctx context.Context) (*service.User, error) {
@@ -31,6 +33,10 @@ func (r *agentManagementRepository) GetRootAdmin(ctx context.Context) (*service.
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	return userEntityToService(admin), nil
+}
+
+func (r *agentManagementRepository) CreateUser(ctx context.Context, user *service.User) error {
+	return newUserRepositoryWithSQL(clientFromContext(ctx, r.client), r.sql).Create(ctx, user)
 }
 
 func (r *agentManagementRepository) ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {

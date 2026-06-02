@@ -26,7 +26,7 @@ type AgentManagementRepoSuite struct {
 func (s *AgentManagementRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.client = testEntClient(s.T())
-	s.repo = NewAgentManagementRepository(s.client)
+	s.repo = NewAgentManagementRepository(s.client, integrationDB)
 
 	s.cleanupAgentManagementGroups()
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")

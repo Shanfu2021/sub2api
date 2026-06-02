@@ -11,6 +11,7 @@ func RegisterAgentManagementRoutes(authenticated *gin.RouterGroup, h *handler.Ha
 	{
 		agentManagement.GET("/summary", h.AgentManagement.Summary)
 		agentManagement.GET("/direct-users", h.AgentManagement.ListDirectUsers)
+		agentManagement.POST("/direct-users", h.AgentManagement.CreateDirectUser)
 		agentManagement.GET("/direct-agents", h.AgentManagement.ListDirectAgents)
 		agentManagement.GET("/direct-enterprises", h.AgentManagement.ListDirectEnterprises)
 		agentManagement.PUT("/children/:id/allocation", h.AgentManagement.UpdateAllocation)

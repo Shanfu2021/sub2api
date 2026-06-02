@@ -250,7 +250,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService, channelService)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
-	agentManagementRepository := repository.NewAgentManagementRepository(client)
+	agentManagementRepository := repository.NewAgentManagementRepository(client, db)
 	agentManagementService := service.NewAgentManagementService(agentManagementRepository, userRepository, groupRepository, apiKeyAuthCacheInvalidator)
 	agentManagementHandler := handler.NewAgentManagementHandler(agentManagementService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)

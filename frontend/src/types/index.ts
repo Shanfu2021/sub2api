@@ -284,6 +284,14 @@ export interface AgentAllocationUpdate {
   allocated_rpm: number
 }
 
+export interface AgentDirectUserCreateRequest {
+  email: string
+  password: string
+  username?: string
+  allocated_concurrency: number
+  allocated_rpm: number
+}
+
 export interface AgentAllocationSummary {
   total_concurrency: number
   allocated_concurrency: number

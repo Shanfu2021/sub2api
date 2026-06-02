@@ -71,6 +71,7 @@ Agents are promotion and distribution accounts. They do not control downstream b
 Allowed in the additive management area:
 
 - View direct users, direct agents, and direct enterprises.
+- Create direct ordinary users.
 - Allocate concurrency to direct children.
 - Allocate RPM to direct children.
 - Upgrade direct ordinary users according to hierarchy rules.
@@ -113,6 +114,22 @@ Level 2 agent:
 - Cannot upgrade any account into an agent.
 
 Upgrading preserves the account's balance, API keys, allocated concurrency, allocated RPM, group access, and other user-owned state. The upgrade changes the role and keeps the same parent.
+
+## Direct User Creation
+
+Admins, level 1 agents, and level 2 agents can create ordinary users from the additive agent-management Direct Users page. This does not use or change the official admin user-management create-user flow.
+
+Creation rules:
+
+- The created account role is always `user`.
+- The created account's `parent_user_id` is the current manager's user ID.
+- Admin-created users become direct children of the root admin.
+- Agent-created users become direct children of that agent.
+- Initial concurrency/RPM values are written to both assigned allocation fields and the official enforcement fields.
+- Admin initial concurrency/RPM is not constrained by admin account capacity.
+- Agent initial concurrency/RPM is constrained by the agent's remaining allocatable capacity.
+- Balance is not accepted in this additive creation flow.
+- To create a downstream agent or enterprise, first create a direct ordinary user and then use the existing direct-user upgrade action.
 
 ## Deletion And Detach Rules
 

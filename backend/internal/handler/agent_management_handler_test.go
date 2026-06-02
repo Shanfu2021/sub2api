@@ -16,6 +16,9 @@ import (
 type fakeAgentManagementService struct {
 	updateAllocationCalls int
 	upgradeCalls          int
+	createDirectUserCalls int
+	createActorID         int64
+	createInput           service.CreateDirectUserInput
 	updateActorID         int64
 	updateChildID         int64
 	updateAllocation      service.AllocationUpdate
@@ -38,6 +41,24 @@ func (s *fakeAgentManagementService) ListDirectEnterprises(context.Context, int6
 
 func (s *fakeAgentManagementService) GetSummary(context.Context, int64) (*service.AgentManagementSummary, error) {
 	return &service.AgentManagementSummary{}, nil
+}
+
+func (s *fakeAgentManagementService) CreateDirectUser(_ context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error) {
+	s.createDirectUserCalls++
+	s.createActorID = actorID
+	s.createInput = input
+	return &service.User{
+		ID:                   99,
+		Email:                input.Email,
+		Username:             input.Username,
+		Role:                 service.RoleUser,
+		ParentUserID:         &actorID,
+		Concurrency:          input.AllocatedConcurrency,
+		RPMLimit:             input.AllocatedRPM,
+		AllocatedConcurrency: input.AllocatedConcurrency,
+		AllocatedRPM:         input.AllocatedRPM,
+		Status:               service.StatusActive,
+	}, nil
 }
 
 func (s *fakeAgentManagementService) UpdateAllocation(_ context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error) {
@@ -89,6 +110,7 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	})
 	r.PUT("/children/:id/allocation", h.UpdateAllocation)
 	r.POST("/children/:id/upgrade", h.UpgradeDirectUser)
+	r.POST("/direct-users", h.CreateDirectUser)
 	return r
 }
 
@@ -127,6 +149,51 @@ func TestAgentManagementHandlerRoutesUseAuthenticatedUser(t *testing.T) {
 	require.Equal(t, int64(42), svc.updateActorID)
 	require.Equal(t, int64(7), svc.updateChildID)
 	require.Equal(t, service.AllocationUpdate{AllocatedConcurrency: 5, AllocatedRPM: 60}, svc.updateAllocation)
+}
+
+func TestAgentManagementHandlerCreatesDirectUserWithAuthenticatedUser(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/direct-users", strings.NewReader(`{
+		"actor_id": 999,
+		"email": "direct@example.com",
+		"password": "secret123",
+		"username": "direct",
+		"allocated_concurrency": 5,
+		"allocated_rpm": 60
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.createDirectUserCalls)
+	require.Equal(t, int64(42), svc.createActorID)
+	require.Equal(t, service.CreateDirectUserInput{
+		Email:                "direct@example.com",
+		Password:             "secret123",
+		Username:             "direct",
+		AllocatedConcurrency: 5,
+		AllocatedRPM:         60,
+	}, svc.createInput)
+}
+
+func TestAgentManagementHandlerRejectsBalanceOnDirectUserCreate(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/direct-users", strings.NewReader(`{
+		"email": "direct@example.com",
+		"password": "secret123",
+		"balance": 100
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, 0, svc.createDirectUserCalls)
 }
 
 func TestAgentManagementHandlerUpgradePayload(t *testing.T) {

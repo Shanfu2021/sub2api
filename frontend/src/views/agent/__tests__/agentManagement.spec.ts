@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import DirectUsersView from '@/views/agent/DirectUsersView.vue'
 import DirectAgentsView from '@/views/agent/DirectAgentsView.vue'
+import DirectEnterprisesView from '@/views/agent/DirectEnterprisesView.vue'
 import MyGroupsView from '@/views/agent/MyGroupsView.vue'
 import type { AgentDirectChildrenResponse, AgentManagedUser, User, UserRole } from '@/types'
 
@@ -13,6 +14,7 @@ const {
   listDirectAgents,
   listDirectEnterprises,
   updateAllocation,
+  createDirectUser,
   upgradeChild,
   deleteDirectChild,
   listGroups,
@@ -23,6 +25,7 @@ const {
   listDirectAgents: vi.fn(),
   listDirectEnterprises: vi.fn(),
   updateAllocation: vi.fn(),
+  createDirectUser: vi.fn(),
   upgradeChild: vi.fn(),
   deleteDirectChild: vi.fn(),
   listGroups: vi.fn(),
@@ -35,6 +38,7 @@ vi.mock('@/api/agentManagement', () => ({
     listDirectAgents,
     listDirectEnterprises,
     updateAllocation,
+    createDirectUser,
     upgradeChild,
     deleteDirectChild,
     listGroups,
@@ -188,6 +192,7 @@ describe('agent management pages', () => {
       remaining_rpm: 150,
       unlimited_capacity: false,
     })
+    createDirectUser.mockResolvedValue(makeChild({ id: 99, email: 'direct@example.com', username: 'direct' }))
     upgradeChild.mockResolvedValue(makeChild({ role: 'agent_level1' }))
     deleteDirectChild.mockResolvedValue({ id: 12 })
     listGroups.mockResolvedValue([
@@ -241,6 +246,39 @@ describe('agent management pages', () => {
 
     expect(wrapper.get('[data-test="allocation-concurrency-12"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="allocation-rpm-12"]').exists()).toBe(true)
+  })
+
+  it('creates direct users from the direct users page', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="create-direct-user"]').trigger('click')
+    await wrapper.get('[data-test="create-direct-user-email"]').setValue('direct@example.com')
+    await wrapper.get('[data-test="create-direct-user-password"]').setValue('secret123')
+    await wrapper.get('[data-test="create-direct-user-username"]').setValue('direct')
+    await wrapper.get('[data-test="create-direct-user-concurrency"]').setValue('5')
+    await wrapper.get('[data-test="create-direct-user-rpm"]').setValue('60')
+    await wrapper.get('[data-test="create-direct-user-submit"]').trigger('submit')
+    await flushPromises()
+
+    expect(createDirectUser).toHaveBeenCalledWith({
+      email: 'direct@example.com',
+      password: 'secret123',
+      username: 'direct',
+      allocated_concurrency: 5,
+      allocated_rpm: 60,
+    })
+    expect(listDirectUsers).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not show direct user creation on agent or enterprise pages', async () => {
+    const agents = mountAgentView(DirectAgentsView, 'agent_level1')
+    await flushPromises()
+    expect(agents.find('[data-test="create-direct-user"]').exists()).toBe(false)
+
+    const enterprises = mountAgentView(DirectEnterprisesView, 'agent_level1')
+    await flushPromises()
+    expect(enterprises.find('[data-test="create-direct-user"]').exists()).toBe(false)
   })
 
   it('shows unlimited allocation status for admins instead of remaining quota badges', async () => {

@@ -2,6 +2,7 @@ import { apiClient } from './client'
 import type {
   AgentAllocationSummary,
   AgentDirectChildrenResponse,
+  AgentDirectUserCreateRequest,
   AgentGroupDelegationRequest,
   AgentGroupDelegationResponse,
   AgentGroupRate,
@@ -30,6 +31,11 @@ export async function listDirectAgents(): Promise<AgentDirectChildrenResponse> {
 
 export async function listDirectEnterprises(): Promise<AgentDirectChildrenResponse> {
   const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-enterprises`)
+  return data
+}
+
+export async function createDirectUser(payload: AgentDirectUserCreateRequest): Promise<AgentManagedUser> {
+  const { data } = await apiClient.post<AgentManagedUser>(`${BASE_PATH}/direct-users`, payload)
   return data
 }
 
@@ -79,6 +85,7 @@ export const agentManagementAPI = {
   listDirectUsers,
   listDirectAgents,
   listDirectEnterprises,
+  createDirectUser,
   updateAllocation,
   upgradeChild,
   deleteDirectChild,

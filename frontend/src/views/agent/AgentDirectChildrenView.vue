@@ -8,6 +8,16 @@
             <p class="text-sm text-gray-500 dark:text-dark-400">{{ directSubtitle }}</p>
           </div>
           <div class="flex items-center gap-2">
+            <button
+              v-if="canCreateDirectUser"
+              data-test="create-direct-user"
+              class="btn btn-primary px-3"
+              :disabled="loading"
+              @click="showCreateUserForm = !showCreateUserForm"
+            >
+              <Icon name="userPlus" size="sm" />
+              <span>{{ t('agentManagement.direct.createUser') }}</span>
+            </button>
             <span
               v-if="isAdminUnlimitedCapacity"
               class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200"
@@ -28,6 +38,74 @@
       </template>
 
       <template #table>
+        <form
+          v-if="canCreateDirectUser && showCreateUserForm"
+          data-test="create-direct-user-submit"
+          class="mb-4 grid gap-3 border-b border-gray-200 pb-4 dark:border-dark-700 sm:grid-cols-2 lg:grid-cols-5"
+          @submit.prevent="createDirectUser"
+        >
+          <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('common.email') }}</span>
+            <input
+              v-model="createUserForm.email"
+              data-test="create-direct-user-email"
+              class="input h-9"
+              type="email"
+              required
+            />
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('admin.users.password') }}</span>
+            <input
+              v-model="createUserForm.password"
+              data-test="create-direct-user-password"
+              class="input h-9"
+              type="text"
+              required
+              minlength="6"
+            />
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('admin.users.username') }}</span>
+            <input
+              v-model="createUserForm.username"
+              data-test="create-direct-user-username"
+              class="input h-9"
+              type="text"
+            />
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('agentManagement.direct.allocatedConcurrency') }}</span>
+            <input
+              v-model.number="createUserForm.allocated_concurrency"
+              data-test="create-direct-user-concurrency"
+              class="input h-9"
+              type="number"
+              min="0"
+            />
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+            <span>{{ t('agentManagement.direct.allocatedRpm') }}</span>
+            <input
+              v-model.number="createUserForm.allocated_rpm"
+              data-test="create-direct-user-rpm"
+              class="input h-9"
+              type="number"
+              min="0"
+            />
+          </label>
+          <div class="flex items-end gap-2 sm:col-span-2 lg:col-span-5">
+            <button class="btn btn-primary btn-sm" type="submit" :disabled="creatingUser">
+              <Icon name="check" size="sm" />
+              <span>{{ t('common.create') }}</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" type="button" :disabled="creatingUser" @click="showCreateUserForm = false">
+              <Icon name="x" size="sm" />
+              <span>{{ t('common.cancel') }}</span>
+            </button>
+          </div>
+        </form>
+
         <DataTable :columns="columns" :data="children" :loading="loading">
           <template #cell-email="{ value, row }">
             <div class="flex flex-col">
@@ -129,6 +207,7 @@ import type {
   AgentAllocationSummary,
   AgentAllocationUpdate,
   AgentDirectChildrenResponse,
+  AgentDirectUserCreateRequest,
   AgentManagedUser,
   AgentUpgradeTargetRole,
   UserRole
@@ -154,11 +233,20 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const savingChildId = ref<number | null>(null)
+const creatingUser = ref(false)
+const showCreateUserForm = ref(false)
 const children = ref<AgentManagedUser[]>([])
 const allocation = ref<AgentAllocationSummary | null>(null)
 const drafts = reactive<Record<number, AgentAllocationUpdate>>({})
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const detachDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>({ show: false, child: null })
+const createUserForm = reactive<Required<AgentDirectUserCreateRequest>>({
+  email: '',
+  password: '',
+  username: '',
+  allocated_concurrency: 0,
+  allocated_rpm: 0,
+})
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
@@ -176,6 +264,8 @@ const upgradeTargets = computed<AgentUpgradeTargetRole[]>(() => {
   if (role === 'agent_level2') return ['enterprise']
   return []
 })
+
+const canCreateDirectUser = computed(() => props.kind === 'users')
 
 const isAdminUnlimitedCapacity = computed(() => {
   return authStore.user?.role === 'admin' || allocation.value?.unlimited_capacity === true
@@ -244,6 +334,37 @@ function updateDraft(childId: number, key: keyof AgentAllocationUpdate, rawValue
   drafts[childId] = {
     ...(drafts[childId] || { allocated_concurrency: 0, allocated_rpm: 0 }),
     [key]: parsed,
+  }
+}
+
+function resetCreateUserForm() {
+  Object.assign(createUserForm, {
+    email: '',
+    password: '',
+    username: '',
+    allocated_concurrency: 0,
+    allocated_rpm: 0,
+  })
+}
+
+async function createDirectUser() {
+  creatingUser.value = true
+  try {
+    await agentManagementAPI.createDirectUser({
+      email: createUserForm.email.trim(),
+      password: createUserForm.password,
+      username: createUserForm.username.trim(),
+      allocated_concurrency: Math.max(0, Number(createUserForm.allocated_concurrency) || 0),
+      allocated_rpm: Math.max(0, Number(createUserForm.allocated_rpm) || 0),
+    })
+    appStore.showSuccess(t('agentManagement.direct.userCreated'))
+    resetCreateUserForm()
+    showCreateUserForm.value = false
+    await loadData()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.direct.createFailed'))
+  } finally {
+    creatingUser.value = false
   }
 }
 

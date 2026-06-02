@@ -889,6 +889,78 @@ git push origin hzz
 
 ---
 
+### Task 12: Direct User Creation From Agent Management
+
+**Files:**
+- Modify: `backend/internal/service/agent_management.go`
+- Modify: `backend/internal/service/agent_management_test.go`
+- Modify: `backend/internal/handler/agent_management_handler.go`
+- Modify: `backend/internal/handler/agent_management_handler_test.go`
+- Modify: `backend/internal/server/routes/agent_management.go`
+- Modify: `frontend/src/api/agentManagement.ts`
+- Modify: `frontend/src/types/index.ts`
+- Modify: `frontend/src/views/agent/AgentDirectChildrenView.vue`
+- Modify: `frontend/src/views/agent/__tests__/agentManagement.spec.ts`
+- Modify: `frontend/src/api/__tests__/agentManagement.spec.ts`
+- Modify: `frontend/src/i18n/locales/en.ts`
+- Modify: `frontend/src/i18n/locales/zh.ts`
+
+- [ ] **Step 1: Write failing tests**
+
+Add service tests proving admins and agents can create direct ordinary users, the new user's parent is the actor, initial allocation fields are synchronized, admins are unconstrained, and agents cannot exceed remaining capacity.
+
+Add handler tests proving `POST /agent-management/direct-users` uses the authenticated actor and rejects payloads containing `balance`.
+
+Add frontend tests proving the Direct Users page shows a create action, submits to the agent-management API, and the Direct Agents/Direct Enterprises pages do not show direct-create-user controls.
+
+- [ ] **Step 2: Verify tests fail**
+
+Run:
+
+```bash
+cd backend
+go test -tags unit ./internal/service ./internal/handler -run 'TestAgentManagement(CreateDirectUser|HandlerCreatesDirectUser)' -count=1
+```
+
+Expected: FAIL until the new create API exists.
+
+Run:
+
+```bash
+cd frontend
+./node_modules/.bin/vitest run src/views/agent/__tests__/agentManagement.spec.ts src/api/__tests__/agentManagement.spec.ts
+```
+
+Expected: FAIL until the page and API client expose direct-user creation.
+
+- [ ] **Step 3: Implement backend API**
+
+Add `CreateDirectUser(ctx, actorID, input)` to `AgentManagementService`. The method creates role `user`, sets `parent_user_id` to the actor, sets password, writes allocation/enforcement fields, rejects negative allocation, rejects agent over-allocation, and assigns default balance only if the repository/user defaults already do so through the shared create path. Do not accept balance from the request.
+
+Add handler route:
+
+```text
+POST /api/v1/agent-management/direct-users
+```
+
+- [ ] **Step 4: Implement frontend UI**
+
+Add a Create Direct User button only on `kind="users"`. Use the existing admin create-user modal pattern, but call `agentManagementAPI.createDirectUser` and omit balance/groups.
+
+- [ ] **Step 5: Verify, commit, push, deploy**
+
+Run targeted backend and frontend tests, then commit:
+
+```bash
+git add backend/internal/service/agent_management.go backend/internal/service/agent_management_test.go backend/internal/handler/agent_management_handler.go backend/internal/handler/agent_management_handler_test.go backend/internal/server/routes/agent_management.go frontend/src/api/agentManagement.ts frontend/src/types/index.ts frontend/src/views/agent/AgentDirectChildrenView.vue frontend/src/views/agent/__tests__/agentManagement.spec.ts frontend/src/api/__tests__/agentManagement.spec.ts frontend/src/i18n/locales/en.ts frontend/src/i18n/locales/zh.ts docs/superpowers/specs/2026-06-01-hzz-agent-promotion-design.md docs/superpowers/plans/2026-06-01-hzz-agent-promotion.md
+git commit -m "feat: create direct users from agent management"
+git push origin hzz
+```
+
+Wait for GitHub `CI`, `Security Scan`, and `HZZ Image`, then pull `ghcr.io/h-2szz/sub2api:hzz` and replace the local app container.
+
+---
+
 ## Self-Review Notes
 
 - Spec coverage: hierarchy, additive admin/agent surface, direct visibility, capabilities, upgrade rules, delete/detach rules, concurrency/RPM allocation, group/rate delegation, invitation ownership, backend/frontend shape, and tests are each covered by at least one task.

@@ -27,6 +27,14 @@ type AllocationUpdate struct {
 	AllocatedRPM         int `json:"allocated_rpm"`
 }
 
+type CreateDirectUserInput struct {
+	Email                string `json:"email"`
+	Password             string `json:"password"`
+	Username             string `json:"username"`
+	AllocatedConcurrency int    `json:"allocated_concurrency"`
+	AllocatedRPM         int    `json:"allocated_rpm"`
+}
+
 type AllocationSummary struct {
 	TotalConcurrency     int  `json:"total_concurrency"`
 	AllocatedConcurrency int  `json:"allocated_concurrency"`
@@ -70,6 +78,7 @@ type ChildGroupDelegationInput struct {
 
 type AgentManagementRepository interface {
 	GetRootAdmin(ctx context.Context) (*User, error)
+	CreateUser(ctx context.Context, user *User) error
 	ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
 	SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
 	SetParent(ctx context.Context, userID int64, parentID *int64) error
@@ -130,6 +139,44 @@ func (s *AgentManagementService) GetSummary(ctx context.Context, actorID int64) 
 	return &AgentManagementSummary{
 		Allocation: buildAllocationSummary(actor, totalConcurrency, totalRPM, allocatedConcurrency, allocatedRPM),
 	}, nil
+}
+
+func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID int64, input CreateDirectUserInput) (*User, error) {
+	if input.AllocatedConcurrency < 0 || input.AllocatedRPM < 0 {
+		return nil, ErrAgentManagementInvalidAllocation
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+
+	totalConcurrency, totalRPM := managerCapacity(actor)
+	allocatedConcurrency, allocatedRPM, err := s.repo.SumDirectChildAllocations(ctx, actor.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role != RoleAdmin && (input.AllocatedConcurrency > totalConcurrency-allocatedConcurrency || input.AllocatedRPM > totalRPM-allocatedRPM) {
+		return nil, ErrAgentManagementAllocationExceeded
+	}
+
+	user := &User{
+		Email:                input.Email,
+		Username:             input.Username,
+		Role:                 RoleUser,
+		ParentUserID:         &actor.ID,
+		Concurrency:          input.AllocatedConcurrency,
+		RPMLimit:             input.AllocatedRPM,
+		AllocatedConcurrency: input.AllocatedConcurrency,
+		AllocatedRPM:         input.AllocatedRPM,
+		Status:               StatusActive,
+	}
+	if err := user.SetPassword(input.Password); err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateUser(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID int64, childID int64, req AllocationUpdate) (*AllocationSummary, error) {

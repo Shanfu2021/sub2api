@@ -53,6 +53,22 @@ describe('agent management api', () => {
     expect(put).toHaveBeenCalledWith('/agent-management/children/12/allocation', payload)
   })
 
+  it('creates a direct user through the backend agent management route', async () => {
+    const response = { id: 99, email: 'direct@example.com', role: 'user' }
+    const payload = {
+      email: 'direct@example.com',
+      password: 'secret123',
+      username: 'direct',
+      allocated_concurrency: 5,
+      allocated_rpm: 60,
+    }
+    post.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.createDirectUser(payload)).resolves.toEqual(response)
+
+    expect(post).toHaveBeenCalledWith('/agent-management/direct-users', payload)
+  })
+
   it('upgrades a direct child through the backend upgrade route', async () => {
     const upgraded = { id: 12, role: 'agent_level1' }
     post.mockResolvedValue({ data: upgraded })

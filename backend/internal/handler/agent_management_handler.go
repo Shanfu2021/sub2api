@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -19,6 +20,7 @@ type agentManagementService interface {
 	ListDirectAgents(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
 	ListDirectEnterprises(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
+	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
 	UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, targetRole string) (*service.User, error)
 	DeleteDirectChild(ctx context.Context, actorID int64, childID int64) error
@@ -62,6 +64,23 @@ func (h *AgentManagementHandler) ListDirectAgents(c *gin.Context) {
 
 func (h *AgentManagementHandler) ListDirectEnterprises(c *gin.Context) {
 	h.listDirectChildren(c, h.service.ListDirectEnterprises)
+}
+
+func (h *AgentManagementHandler) CreateDirectUser(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	req, ok := bindCreateDirectUser(c)
+	if !ok {
+		return
+	}
+	user, err := h.service.CreateDirectUser(c.Request.Context(), actorID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, agentManagedUserFromService(user))
 }
 
 func (h *AgentManagementHandler) UpdateAllocation(c *gin.Context) {
@@ -244,6 +263,35 @@ func bindAllocationUpdate(c *gin.Context) (service.AllocationUpdate, bool) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return service.AllocationUpdate{}, false
+	}
+	return req, true
+}
+
+func bindCreateDirectUser(c *gin.Context) (service.CreateDirectUserInput, bool) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return service.CreateDirectUserInput{}, false
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return service.CreateDirectUserInput{}, false
+	}
+	if _, exists := fields["balance"]; exists {
+		response.BadRequest(c, "balance is not managed by agent management")
+		return service.CreateDirectUserInput{}, false
+	}
+	var req service.CreateDirectUserInput
+	if err := json.Unmarshal(body, &req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return service.CreateDirectUserInput{}, false
+	}
+	req.Email = strings.TrimSpace(req.Email)
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Email == "" || req.Password == "" {
+		response.BadRequest(c, "email and password are required")
+		return service.CreateDirectUserInput{}, false
 	}
 	return req, true
 }
