@@ -194,11 +194,11 @@ type AgentEnterpriseDeletionCleanupRepository interface {
 }
 
 type AgentManagementService struct {
-	repo			AgentManagementRepository
-	userRepo		UserRepository
-	groupRepo		GroupRepository
-	authCacheInvalidator	APIKeyAuthCacheInvalidator
-	enterpriseCleanupRepo	AgentEnterpriseDeletionCleanupRepository
+	repo                   AgentManagementRepository
+	userRepo               UserRepository
+	groupRepo              GroupRepository
+	authCacheInvalidator   APIKeyAuthCacheInvalidator
+	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository
 }
 
 func NewAgentManagementService(repo AgentManagementRepository, userRepo UserRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *AgentManagementService {
