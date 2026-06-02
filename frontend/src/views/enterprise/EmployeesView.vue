@@ -465,7 +465,7 @@ async function createEmployee() {
   const payload: EnterpriseEmployeeCreateRequest = {
     email: createForm.email.trim(),
     password: createForm.password,
-    username: createForm.username.trim(),
+    username: String(createForm.username ?? '').trim(),
     balance: normalizedNonNegativeNumber(createForm.balance),
     concurrency: normalizedNonNegativeInt(createForm.concurrency),
     rpm: normalizedNonNegativeInt(createForm.rpm),
