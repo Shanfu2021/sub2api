@@ -151,6 +151,9 @@ type AgentManagementRepository interface {
 	SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
 	GetAgentProfile(ctx context.Context, userID int64) (*AgentProfile, error)
 	UpsertAgentProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error
+	GetEnterpriseProfile(ctx context.Context, userID int64) (*EnterpriseProfile, error)
+	UpsertEnterpriseProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error
+	GetEnterpriseEmployeeQuotaUsage(ctx context.Context, enterpriseID int64, excludeEmployeeID *int64) (QuotaUsageSummary, error)
 	UpdateAgentInviteDefaults(ctx context.Context, userID int64, inviteConcurrency int, inviteRPM int) error
 	GetDirectChildQuotaUsage(ctx context.Context, parentID int64, excludeChildID *int64) (QuotaUsageSummary, error)
 	SetEffectiveQuota(ctx context.Context, userID int64, concurrency int, rpm int) error
@@ -326,8 +329,8 @@ func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID i
 	if err != nil {
 		return nil, err
 	}
-	if isAgentManagerRole(child.Role) && child.Role != RoleAdmin {
-		return s.updateDirectAgentPool(ctx, actor, child, requestedConcurrency, requestedRPM)
+	if isProfileBackedChildRole(child.Role) {
+		return s.updateProfileBackedChildPool(ctx, actor, child, requestedConcurrency, requestedRPM)
 	}
 
 	totalConcurrency, totalRPM, err := s.managerCapacity(ctx, actor)
@@ -394,8 +397,8 @@ func (s *AgentManagementService) UpdateInviteDefaults(ctx context.Context, actor
 	return profile, nil
 }
 
-func (s *AgentManagementService) updateDirectAgentPool(ctx context.Context, actor *User, child *User, requestedConcurrency int, requestedRPM int) (*AllocationSummary, error) {
-	childUsage, err := s.repo.GetDirectChildQuotaUsage(ctx, child.ID, nil)
+func (s *AgentManagementService) updateProfileBackedChildPool(ctx context.Context, actor *User, child *User, requestedConcurrency int, requestedRPM int) (*AllocationSummary, error) {
+	childUsage, err := s.profileBackedChildUsage(ctx, child)
 	if err != nil {
 		return nil, err
 	}
@@ -420,10 +423,10 @@ func (s *AgentManagementService) updateDirectAgentPool(ctx context.Context, acto
 		return nil, ErrAgentManagementAllocationExceeded
 	}
 
-	if err := s.repo.UpsertAgentProfile(ctx, child.ID, requestedConcurrency, requestedRPM); err != nil {
+	if err := s.upsertProfileBackedChildPool(ctx, child.Role, child.ID, requestedConcurrency, requestedRPM); err != nil {
 		return nil, err
 	}
-	if err := s.recalculateAgentEffectiveQuota(ctx, child.ID); err != nil {
+	if err := s.recalculateProfileBackedChildEffectiveQuota(ctx, child.Role, child.ID); err != nil {
 		return nil, err
 	}
 	if actor.Role != RoleAdmin {
@@ -435,6 +438,20 @@ func (s *AgentManagementService) updateDirectAgentPool(ctx context.Context, acto
 	usage = usage.WithRequest(requestedConcurrency, requestedRPM)
 	summary := buildAllocationSummary(actor, totalConcurrency, totalRPM, usage)
 	return &summary, nil
+}
+
+func (s *AgentManagementService) profileBackedChildUsage(ctx context.Context, child *User) (QuotaUsageSummary, error) {
+	if child.Role == RoleEnterprise {
+		return s.repo.GetEnterpriseEmployeeQuotaUsage(ctx, child.ID, nil)
+	}
+	return s.repo.GetDirectChildQuotaUsage(ctx, child.ID, nil)
+}
+
+func (s *AgentManagementService) recalculateProfileBackedChildEffectiveQuota(ctx context.Context, role string, childID int64) error {
+	if role == RoleEnterprise {
+		return s.recalculateEnterpriseEffectiveQuota(ctx, childID)
+	}
+	return s.recalculateAgentEffectiveQuota(ctx, childID)
 }
 
 func (s *AgentManagementService) UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, input AgentUpgradeInput) (*User, error) {
@@ -453,7 +470,7 @@ func (s *AgentManagementService) UpgradeDirectUser(ctx context.Context, actorID 
 	if !canUpgradeDirectUser(actor.Role, targetRole) {
 		return nil, ErrAgentManagementForbidden
 	}
-	if isAgentManagerRole(targetRole) && targetRole != RoleAdmin {
+	if isProfileBackedChildRole(targetRole) {
 		if input.PoolConcurrency < 0 || input.PoolRPM < 0 {
 			return nil, ErrAgentManagementInvalidAllocation
 		}
@@ -468,7 +485,7 @@ func (s *AgentManagementService) UpgradeDirectUser(ctx context.Context, actorID 
 		if actor.Role != RoleAdmin && (quotaRequestExceedsCapacity(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency, input.PoolConcurrency) || quotaRequestExceedsCapacity(totalRPM, usage.RPM, usage.UnlimitedRPM, input.PoolRPM)) {
 			return nil, ErrAgentManagementAllocationExceeded
 		}
-		if err := s.repo.UpsertAgentProfile(ctx, child.ID, input.PoolConcurrency, input.PoolRPM); err != nil {
+		if err := s.upsertProfileBackedChildPool(ctx, targetRole, child.ID, input.PoolConcurrency, input.PoolRPM); err != nil {
 			return nil, err
 		}
 	}
@@ -478,6 +495,10 @@ func (s *AgentManagementService) UpgradeDirectUser(ctx context.Context, actorID 
 	child.Role = targetRole
 	if isAgentManagerRole(targetRole) && targetRole != RoleAdmin {
 		if err := s.recalculateAgentEffectiveQuota(ctx, child.ID); err != nil {
+			return nil, err
+		}
+	} else if targetRole == RoleEnterprise {
+		if err := s.recalculateEnterpriseEffectiveQuota(ctx, child.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -824,14 +845,21 @@ func (s *AgentManagementService) listDirectChildrenForActorWithQuery(ctx context
 		return nil, err
 	}
 	for i := range users {
-		if !isAgentManagerRole(users[i].Role) || users[i].Role == RoleAdmin {
+		if isAgentManagerRole(users[i].Role) && users[i].Role != RoleAdmin {
+			profile, err := s.repo.GetAgentProfile(ctx, users[i].ID)
+			if err != nil {
+				return nil, err
+			}
+			users[i].AgentProfile = profile
 			continue
 		}
-		profile, err := s.repo.GetAgentProfile(ctx, users[i].ID)
-		if err != nil {
-			return nil, err
+		if users[i].Role == RoleEnterprise {
+			profile, err := s.repo.GetEnterpriseProfile(ctx, users[i].ID)
+			if err != nil {
+				return nil, err
+			}
+			users[i].EnterpriseProfile = profile
 		}
-		users[i].AgentProfile = profile
 	}
 	return &DirectChildrenResult{Users: users, Pagination: page}, nil
 }
@@ -892,6 +920,10 @@ func isAgentManagerRole(role string) bool {
 	return role == RoleAdmin || role == RoleAgentLevel1 || role == RoleAgentLevel2
 }
 
+func isProfileBackedChildRole(role string) bool {
+	return (isAgentManagerRole(role) && role != RoleAdmin) || role == RoleEnterprise
+}
+
 func (s *AgentManagementService) managerCapacity(ctx context.Context, user *User) (concurrency int, rpm int, err error) {
 	if user.Role == RoleAdmin {
 		return 0, 0, nil
@@ -904,6 +936,13 @@ func (s *AgentManagementService) managerCapacity(ctx context.Context, user *User
 		return 0, 0, nil
 	}
 	return profile.PoolConcurrency, profile.PoolRPM, nil
+}
+
+func (s *AgentManagementService) upsertProfileBackedChildPool(ctx context.Context, role string, childID int64, poolConcurrency int, poolRPM int) error {
+	if role == RoleEnterprise {
+		return s.repo.UpsertEnterpriseProfile(ctx, childID, poolConcurrency, poolRPM)
+	}
+	return s.repo.UpsertAgentProfile(ctx, childID, poolConcurrency, poolRPM)
 }
 
 func (s *AgentManagementService) recalculateAgentEffectiveQuota(ctx context.Context, agentID int64) error {
@@ -931,6 +970,34 @@ func (s *AgentManagementService) recalculateAgentEffectiveQuota(ctx context.Cont
 	return nil
 }
 
+func (s *AgentManagementService) recalculateEnterpriseEffectiveQuota(ctx context.Context, enterpriseID int64) error {
+	enterprise, err := s.userRepo.GetByID(ctx, enterpriseID)
+	if err != nil {
+		return err
+	}
+	if enterprise.Role != RoleEnterprise {
+		return nil
+	}
+	profile, err := s.repo.GetEnterpriseProfile(ctx, enterprise.ID)
+	if err != nil {
+		return err
+	}
+	if profile == nil {
+		profile = &EnterpriseProfile{UserID: enterprise.ID}
+	}
+	usage, err := s.repo.GetEnterpriseEmployeeQuotaUsage(ctx, enterprise.ID, nil)
+	if err != nil {
+		return err
+	}
+	remainingConcurrency := enterpriseEffectiveRemainingForStorage(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency)
+	remainingRPM := enterpriseEffectiveRemainingForStorage(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM)
+	if err := s.repo.SetEffectiveQuota(ctx, enterprise.ID, remainingConcurrency, remainingRPM); err != nil {
+		return err
+	}
+	s.invalidateUser(ctx, enterprise.ID)
+	return nil
+}
+
 func buildAllocationSummary(actor *User, totalConcurrency int, totalRPM int, usage QuotaUsageSummary) AllocationSummary {
 	unlimitedConcurrency := actor != nil && (actor.Role == RoleAdmin || totalConcurrency == 0)
 	unlimitedRPM := actor != nil && (actor.Role == RoleAdmin || totalRPM == 0)
@@ -948,6 +1015,14 @@ func buildAllocationSummary(actor *User, totalConcurrency int, totalRPM int, usa
 		UnlimitedConcurrency: unlimitedConcurrency,
 		UnlimitedRPM:         unlimitedRPM,
 	}
+}
+
+func enterpriseEffectiveRemainingForStorage(total int, allocated int, allocatedUnlimited bool) int {
+	remaining := quotaRemaining(total, allocated, allocatedUnlimited)
+	if total > 0 && remaining == 0 {
+		return -1
+	}
+	return remaining
 }
 
 func quotaRequestExceedsCapacity(total int, allocated int, allocatedUnlimited bool, requested int) bool {

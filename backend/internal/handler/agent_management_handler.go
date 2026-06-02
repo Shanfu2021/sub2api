@@ -412,6 +412,9 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		poolRPM = u.AgentProfile.PoolRPM
 		inviteDefaultConcurrency = u.AgentProfile.InviteDefaultConcurrency
 		inviteDefaultRPM = u.AgentProfile.InviteDefaultRPM
+	} else if u.EnterpriseProfile != nil {
+		poolConcurrency = u.EnterpriseProfile.PoolConcurrency
+		poolRPM = u.EnterpriseProfile.PoolRPM
 	}
 	return agentManagedUserResponse{
 		ID:                       u.ID,

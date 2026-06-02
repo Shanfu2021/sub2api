@@ -144,6 +144,80 @@ ON CONFLICT (user_id) DO UPDATE SET
 	return err
 }
 
+func (r *agentManagementRepository) GetEnterpriseProfile(ctx context.Context, userID int64) (*service.EnterpriseProfile, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	var profile service.EnterpriseProfile
+	err := scanSingleRow(ctx, exec, `
+SELECT user_id, pool_concurrency, pool_rpm
+FROM enterprise_profiles
+WHERE user_id = $1 AND deleted_at IS NULL`,
+		[]any{userID},
+		&profile.UserID,
+		&profile.PoolConcurrency,
+		&profile.PoolRPM,
+	)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return &profile, nil
+}
+
+func (r *agentManagementRepository) UpsertEnterpriseProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+INSERT INTO enterprise_profiles (user_id, pool_concurrency, pool_rpm, created_at, updated_at)
+VALUES ($1, CASE WHEN $2 < 0 THEN 0 ELSE $2 END, CASE WHEN $3 < 0 THEN 0 ELSE $3 END, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (user_id) DO UPDATE SET
+    pool_concurrency = EXCLUDED.pool_concurrency,
+    pool_rpm = EXCLUDED.pool_rpm,
+    updated_at = CURRENT_TIMESTAMP,
+    deleted_at = NULL`,
+		userID,
+		poolConcurrency,
+		poolRPM,
+	)
+	return err
+}
+
+func (r *agentManagementRepository) GetEnterpriseEmployeeQuotaUsage(ctx context.Context, enterpriseID int64, excludeEmployeeID *int64) (service.QuotaUsageSummary, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return service.QuotaUsageSummary{}, errors.New("sql executor is not configured")
+	}
+	var exclude any
+	if excludeEmployeeID != nil {
+		exclude = *excludeEmployeeID
+	}
+	var usage service.QuotaUsageSummary
+	err := scanSingleRow(ctx, exec, `
+SELECT
+  COALESCE(SUM(CASE WHEN concurrency = 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
+  COALESCE(SUM(CASE WHEN rpm_limit = 0 THEN 0 ELSE rpm_limit END), 0) AS rpm,
+  COALESCE(BOOL_OR(concurrency = 0), false) AS unlimited_concurrency,
+  COALESCE(BOOL_OR(rpm_limit = 0), false) AS unlimited_rpm
+FROM users
+WHERE parent_user_id = $1
+  AND role = $2
+  AND deleted_at IS NULL
+  AND ($3::bigint IS NULL OR id <> $3::bigint)`,
+		[]any{enterpriseID, service.RoleEmployee, exclude},
+		&usage.Concurrency,
+		&usage.RPM,
+		&usage.UnlimitedConcurrency,
+		&usage.UnlimitedRPM,
+	)
+	if err != nil {
+		return service.QuotaUsageSummary{}, err
+	}
+	return usage, nil
+}
+
 func (r *agentManagementRepository) UpdateAgentInviteDefaults(ctx context.Context, userID int64, inviteConcurrency int, inviteRPM int) error {
 	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
 	if exec == nil {
@@ -178,14 +252,17 @@ WITH direct_children AS (
   SELECT
     CASE
       WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_concurrency, 0)
+      WHEN u.role = 'enterprise' THEN COALESCE(ep.pool_concurrency, 0)
       ELSE u.concurrency
     END AS concurrency,
     CASE
       WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_rpm, 0)
+      WHEN u.role = 'enterprise' THEN COALESCE(ep.pool_rpm, 0)
       ELSE u.rpm_limit
     END AS rpm
   FROM users u
   LEFT JOIN agent_profiles ap ON ap.user_id = u.id AND ap.deleted_at IS NULL
+  LEFT JOIN enterprise_profiles ep ON ep.user_id = u.id AND ep.deleted_at IS NULL
   WHERE u.parent_user_id = $1
     AND u.deleted_at IS NULL
     AND ($2::bigint IS NULL OR u.id <> $2::bigint)

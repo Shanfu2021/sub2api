@@ -26,6 +26,7 @@ type agentManagementRepoStub struct {
 	nextID int64
 
 	agentProfiles      map[int64]AgentProfile
+	enterpriseProfiles map[int64]EnterpriseProfile
 	setAllocations     []AllocationUpdate
 	setEffectiveQuotas []struct {
 		userID      int64
@@ -177,6 +178,46 @@ func (r *agentManagementRepoStub) UpsertAgentProfile(_ context.Context, userID i
 	return nil
 }
 
+func (r *agentManagementRepoStub) GetEnterpriseProfile(_ context.Context, userID int64) (*EnterpriseProfile, error) {
+	if r.enterpriseProfiles == nil {
+		return nil, nil
+	}
+	profile, ok := r.enterpriseProfiles[userID]
+	if !ok {
+		return nil, nil
+	}
+	clone := profile
+	return &clone, nil
+}
+
+func (r *agentManagementRepoStub) UpsertEnterpriseProfile(_ context.Context, userID int64, poolConcurrency int, poolRPM int) error {
+	if r.enterpriseProfiles == nil {
+		r.enterpriseProfiles = map[int64]EnterpriseProfile{}
+	}
+	if poolConcurrency < 0 {
+		poolConcurrency = 0
+	}
+	if poolRPM < 0 {
+		poolRPM = 0
+	}
+	r.enterpriseProfiles[userID] = EnterpriseProfile{UserID: userID, PoolConcurrency: poolConcurrency, PoolRPM: poolRPM}
+	return nil
+}
+
+func (r *agentManagementRepoStub) GetEnterpriseEmployeeQuotaUsage(_ context.Context, enterpriseID int64, excludeEmployeeID *int64) (QuotaUsageSummary, error) {
+	usage := QuotaUsageSummary{}
+	for _, child := range r.users {
+		if child.ParentUserID == nil || *child.ParentUserID != enterpriseID || child.Role != RoleEmployee {
+			continue
+		}
+		if excludeEmployeeID != nil && child.ID == *excludeEmployeeID {
+			continue
+		}
+		usage = usage.WithRequest(child.Concurrency, child.RPMLimit)
+	}
+	return usage, nil
+}
+
 func (r *agentManagementRepoStub) UpdateAgentInviteDefaults(_ context.Context, userID int64, inviteConcurrency int, inviteRPM int) error {
 	if r.agentProfiles == nil {
 		r.agentProfiles = map[int64]AgentProfile{}
@@ -202,6 +243,11 @@ func (r *agentManagementRepoStub) GetDirectChildQuotaUsage(_ context.Context, pa
 		rpm := child.RPMLimit
 		if isAgentManagerRole(child.Role) && child.Role != RoleAdmin {
 			if profile, ok := r.agentProfiles[child.ID]; ok {
+				concurrency = profile.PoolConcurrency
+				rpm = profile.PoolRPM
+			}
+		} else if child.Role == RoleEnterprise {
+			if profile, ok := r.enterpriseProfiles[child.ID]; ok {
 				concurrency = profile.PoolConcurrency
 				rpm = profile.PoolRPM
 			}
@@ -605,7 +651,7 @@ func TestAgentManagementUpgradeRules(t *testing.T) {
 	_, err = svc.UpgradeDirectUser(context.Background(), level2ID, userUnderLevel2ID, AgentUpgradeInput{TargetRole: RoleAgentLevel2})
 	require.ErrorIs(t, err, ErrAgentManagementForbidden)
 
-	got, err = svc.UpgradeDirectUser(context.Background(), level2ID, userUnderLevel2ID, AgentUpgradeInput{TargetRole: RoleEnterprise})
+	got, err = svc.UpgradeDirectUser(context.Background(), level2ID, userUnderLevel2ID, AgentUpgradeInput{TargetRole: RoleEnterprise, PoolConcurrency: 10, PoolRPM: 100})
 	require.NoError(t, err)
 	require.Equal(t, RoleEnterprise, got.Role)
 }
@@ -631,6 +677,36 @@ func TestAgentManagementUpgradeToAgentCreatesProfilePool(t *testing.T) {
 	require.Equal(t, 1000, repo.agentProfiles[userID].PoolRPM)
 	require.Equal(t, 100, repo.users[userID].Concurrency)
 	require.Equal(t, 1000, repo.users[userID].RPMLimit)
+}
+
+func TestAgentManagementUpgradeToEnterpriseCreatesProfilePool(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	userID := int64(10)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: userID, Role: RoleUser, ParentUserID: &level1ID, Concurrency: 8, RPMLimit: 80, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		level1ID: {UserID: level1ID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	got, err := svc.UpgradeDirectUser(context.Background(), level1ID, userID, AgentUpgradeInput{
+		TargetRole:      RoleEnterprise,
+		PoolConcurrency: 40,
+		PoolRPM:         400,
+	})
+	require.NoError(t, err)
+	require.Equal(t, RoleEnterprise, got.Role)
+	require.Equal(t, 40, repo.enterpriseProfiles[userID].PoolConcurrency)
+	require.Equal(t, 400, repo.enterpriseProfiles[userID].PoolRPM)
+	require.Equal(t, 40, repo.users[userID].Concurrency)
+	require.Equal(t, 400, repo.users[userID].RPMLimit)
+	require.Equal(t, 60, repo.users[level1ID].Concurrency)
+	require.Equal(t, 600, repo.users[level1ID].RPMLimit)
 }
 
 func TestAgentManagementAllocationCannotExceedRemaining(t *testing.T) {
@@ -719,6 +795,36 @@ func TestAgentManagementDirectAgentsIncludeProfilePool(t *testing.T) {
 	require.Equal(t, 50, result.Users[0].RPMLimit)
 }
 
+func TestAgentManagementDirectEnterprisesIncludeProfilePool(t *testing.T) {
+	rootID := int64(1)
+	enterpriseID := int64(10)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{
+			ID:           enterpriseID,
+			Role:         RoleEnterprise,
+			ParentUserID: &rootID,
+			Concurrency:  5,
+			RPMLimit:     50,
+			Status:       StatusActive,
+		},
+	)
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		enterpriseID: {UserID: enterpriseID, PoolConcurrency: 30, PoolRPM: 300},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.ListDirectEnterprises(context.Background(), rootID)
+	require.NoError(t, err)
+	require.Len(t, result.Users, 1)
+	require.NotNil(t, result.Users[0].EnterpriseProfile)
+	require.Equal(t, 30, result.Users[0].EnterpriseProfile.PoolConcurrency)
+	require.Equal(t, 300, result.Users[0].EnterpriseProfile.PoolRPM)
+	require.Equal(t, 5, result.Users[0].Concurrency)
+	require.Equal(t, 50, result.Users[0].RPMLimit)
+}
+
 func TestAgentManagementAgentPoolControlsManagerCapacity(t *testing.T) {
 	rootID := int64(1)
 	managerID := int64(2)
@@ -753,6 +859,79 @@ func TestAgentManagementAgentPoolControlsManagerCapacity(t *testing.T) {
 
 	_, err = svc.UpdateAllocation(context.Background(), managerID, childID, AllocationUpdate{AllocatedConcurrency: 51, AllocatedRPM: 501})
 	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
+}
+
+func TestAgentManagementUpdateDirectEnterprisePoolUpdatesProfileAndEffectiveQuota(t *testing.T) {
+	rootID := int64(1)
+	managerID := int64(2)
+	enterpriseID := int64(3)
+	employeeID := int64(4)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &managerID, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Concurrency: 20, RPMLimit: 200, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		managerID: {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		enterpriseID: {UserID: enterpriseID, PoolConcurrency: 40, PoolRPM: 400},
+	}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
+
+	summary, err := svc.UpdateAllocation(context.Background(), managerID, enterpriseID, AllocationUpdate{
+		Concurrency: intPtr(50),
+		RPM:         intPtr(500),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 50, repo.enterpriseProfiles[enterpriseID].PoolConcurrency)
+	require.Equal(t, 500, repo.enterpriseProfiles[enterpriseID].PoolRPM)
+	require.Equal(t, 30, repo.users[enterpriseID].Concurrency)
+	require.Equal(t, 300, repo.users[enterpriseID].RPMLimit)
+	require.Equal(t, 50, repo.users[managerID].Concurrency)
+	require.Equal(t, 500, repo.users[managerID].RPMLimit)
+	require.Equal(t, 50, summary.AllocatedConcurrency)
+	require.Equal(t, 500, summary.AllocatedRPM)
+	require.Contains(t, invalidator.userIDs, enterpriseID)
+	require.Contains(t, invalidator.userIDs, managerID)
+}
+
+func TestAgentManagementUpdateDirectEnterprisePoolRejectsReclaimBelowEmployeeUsage(t *testing.T) {
+	rootID := int64(1)
+	managerID := int64(2)
+	enterpriseID := int64(3)
+	employeeID := int64(4)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &managerID, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Concurrency: 20, RPMLimit: 200, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		managerID: {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		enterpriseID: {UserID: enterpriseID, PoolConcurrency: 40, PoolRPM: 400},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	_, err := svc.UpdateAllocation(context.Background(), managerID, enterpriseID, AllocationUpdate{
+		Concurrency: intPtr(10),
+		RPM:         intPtr(100),
+	})
+	require.ErrorIs(t, err, ErrAgentManagementPoolReclaimExceeded)
+	var details *AgentPoolReclaimExceededError
+	require.ErrorAs(t, err, &details)
+	require.Equal(t, 20, details.AllocatedConcurrency)
+	require.Equal(t, 10, details.RequestedConcurrency)
+	require.Equal(t, 200, details.AllocatedRPM)
+	require.Equal(t, 100, details.RequestedRPM)
+	require.Equal(t, 40, repo.enterpriseProfiles[enterpriseID].PoolConcurrency)
+	require.Equal(t, 400, repo.enterpriseProfiles[enterpriseID].PoolRPM)
 }
 
 func TestAgentManagementUpdateDirectAgentPoolUpdatesProfileAndEffectiveQuota(t *testing.T) {

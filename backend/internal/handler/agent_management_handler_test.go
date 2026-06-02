@@ -383,3 +383,22 @@ func TestAgentManagedUserResponseIncludesAgentProfilePool(t *testing.T) {
 	require.Contains(t, string(payload), `"invite_default_concurrency":2`)
 	require.Contains(t, string(payload), `"invite_default_rpm":20`)
 }
+
+func TestAgentManagedUserResponseIncludesEnterpriseProfilePool(t *testing.T) {
+	userID := int64(13)
+	got := agentManagedUserFromService(&service.User{
+		ID:                userID,
+		Email:             "enterprise@example.com",
+		Role:              service.RoleEnterprise,
+		Concurrency:       5,
+		RPMLimit:          50,
+		EnterpriseProfile: &service.EnterpriseProfile{UserID: userID, PoolConcurrency: 40, PoolRPM: 400},
+	})
+
+	payload, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(payload), `"pool_concurrency":40`)
+	require.Contains(t, string(payload), `"pool_rpm":400`)
+	require.Contains(t, string(payload), `"invite_default_concurrency":0`)
+	require.Contains(t, string(payload), `"invite_default_rpm":0`)
+}
