@@ -44,8 +44,17 @@ func (s *AgentManagementRepoSuite) TearDownTest() {
 
 func (s *AgentManagementRepoSuite) cleanupAgentManagementGroups() {
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM agent_group_delegations")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups WHERE group_id IN (SELECT id FROM groups WHERE name LIKE 'exclusive-delegated-%')")
-	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM groups WHERE name LIKE 'exclusive-delegated-%'")
+	_, _ = integrationDB.ExecContext(s.ctx, `
+		DELETE FROM user_allowed_groups
+		WHERE group_id IN (
+			SELECT id FROM groups
+			WHERE name LIKE 'exclusive-delegated-%'
+			   OR name LIKE 'exclusive-delete-%'
+		)`)
+	_, _ = integrationDB.ExecContext(s.ctx, `
+		DELETE FROM groups
+		WHERE name LIKE 'exclusive-delegated-%'
+		   OR name LIKE 'exclusive-delete-%'`)
 }
 
 func TestAgentManagementRepoSuite(t *testing.T) {
