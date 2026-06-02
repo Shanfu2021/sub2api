@@ -629,6 +629,7 @@ export default {
       createUser: 'Create direct user',
       userCreated: 'Direct user created',
       createFailed: 'Failed to create direct user',
+      insufficientAllocation: 'Remaining concurrency or RPM is not enough to allocate',
       saveAllocation: 'Save allocation',
       allocationSaved: 'Allocation updated',
       allocationFailed: 'Failed to update allocation',

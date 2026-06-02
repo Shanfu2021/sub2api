@@ -458,6 +458,13 @@ func (s *AgentManagementService) requireManager(ctx context.Context, actorID int
 	if !isAgentManagerRole(actor.Role) {
 		return nil, ErrAgentManagementForbidden
 	}
+	if actor.Role == RoleAdmin {
+		rootAdmin, err := s.repo.GetRootAdmin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+		}
+		return rootAdmin, nil
+	}
 	return actor, nil
 }
 

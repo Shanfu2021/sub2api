@@ -54,13 +54,19 @@ func newAgentManagementRepoStub(users ...*User) *agentManagementRepoStub {
 }
 
 func (r *agentManagementRepoStub) GetRootAdmin(context.Context) (*User, error) {
+	var root *User
 	for _, user := range r.users {
 		if user.Role == RoleAdmin {
-			clone := *user
-			return &clone, nil
+			if root == nil || user.ID < root.ID {
+				root = user
+			}
 		}
 	}
-	return nil, ErrUserNotFound
+	if root == nil {
+		return nil, ErrUserNotFound
+	}
+	clone := *root
+	return &clone, nil
 }
 
 func (r *agentManagementRepoStub) CreateUser(_ context.Context, user *User) error {
@@ -514,6 +520,36 @@ func TestAgentManagementCreateDirectUserForAdminIsUnconstrained(t *testing.T) {
 	require.Equal(t, 5000, created.AllocatedRPM)
 	require.Equal(t, 500, created.Concurrency)
 	require.Equal(t, 5000, created.RPMLimit)
+}
+
+func TestAgentManagementAdminsShareRootDirectUserPool(t *testing.T) {
+	rootAdminID := int64(1)
+	secondAdminID := int64(42)
+	rootDirectUserID := int64(10)
+	secondAdminDirectUserID := int64(11)
+	repo := newAgentManagementRepoStub(
+		&User{ID: secondAdminID, Role: RoleAdmin, Concurrency: 1, RPMLimit: 10},
+		&User{ID: rootAdminID, Role: RoleAdmin, Concurrency: 5, RPMLimit: 50},
+		&User{ID: rootDirectUserID, Role: RoleUser, ParentUserID: &rootAdminID},
+		&User{ID: secondAdminDirectUserID, Role: RoleUser, ParentUserID: &secondAdminID},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.ListDirectUsers(context.Background(), secondAdminID)
+	require.NoError(t, err)
+	require.Len(t, result.Users, 1)
+	require.Equal(t, rootDirectUserID, result.Users[0].ID)
+
+	created, err := svc.CreateDirectUser(context.Background(), secondAdminID, CreateDirectUserInput{
+		Email:                "shared-admin-pool@example.com",
+		Password:             "secret123",
+		AllocatedConcurrency: 999,
+		AllocatedRPM:         9999,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.ParentUserID)
+	require.Equal(t, rootAdminID, *created.ParentUserID)
 }
 
 func TestAgentManagementCreateDirectUserCannotExceedAgentRemaining(t *testing.T) {

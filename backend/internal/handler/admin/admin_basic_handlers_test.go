@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -60,6 +63,24 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.POST("/api/v1/admin/redeem-codes/batch-delete", redeemHandler.BatchDelete)
 	router.POST("/api/v1/admin/redeem-codes/:id/expire", redeemHandler.Expire)
 	router.GET("/api/v1/admin/redeem-codes/:id/stats", redeemHandler.GetStats)
+
+	return router, adminSvc
+}
+
+func setupAdminUserRouterWithSubject(userID int64, users []service.User) (*gin.Engine, *stubAdminService) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	adminSvc := newStubAdminService()
+	if users != nil {
+		adminSvc.users = users
+	}
+	userHandler := NewUserHandler(adminSvc, nil, nil, nil)
+
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: userID})
+		c.Next()
+	})
+	router.POST("/api/v1/admin/users", userHandler.Create)
 
 	return router, adminSvc
 }
@@ -131,6 +152,33 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/1/usage?period=today", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestUserHandlerCreateAssignsRootAdminAsParentForAllAdmins(t *testing.T) {
+	rootAdmin := service.User{ID: 1, Email: "root-admin@example.com", Role: service.RoleAdmin, Status: service.StatusActive}
+	secondAdmin := service.User{ID: 42, Email: "second-admin@example.com", Role: service.RoleAdmin, Status: service.StatusActive}
+	router, adminSvc := setupAdminUserRouterWithSubject(secondAdmin.ID, []service.User{rootAdmin, secondAdmin})
+
+	body, err := json.Marshal(map[string]any{
+		"email":       "owned@example.com",
+		"password":    "pass123",
+		"concurrency": 2,
+	})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, adminSvc.lastCreateUser)
+	require.NotNil(t, adminSvc.lastCreateUser.ParentUserID)
+	require.Equal(t, rootAdmin.ID, *adminSvc.lastCreateUser.ParentUserID)
+	require.Equal(t, service.RoleAdmin, adminSvc.lastListUsers.filters.Role)
+	require.Equal(t, service.StatusActive, adminSvc.lastListUsers.filters.Status)
+	require.Equal(t, "id", adminSvc.lastListUsers.sortBy)
+	require.Equal(t, "asc", adminSvc.lastListUsers.sortOrder)
 }
 
 func TestUserHandlerBindAuthIdentityMapsRequest(t *testing.T) {

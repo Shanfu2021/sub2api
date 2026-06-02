@@ -18,6 +18,8 @@ const {
   upgradeChild,
   deleteDirectChild,
   listGroups,
+  showError,
+  showSuccess,
 } = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   getSummary: vi.fn(),
@@ -29,6 +31,8 @@ const {
   upgradeChild: vi.fn(),
   deleteDirectChild: vi.fn(),
   listGroups: vi.fn(),
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
 }))
 
 vi.mock('@/api/agentManagement', () => ({
@@ -59,8 +63,8 @@ vi.mock('@/api', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
-    showSuccess: vi.fn(),
+    showError,
+    showSuccess,
   }),
 }))
 
@@ -248,11 +252,14 @@ describe('agent management pages', () => {
     expect(wrapper.get('[data-test="allocation-rpm-12"]').exists()).toBe(true)
   })
 
-  it('creates direct users from the direct users page', async () => {
+  it('opens a modal and creates direct users from the direct users page', async () => {
     const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
     await flushPromises()
 
     await wrapper.get('[data-test="create-direct-user"]').trigger('click')
+    expect(wrapper.find('[data-test="create-direct-user-modal"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('admin.users.columns.balance')
+
     await wrapper.get('[data-test="create-direct-user-email"]').setValue('direct@example.com')
     await wrapper.get('[data-test="create-direct-user-password"]').setValue('secret123')
     await wrapper.get('[data-test="create-direct-user-username"]').setValue('direct')
@@ -269,6 +276,33 @@ describe('agent management pages', () => {
       allocated_rpm: 60,
     })
     expect(listDirectUsers).toHaveBeenCalledTimes(2)
+  })
+
+  it('blocks over-allocation in the create user modal for agents', async () => {
+    getSummary.mockResolvedValue({
+      allocation: {
+        total_concurrency: 20,
+        allocated_concurrency: 18,
+        remaining_concurrency: 2,
+        total_rpm: 200,
+        allocated_rpm: 190,
+        remaining_rpm: 10,
+        unlimited_capacity: false,
+      },
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="create-direct-user"]').trigger('click')
+    await wrapper.get('[data-test="create-direct-user-email"]').setValue('direct@example.com')
+    await wrapper.get('[data-test="create-direct-user-password"]').setValue('secret123')
+    await wrapper.get('[data-test="create-direct-user-concurrency"]').setValue('3')
+    await wrapper.get('[data-test="create-direct-user-rpm"]').setValue('11')
+    await wrapper.get('[data-test="create-direct-user-submit"]').trigger('submit')
+    await flushPromises()
+
+    expect(createDirectUser).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('agentManagement.direct.insufficientAllocation')
   })
 
   it('does not show direct user creation on agent or enterprise pages', async () => {

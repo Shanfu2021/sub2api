@@ -961,6 +961,70 @@ Wait for GitHub `CI`, `Security Scan`, and `HZZ Image`, then pull `ghcr.io/h-2sz
 
 ---
 
+### Task 13: Admin-Owned Native Creation And Agent Create Modal
+
+**Files:**
+- Modify: `backend/internal/service/admin_service.go`
+- Modify: `backend/internal/service/admin_service_create_user_test.go`
+- Modify: `backend/internal/handler/admin/user_handler.go`
+- Modify: `backend/internal/handler/admin/admin_basic_handlers_test.go`
+- Modify: `backend/internal/handler/admin/admin_service_stub_test.go`
+- Modify: `backend/internal/service/agent_management.go`
+- Modify: `backend/internal/service/agent_management_test.go`
+- Create: `frontend/src/components/agent/AgentDirectUserCreateModal.vue`
+- Modify: `frontend/src/views/agent/AgentDirectChildrenView.vue`
+- Modify: `frontend/src/views/agent/__tests__/agentManagement.spec.ts`
+- Modify: `frontend/src/i18n/locales/en.ts`
+- Modify: `frontend/src/i18n/locales/zh.ts`
+
+- [ ] **Step 1: Write failing backend tests**
+
+Add service and handler tests proving native admin user creation stores the shared root admin as `ParentUserID`, and proving non-root admins use the same root-admin direct-child pool in agent management.
+
+- [ ] **Step 2: Write failing frontend tests**
+
+Update the direct-users page test so create opens a modal-style form, and add a test proving agents cannot submit allocation above the current remaining concurrency/RPM.
+
+- [ ] **Step 3: Implement backend ownership**
+
+Add `ParentUserID *int64` to `CreateUserInput`, set it on created users, and populate it in `UserHandler.Create` from the shared root admin when an authenticated admin is creating the user.
+
+- [ ] **Step 3.5: Implement shared admin direct-child pool**
+
+Resolve any admin actor in `AgentManagementService` to the root admin before listing, creating, upgrading, deleting, allocating, or delegating direct children. Agents continue using their own ID as the direct-child parent.
+
+- [ ] **Step 4: Implement agent create modal**
+
+Move direct-user creation from inline page markup into `frontend/src/components/agent/AgentDirectUserCreateModal.vue`, modeled after admin `UserCreateModal`, with email, password, random password, username, allocated concurrency, and allocated RPM. Keep balance absent.
+
+- [ ] **Step 5: Validate agent remaining allocation before submit**
+
+For non-admin users, compare requested allocation against summary remaining concurrency/RPM; show an error and skip the API call when either value is too large. Admins skip this frontend limit.
+
+- [ ] **Step 6: Run focused verification**
+
+Run:
+
+```bash
+cd backend
+/tmp/go1.26.3/bin/go test -tags unit ./internal/service ./internal/handler/admin -run 'TestAdminService_CreateUser|TestUserHandler' -count=1
+cd ../frontend
+./node_modules/.bin/vitest run src/views/agent/__tests__/agentManagement.spec.ts
+NODE_OPTIONS=--max-old-space-size=4096 ./node_modules/.bin/vue-tsc --noEmit --skipLibCheck
+```
+
+- [ ] **Step 7: Commit and push**
+
+Commit:
+
+```bash
+git add backend/internal/service/admin_service.go backend/internal/service/admin_service_create_user_test.go backend/internal/service/agent_management.go backend/internal/service/agent_management_test.go backend/internal/handler/admin/user_handler.go backend/internal/handler/admin/admin_basic_handlers_test.go backend/internal/handler/admin/admin_service_stub_test.go frontend/src/components/agent/AgentDirectUserCreateModal.vue frontend/src/views/agent/AgentDirectChildrenView.vue frontend/src/views/agent/__tests__/agentManagement.spec.ts frontend/src/i18n/locales/en.ts frontend/src/i18n/locales/zh.ts docs/superpowers/plans/2026-06-01-hzz-agent-promotion.md
+git commit -m "feat: improve direct user creation ownership"
+git push origin hzz
+```
+
+---
+
 ## Self-Review Notes
 
 - Spec coverage: hierarchy, additive admin/agent surface, direct visibility, capabilities, upgrade rules, delete/detach rules, concurrency/RPM allocation, group/rate delegation, invitation ownership, backend/frontend shape, and tests are each covered by at least one task.

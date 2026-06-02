@@ -93,6 +93,25 @@ func TestAdminService_CreateUser_ExplicitZeroBalanceOverridesDefault(t *testing.
 	require.Equal(t, 0.0, repo.created[0].Balance)
 }
 
+func TestAdminService_CreateUser_AssignsParentUserIDWhenProvided(t *testing.T) {
+	repo := &userRepoStub{nextID: 13}
+	svc := &adminServiceImpl{userRepo: repo}
+	rootAdminID := int64(1)
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:        "owned-by-admin@test.com",
+		Password:     "strong-pass",
+		ParentUserID: &rootAdminID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootAdminID, *user.ParentUserID)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ParentUserID)
+	require.Equal(t, rootAdminID, *repo.created[0].ParentUserID)
+}
+
 func TestAdminService_CreateUser_EmailExists(t *testing.T) {
 	repo := &userRepoStub{createErr: ErrEmailExists}
 	svc := &adminServiceImpl{userRepo: repo}

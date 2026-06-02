@@ -628,6 +628,7 @@ export default {
       createUser: '创建直属用户',
       userCreated: '直属用户已创建',
       createFailed: '创建直属用户失败',
+      insufficientAllocation: '剩余并发或 RPM 不足，不能分配',
       saveAllocation: '保存分配',
       allocationSaved: '分配已更新',
       allocationFailed: '保存分配失败',
