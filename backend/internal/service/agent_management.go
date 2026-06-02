@@ -64,6 +64,11 @@ type DirectChildrenResult struct {
 	Pagination *pagination.PaginationResult `json:"pagination"`
 }
 
+type DirectChildrenQuery struct {
+	Pagination pagination.PaginationParams
+	Search     string
+}
+
 type AgentManagementSummary struct {
 	Allocation AllocationSummary `json:"allocation"`
 }
@@ -94,6 +99,7 @@ type AgentManagementRepository interface {
 	GetRootAdmin(ctx context.Context) (*User, error)
 	CreateUser(ctx context.Context, user *User) error
 	ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
+	ListDirectChildrenWithSearch(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams, search string) ([]User, *pagination.PaginationResult, error)
 	SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
 	GetAgentProfile(ctx context.Context, userID int64) (*AgentProfile, error)
 	UpsertAgentProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error
@@ -129,6 +135,13 @@ func (s *AgentManagementService) ListDirectUsers(ctx context.Context, actorID in
 	return s.listDirectChildren(ctx, actorID, []string{RoleUser}, pagination.DefaultPagination())
 }
 
+func (s *AgentManagementService) ListDirectUsersWithQuery(ctx context.Context, actorID int64, query DirectChildrenQuery) (*DirectChildrenResult, error) {
+	if query.Pagination.PageSize == 0 {
+		query.Pagination = pagination.DefaultPagination()
+	}
+	return s.listDirectChildrenWithQuery(ctx, actorID, []string{RoleUser}, query)
+}
+
 func (s *AgentManagementService) ListDirectAgents(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
 	actor, err := s.requireManager(ctx, actorID)
 	if err != nil {
@@ -140,8 +153,29 @@ func (s *AgentManagementService) ListDirectAgents(ctx context.Context, actorID i
 	return s.listDirectChildrenForActor(ctx, actor, []string{RoleAgentLevel1, RoleAgentLevel2}, pagination.DefaultPagination())
 }
 
+func (s *AgentManagementService) ListDirectAgentsWithQuery(ctx context.Context, actorID int64, query DirectChildrenQuery) (*DirectChildrenResult, error) {
+	if query.Pagination.PageSize == 0 {
+		query.Pagination = pagination.DefaultPagination()
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role == RoleAgentLevel2 {
+		return &DirectChildrenResult{Users: []User{}, Pagination: &pagination.PaginationResult{Page: 1, PageSize: query.Pagination.Limit()}}, nil
+	}
+	return s.listDirectChildrenForActorWithQuery(ctx, actor, []string{RoleAgentLevel1, RoleAgentLevel2}, query)
+}
+
 func (s *AgentManagementService) ListDirectEnterprises(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
 	return s.listDirectChildren(ctx, actorID, []string{RoleEnterprise}, pagination.DefaultPagination())
+}
+
+func (s *AgentManagementService) ListDirectEnterprisesWithQuery(ctx context.Context, actorID int64, query DirectChildrenQuery) (*DirectChildrenResult, error) {
+	if query.Pagination.PageSize == 0 {
+		query.Pagination = pagination.DefaultPagination()
+	}
+	return s.listDirectChildrenWithQuery(ctx, actorID, []string{RoleEnterprise}, query)
 }
 
 func (s *AgentManagementService) GetSummary(ctx context.Context, actorID int64) (*AgentManagementSummary, error) {
@@ -506,15 +540,26 @@ func (s *AgentManagementService) ResolveInvitationParent(ctx context.Context, in
 }
 
 func (s *AgentManagementService) listDirectChildren(ctx context.Context, actorID int64, roles []string, params pagination.PaginationParams) (*DirectChildrenResult, error) {
+	return s.listDirectChildrenWithQuery(ctx, actorID, roles, DirectChildrenQuery{Pagination: params})
+}
+
+func (s *AgentManagementService) listDirectChildrenWithQuery(ctx context.Context, actorID int64, roles []string, query DirectChildrenQuery) (*DirectChildrenResult, error) {
 	actor, err := s.requireManager(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
-	return s.listDirectChildrenForActor(ctx, actor, roles, params)
+	return s.listDirectChildrenForActorWithQuery(ctx, actor, roles, query)
 }
 
 func (s *AgentManagementService) listDirectChildrenForActor(ctx context.Context, actor *User, roles []string, params pagination.PaginationParams) (*DirectChildrenResult, error) {
-	users, page, err := s.repo.ListDirectChildren(ctx, actor.ID, roles, params)
+	return s.listDirectChildrenForActorWithQuery(ctx, actor, roles, DirectChildrenQuery{Pagination: params})
+}
+
+func (s *AgentManagementService) listDirectChildrenForActorWithQuery(ctx context.Context, actor *User, roles []string, query DirectChildrenQuery) (*DirectChildrenResult, error) {
+	if query.Pagination.PageSize == 0 {
+		query.Pagination = pagination.DefaultPagination()
+	}
+	users, page, err := s.repo.ListDirectChildrenWithSearch(ctx, actor.ID, roles, query.Pagination, query.Search)
 	if err != nil {
 		return nil, err
 	}

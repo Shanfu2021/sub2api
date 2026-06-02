@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -17,8 +18,11 @@ import (
 
 type agentManagementService interface {
 	ListDirectUsers(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
+	ListDirectUsersWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	ListDirectAgents(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
+	ListDirectAgentsWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	ListDirectEnterprises(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
+	ListDirectEnterprisesWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
@@ -55,15 +59,15 @@ func (h *AgentManagementHandler) Summary(c *gin.Context) {
 }
 
 func (h *AgentManagementHandler) ListDirectUsers(c *gin.Context) {
-	h.listDirectChildren(c, h.service.ListDirectUsers)
+	h.listDirectChildren(c, h.service.ListDirectUsersWithQuery)
 }
 
 func (h *AgentManagementHandler) ListDirectAgents(c *gin.Context) {
-	h.listDirectChildren(c, h.service.ListDirectAgents)
+	h.listDirectChildren(c, h.service.ListDirectAgentsWithQuery)
 }
 
 func (h *AgentManagementHandler) ListDirectEnterprises(c *gin.Context) {
-	h.listDirectChildren(c, h.service.ListDirectEnterprises)
+	h.listDirectChildren(c, h.service.ListDirectEnterprisesWithQuery)
 }
 
 func (h *AgentManagementHandler) CreateDirectUser(c *gin.Context) {
@@ -204,12 +208,15 @@ func (h *AgentManagementHandler) RemoveChildGroupDelegation(c *gin.Context) {
 	response.Success(c, gin.H{"child_id": childID, "group_id": groupID})
 }
 
-func (h *AgentManagementHandler) listDirectChildren(c *gin.Context, list func(context.Context, int64) (*service.DirectChildrenResult, error)) {
+func (h *AgentManagementHandler) listDirectChildren(c *gin.Context, list func(context.Context, int64, service.DirectChildrenQuery) (*service.DirectChildrenResult, error)) {
 	actorID, ok := currentActorID(c)
 	if !ok {
 		return
 	}
-	result, err := list(c.Request.Context(), actorID)
+	result, err := list(c.Request.Context(), actorID, service.DirectChildrenQuery{
+		Pagination: pagination.DefaultPagination(),
+		Search:     normalizedQuerySearch(c.Query("search")),
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -222,6 +229,15 @@ func (h *AgentManagementHandler) listDirectChildren(c *gin.Context, list func(co
 		"items":      users,
 		"pagination": result.Pagination,
 	})
+}
+
+func normalizedQuerySearch(search string) string {
+	search = strings.TrimSpace(search)
+	runes := []rune(search)
+	if len(runes) > 100 {
+		return string(runes[:100])
+	}
+	return search
 }
 
 func currentActorID(c *gin.Context) (int64, bool) {

@@ -32,7 +32,16 @@ describe('agent management api', () => {
 
     await expect(agentManagementAPI.listDirectUsers()).resolves.toEqual(response)
 
-    expect(get).toHaveBeenCalledWith('/agent-management/direct-users')
+    expect(get).toHaveBeenCalledWith('/agent-management/direct-users', { params: {} })
+  })
+
+  it('passes search query to direct user list route', async () => {
+    const response = { items: [], pagination: { page: 1, page_size: 20, total: 0, total_pages: 0 } }
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.listDirectUsers({ search: 'alice' })).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/direct-users', { params: { search: 'alice' } })
   })
 
   it('updates a direct child allocation without balance fields', async () => {

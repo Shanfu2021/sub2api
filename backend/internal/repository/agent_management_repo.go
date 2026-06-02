@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbagentgroupdelegation "github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
@@ -40,11 +41,22 @@ func (r *agentManagementRepository) CreateUser(ctx context.Context, user *servic
 }
 
 func (r *agentManagementRepository) ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
+	return r.ListDirectChildrenWithSearch(ctx, parentID, roles, params, "")
+}
+
+func (r *agentManagementRepository) ListDirectChildrenWithSearch(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams, search string) ([]service.User, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := client.User.Query().
 		Where(dbuser.ParentUserIDEQ(parentID))
 	if len(roles) > 0 {
 		q = q.Where(dbuser.RoleIn(roles...))
+	}
+	search = strings.TrimSpace(search)
+	if search != "" {
+		q = q.Where(dbuser.Or(
+			dbuser.EmailContainsFold(search),
+			dbuser.UsernameContainsFold(search),
+		))
 	}
 
 	total, err := q.Clone().Count(ctx)

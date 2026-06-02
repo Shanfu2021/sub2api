@@ -7,7 +7,25 @@
             <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ title }}</h1>
             <p class="text-sm text-gray-500 dark:text-dark-400">{{ directSubtitle }}</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="flex items-center gap-2">
+              <input
+                v-model="searchDraft"
+                data-test="direct-child-search"
+                class="input h-9 w-48"
+                type="search"
+                :placeholder="t('common.search')"
+                @keyup.enter="applySearch"
+              />
+              <button
+                data-test="direct-child-search-submit"
+                class="btn btn-secondary px-3"
+                :disabled="loading"
+                @click="applySearch"
+              >
+                <Icon name="search" size="sm" />
+              </button>
+            </div>
             <button
               v-if="canCreateDirectUser"
               data-test="create-direct-user"
@@ -175,6 +193,8 @@ const loading = ref(false)
 const savingChildId = ref<number | null>(null)
 const creatingUser = ref(false)
 const showCreateUserModal = ref(false)
+const searchDraft = ref('')
+const activeSearch = ref('')
 const children = ref<AgentManagedUser[]>([])
 const allocation = ref<AgentAllocationSummary | null>(null)
 const drafts = reactive<Record<number, AgentAllocationUpdate>>({})
@@ -239,9 +259,10 @@ function quotaFor(child: AgentManagedUser): AgentAllocationUpdate {
 }
 
 async function listChildren(): Promise<AgentDirectChildrenResponse> {
-  if (props.kind === 'agents') return agentManagementAPI.listDirectAgents()
-  if (props.kind === 'enterprises') return agentManagementAPI.listDirectEnterprises()
-  return agentManagementAPI.listDirectUsers()
+  const query = activeSearch.value ? { search: activeSearch.value } : {}
+  if (props.kind === 'agents') return agentManagementAPI.listDirectAgents(query)
+  if (props.kind === 'enterprises') return agentManagementAPI.listDirectEnterprises(query)
+  return agentManagementAPI.listDirectUsers(query)
 }
 
 async function loadData() {
@@ -260,6 +281,11 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+}
+
+async function applySearch() {
+  activeSearch.value = searchDraft.value.trim()
+  await loadData()
 }
 
 function draftFor(child: AgentManagedUser): AgentAllocationUpdate {

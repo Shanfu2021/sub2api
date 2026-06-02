@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -102,6 +103,30 @@ func (r *agentManagementRepoStub) ListDirectChildren(_ context.Context, parentID
 			if _, ok := roleSet[user.Role]; !ok {
 				continue
 			}
+		}
+		out = append(out, *user)
+	}
+	return out, &pagination.PaginationResult{Total: int64(len(out)), Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
+}
+
+func (r *agentManagementRepoStub) ListDirectChildrenWithSearch(_ context.Context, parentID int64, roles []string, params pagination.PaginationParams, search string) ([]User, *pagination.PaginationResult, error) {
+	roleSet := map[string]struct{}{}
+	for _, role := range roles {
+		roleSet[role] = struct{}{}
+	}
+	search = strings.ToLower(strings.TrimSpace(search))
+	var out []User
+	for _, user := range r.users {
+		if user.ParentUserID == nil || *user.ParentUserID != parentID {
+			continue
+		}
+		if len(roleSet) > 0 {
+			if _, ok := roleSet[user.Role]; !ok {
+				continue
+			}
+		}
+		if search != "" && !strings.Contains(strings.ToLower(user.Email), search) && !strings.Contains(strings.ToLower(user.Username), search) {
+			continue
 		}
 		out = append(out, *user)
 	}
@@ -771,6 +796,29 @@ func TestAgentManagementAdminsShareRootDirectUserPool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, created.ParentUserID)
 	require.Equal(t, rootAdminID, *created.ParentUserID)
+}
+
+func TestAgentManagementListDirectUsersWithSearchFiltersDirectChildren(t *testing.T) {
+	rootID := int64(1)
+	otherManagerID := int64(2)
+	aliceID := int64(10)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: otherManagerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: aliceID, Role: RoleUser, ParentUserID: &rootID, Email: "alice@example.com", Username: "alpha", Status: StatusActive},
+		&User{ID: 11, Role: RoleUser, ParentUserID: &rootID, Email: "bob@example.com", Username: "beta", Status: StatusActive},
+		&User{ID: 12, Role: RoleUser, ParentUserID: &otherManagerID, Email: "alice-other@example.com", Username: "outside", Status: StatusActive},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.ListDirectUsersWithQuery(context.Background(), rootID, DirectChildrenQuery{
+		Pagination: pagination.DefaultPagination(),
+		Search:     "alice",
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Users, 1)
+	require.Equal(t, aliceID, result.Users[0].ID)
 }
 
 func TestAgentManagementCreateDirectUserCannotExceedAgentRemaining(t *testing.T) {

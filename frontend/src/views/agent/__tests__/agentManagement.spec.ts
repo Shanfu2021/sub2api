@@ -254,6 +254,17 @@ describe('agent management pages', () => {
     expect(wrapper.get('[data-test="allocation-rpm-12"]').exists()).toBe(true)
   })
 
+  it('sends search query when filtering direct children', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="direct-child-search"]').setValue('alice')
+    await wrapper.get('[data-test="direct-child-search-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(listDirectUsers).toHaveBeenLastCalledWith({ search: 'alice' })
+  })
+
   it('uses effective concurrency and RPM fields for direct ordinary users', async () => {
     listDirectUsers.mockResolvedValue(makeChildrenResponse([
       makeChild({ concurrency: 10, rpm_limit: 120, allocated_concurrency: 0, allocated_rpm: 0 }),

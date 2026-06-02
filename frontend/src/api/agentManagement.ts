@@ -14,23 +14,27 @@ import type {
 
 const BASE_PATH = '/agent-management'
 
+export interface AgentDirectChildrenQuery {
+  search?: string
+}
+
 export async function getSummary(): Promise<AgentManagementSummary> {
   const { data } = await apiClient.get<AgentManagementSummary>(`${BASE_PATH}/summary`)
   return data
 }
 
-export async function listDirectUsers(): Promise<AgentDirectChildrenResponse> {
-  const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-users`)
+export async function listDirectUsers(query: AgentDirectChildrenQuery = {}): Promise<AgentDirectChildrenResponse> {
+  const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-users`, { params: query })
   return data
 }
 
-export async function listDirectAgents(): Promise<AgentDirectChildrenResponse> {
-  const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-agents`)
+export async function listDirectAgents(query: AgentDirectChildrenQuery = {}): Promise<AgentDirectChildrenResponse> {
+  const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-agents`, { params: query })
   return data
 }
 
-export async function listDirectEnterprises(): Promise<AgentDirectChildrenResponse> {
-  const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-enterprises`)
+export async function listDirectEnterprises(query: AgentDirectChildrenQuery = {}): Promise<AgentDirectChildrenResponse> {
+  const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-enterprises`, { params: query })
   return data
 }
 

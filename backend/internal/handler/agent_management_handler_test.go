@@ -18,6 +18,8 @@ type fakeAgentManagementService struct {
 	updateAllocationCalls int
 	upgradeCalls          int
 	createDirectUserCalls int
+	listDirectUsersCalls  int
+	listSearch            string
 	createActorID         int64
 	createInput           service.CreateDirectUserInput
 	updateActorID         int64
@@ -29,6 +31,13 @@ type fakeAgentManagementService struct {
 }
 
 func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*service.DirectChildrenResult, error) {
+	s.listDirectUsersCalls++
+	return &service.DirectChildrenResult{}, nil
+}
+
+func (s *fakeAgentManagementService) ListDirectUsersWithQuery(_ context.Context, _ int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
+	s.listDirectUsersCalls++
+	s.listSearch = query.Search
 	return &service.DirectChildrenResult{}, nil
 }
 
@@ -36,7 +45,15 @@ func (s *fakeAgentManagementService) ListDirectAgents(context.Context, int64) (*
 	return &service.DirectChildrenResult{}, nil
 }
 
+func (s *fakeAgentManagementService) ListDirectAgentsWithQuery(context.Context, int64, service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
+	return &service.DirectChildrenResult{}, nil
+}
+
 func (s *fakeAgentManagementService) ListDirectEnterprises(context.Context, int64) (*service.DirectChildrenResult, error) {
+	return &service.DirectChildrenResult{}, nil
+}
+
+func (s *fakeAgentManagementService) ListDirectEnterprisesWithQuery(context.Context, int64, service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
 	return &service.DirectChildrenResult{}, nil
 }
 
@@ -111,10 +128,24 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 		c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 42})
 		c.Next()
 	})
+	r.GET("/direct-users", h.ListDirectUsers)
 	r.PUT("/children/:id/allocation", h.UpdateAllocation)
 	r.POST("/children/:id/upgrade", h.UpgradeDirectUser)
 	r.POST("/direct-users", h.CreateDirectUser)
 	return r
+}
+
+func TestAgentManagementHandlerPassesSearchToDirectUsers(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/direct-users?search=alice", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listDirectUsersCalls)
+	require.Equal(t, "alice", svc.listSearch)
 }
 
 func TestAgentManagementHandlerRejectsBalancePayload(t *testing.T) {
