@@ -144,49 +144,54 @@ ON CONFLICT (user_id) DO UPDATE SET
 	return err
 }
 
-func (r *agentManagementRepository) SumDirectChildQuotaUsage(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error) {
+func (r *agentManagementRepository) GetDirectChildQuotaUsage(ctx context.Context, parentID int64, excludeChildID *int64) (service.QuotaUsageSummary, error) {
 	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
 	if exec == nil {
-		return 0, 0, errors.New("sql executor is not configured")
+		return service.QuotaUsageSummary{}, errors.New("sql executor is not configured")
 	}
 	var exclude any
 	if excludeChildID != nil {
 		exclude = *excludeChildID
 	}
 	rows, err := exec.QueryContext(ctx, `
-SELECT
-  COALESCE(SUM(
+WITH direct_children AS (
+  SELECT
     CASE
       WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_concurrency, 0)
       ELSE u.concurrency
-    END
-  ), 0) AS concurrency,
-  COALESCE(SUM(
+    END AS concurrency,
     CASE
       WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_rpm, 0)
       ELSE u.rpm_limit
-    END
-  ), 0) AS rpm
-FROM users u
-LEFT JOIN agent_profiles ap ON ap.user_id = u.id AND ap.deleted_at IS NULL
-WHERE u.parent_user_id = $1
-  AND u.deleted_at IS NULL
-  AND ($2::bigint IS NULL OR u.id <> $2::bigint)`,
+    END AS rpm
+  FROM users u
+  LEFT JOIN agent_profiles ap ON ap.user_id = u.id AND ap.deleted_at IS NULL
+  WHERE u.parent_user_id = $1
+    AND u.deleted_at IS NULL
+    AND ($2::bigint IS NULL OR u.id <> $2::bigint)
+)
+SELECT
+  COALESCE(SUM(CASE WHEN concurrency = 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
+  COALESCE(SUM(CASE WHEN rpm = 0 THEN 0 ELSE rpm END), 0) AS rpm,
+  COALESCE(BOOL_OR(concurrency = 0), false) AS unlimited_concurrency,
+  COALESCE(BOOL_OR(rpm = 0), false) AS unlimited_rpm
+FROM direct_children`,
 		parentID,
 		exclude,
 	)
 	if err != nil {
-		return 0, 0, err
+		return service.QuotaUsageSummary{}, err
 	}
 	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
-		return 0, 0, rows.Err()
+		return service.QuotaUsageSummary{}, rows.Err()
 	}
-	if err := rows.Scan(&concurrency, &rpm); err != nil {
-		return 0, 0, err
+	var usage service.QuotaUsageSummary
+	if err := rows.Scan(&usage.Concurrency, &usage.RPM, &usage.UnlimitedConcurrency, &usage.UnlimitedRPM); err != nil {
+		return service.QuotaUsageSummary{}, err
 	}
-	return concurrency, rpm, rows.Err()
+	return usage, rows.Err()
 }
 
 func (r *agentManagementRepository) SetEffectiveQuota(ctx context.Context, userID int64, concurrency int, rpm int) error {

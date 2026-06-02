@@ -143,10 +143,20 @@ func (s *AgentManagementRepoSuite) TestAgentProfilePoolQuotaUsage() {
 	s.Require().Equal(100, profile.PoolConcurrency)
 	s.Require().Equal(1000, profile.PoolRPM)
 
-	concurrency, rpm, err := s.repo.SumDirectChildQuotaUsage(s.ctx, manager.ID, nil)
+	usage, err := s.repo.GetDirectChildQuotaUsage(s.ctx, manager.ID, nil)
 	s.Require().NoError(err)
-	s.Require().Equal(40, concurrency)
-	s.Require().Equal(400, rpm)
+	s.Require().Equal(40, usage.Concurrency)
+	s.Require().Equal(400, usage.RPM)
+	s.Require().False(usage.UnlimitedConcurrency)
+	s.Require().False(usage.UnlimitedRPM)
+
+	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, childAgent.ID, 0, 0))
+	usage, err = s.repo.GetDirectChildQuotaUsage(s.ctx, manager.ID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(10, usage.Concurrency)
+	s.Require().Equal(100, usage.RPM)
+	s.Require().True(usage.UnlimitedConcurrency)
+	s.Require().True(usage.UnlimitedRPM)
 
 	s.Require().NoError(s.repo.SetEffectiveQuota(s.ctx, ordinary.ID, 25, 250))
 	updated, err := s.client.User.Get(s.ctx, ordinary.ID)

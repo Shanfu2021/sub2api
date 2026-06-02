@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +26,7 @@ type fakeAgentManagementService struct {
 	updateActorID         int64
 	updateChildID         int64
 	updateAllocation      service.AllocationUpdate
+	updateAllocationErr   error
 	upgradeActorID        int64
 	upgradeChildID        int64
 	upgradeInput          service.AgentUpgradeInput
@@ -86,6 +88,9 @@ func (s *fakeAgentManagementService) UpdateAllocation(_ context.Context, actorID
 	s.updateActorID = actorID
 	s.updateChildID = childID
 	s.updateAllocation = req
+	if s.updateAllocationErr != nil {
+		return nil, s.updateAllocationErr
+	}
 	return &service.AllocationSummary{
 		TotalConcurrency:     20,
 		AllocatedConcurrency: concurrency,
@@ -148,6 +153,18 @@ func TestAgentManagementHandlerPassesSearchToDirectUsers(t *testing.T) {
 	require.Equal(t, "alice", svc.listSearch)
 }
 
+func TestAgentManagementHandlerIncludesReadOnlyBalance(t *testing.T) {
+	got := agentManagedUserFromService(&service.User{
+		ID:      7,
+		Email:   "direct@example.com",
+		Role:    service.RoleUser,
+		Balance: 12.5,
+		Status:  service.StatusActive,
+	})
+
+	require.Equal(t, 12.5, got.Balance)
+}
+
 func TestAgentManagementHandlerRejectsBalancePayload(t *testing.T) {
 	svc := &fakeAgentManagementService{}
 	router := newAgentManagementHandlerTestRouter(svc)
@@ -203,6 +220,37 @@ func TestAgentManagementHandlerAcceptsLegacyAllocationPayload(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, 1, svc.updateAllocationCalls)
 	require.Equal(t, service.AllocationUpdate{AllocatedConcurrency: 5, AllocatedRPM: 60}, svc.updateAllocation)
+}
+
+func TestAgentManagementHandlerReturnsPoolReclaimDetails(t *testing.T) {
+	svc := &fakeAgentManagementService{
+		updateAllocationErr: fmt.Errorf("wrapped: %w", &service.AgentPoolReclaimExceededError{
+			AllocatedConcurrency: 20,
+			RequestedConcurrency: 10,
+			AllocatedRPM:         200,
+			RequestedRPM:         100,
+		}),
+	}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/children/7/allocation", strings.NewReader(`{
+		"concurrency": 10,
+		"rpm": 100
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "AGENT_MANAGEMENT_POOL_RECLAIM_EXCEEDED", body["reason"])
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "20", metadata["allocated_concurrency"])
+	require.Equal(t, "10", metadata["requested_concurrency"])
+	require.Equal(t, "200", metadata["allocated_rpm"])
+	require.Equal(t, "100", metadata["requested_rpm"])
 }
 
 func TestAgentManagementHandlerCreatesDirectUserWithAuthenticatedUser(t *testing.T) {

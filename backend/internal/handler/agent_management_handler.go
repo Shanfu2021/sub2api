@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -102,6 +103,16 @@ func (h *AgentManagementHandler) UpdateAllocation(c *gin.Context) {
 	}
 	summary, err := h.service.UpdateAllocation(c.Request.Context(), actorID, childID, req)
 	if err != nil {
+		var reclaimErr *service.AgentPoolReclaimExceededError
+		if errors.As(err, &reclaimErr) {
+			response.ErrorFrom(c, service.ErrAgentManagementPoolReclaimExceeded.WithMetadata(map[string]string{
+				"allocated_concurrency": strconv.Itoa(reclaimErr.AllocatedConcurrency),
+				"requested_concurrency": strconv.Itoa(reclaimErr.RequestedConcurrency),
+				"allocated_rpm":         strconv.Itoa(reclaimErr.AllocatedRPM),
+				"requested_rpm":         strconv.Itoa(reclaimErr.RequestedRPM),
+			}))
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -311,20 +322,21 @@ func bindCreateDirectUser(c *gin.Context) (service.CreateDirectUserInput, bool) 
 }
 
 type agentManagedUserResponse struct {
-	ID                   int64  `json:"id"`
-	Email                string `json:"email"`
-	Username             string `json:"username"`
-	Role                 string `json:"role"`
-	ParentUserID         *int64 `json:"parent_user_id,omitempty"`
-	Concurrency          int    `json:"concurrency"`
-	RPMLimit             int    `json:"rpm_limit"`
-	AllocatedConcurrency int    `json:"allocated_concurrency"`
-	AllocatedRPM         int    `json:"allocated_rpm"`
-	PoolConcurrency      int    `json:"pool_concurrency"`
-	PoolRPM              int    `json:"pool_rpm"`
-	Status               string `json:"status"`
-	CreatedAt            string `json:"created_at"`
-	UpdatedAt            string `json:"updated_at"`
+	ID                   int64   `json:"id"`
+	Email                string  `json:"email"`
+	Username             string  `json:"username"`
+	Role                 string  `json:"role"`
+	ParentUserID         *int64  `json:"parent_user_id,omitempty"`
+	Balance              float64 `json:"balance"`
+	Concurrency          int     `json:"concurrency"`
+	RPMLimit             int     `json:"rpm_limit"`
+	AllocatedConcurrency int     `json:"allocated_concurrency"`
+	AllocatedRPM         int     `json:"allocated_rpm"`
+	PoolConcurrency      int     `json:"pool_concurrency"`
+	PoolRPM              int     `json:"pool_rpm"`
+	Status               string  `json:"status"`
+	CreatedAt            string  `json:"created_at"`
+	UpdatedAt            string  `json:"updated_at"`
 }
 
 type agentGroupRateResponse struct {
@@ -350,6 +362,7 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		Username:             u.Username,
 		Role:                 u.Role,
 		ParentUserID:         u.ParentUserID,
+		Balance:              u.Balance,
 		Concurrency:          u.Concurrency,
 		RPMLimit:             u.RPMLimit,
 		AllocatedConcurrency: u.AllocatedConcurrency,
