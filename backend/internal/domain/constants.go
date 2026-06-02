@@ -17,6 +17,7 @@ const (
 	RoleAgentLevel1 = "agent_level1"
 	RoleAgentLevel2 = "agent_level2"
 	RoleEnterprise  = "enterprise"
+	RoleEmployee    = "employee"
 )
 
 // Platform constants

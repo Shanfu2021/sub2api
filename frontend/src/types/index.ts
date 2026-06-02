@@ -63,7 +63,7 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
-export type UserRole = 'admin' | 'agent_level1' | 'agent_level2' | 'enterprise' | 'user'
+export type UserRole = 'admin' | 'agent_level1' | 'agent_level2' | 'enterprise' | 'employee' | 'user'
 
 export interface User {
   id: number
