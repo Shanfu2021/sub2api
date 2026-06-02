@@ -699,12 +699,12 @@ describe('agent management pages', () => {
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.inviteDefaultGroupRemoved')
   })
 
-  it('does not show invite default group propagation config for admins', async () => {
+  it('shows invite default group propagation config for admins', async () => {
     const wrapper = mountAgentView(MyGroupsView, 'admin')
     await flushPromises()
 
     expect(listGroups).toHaveBeenCalled()
-    expect(listInviteGroupDefaultOptions).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-test="invite-default-groups-section"]').exists()).toBe(false)
+    expect(listInviteGroupDefaultOptions).toHaveBeenCalled()
+    expect(wrapper.get('[data-test="invite-default-groups-section"]').exists()).toBe(true)
   })
 })

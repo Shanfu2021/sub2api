@@ -336,13 +336,13 @@ func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID i
 	if err := s.repo.CreateUser(ctx, user); err != nil {
 		return nil, err
 	}
-	if actor.Role != RoleAdmin {
-		if err := s.ApplyInviteGroupDefaultsToChild(ctx, actor.ID, user.ID); err != nil {
-			if s.userRepo != nil {
-				_ = s.userRepo.HardDelete(ctx, user.ID)
-			}
-			return nil, err
+	if err := s.ApplyInviteGroupDefaultsToChild(ctx, actor.ID, user.ID); err != nil {
+		if s.userRepo != nil {
+			_ = s.userRepo.HardDelete(ctx, user.ID)
 		}
+		return nil, err
+	}
+	if actor.Role != RoleAdmin {
 		if err := s.recalculateAgentEffectiveQuota(ctx, actor.ID); err != nil {
 			return nil, err
 		}
@@ -805,9 +805,6 @@ func (s *AgentManagementService) ListInviteGroupDefaultOptions(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	if actor.Role == RoleAdmin {
-		return []ChildGroupDelegationOption{}, nil
-	}
 	groups, err := s.ListMyGroups(ctx, actor.ID)
 	if err != nil {
 		return nil, err
@@ -853,9 +850,6 @@ func (s *AgentManagementService) SetInviteGroupDefault(ctx context.Context, acto
 	if err != nil {
 		return err
 	}
-	if actor.Role == RoleAdmin {
-		return ErrAgentManagementForbidden
-	}
 	if s.groupRepo == nil {
 		return ErrAgentManagementInvalidGroup
 	}
@@ -877,9 +871,6 @@ func (s *AgentManagementService) RemoveInviteGroupDefault(ctx context.Context, a
 	if err != nil {
 		return err
 	}
-	if actor.Role == RoleAdmin {
-		return ErrAgentManagementForbidden
-	}
 	return s.repo.DeleteInviteGroupDefault(ctx, actor.ID, groupID)
 }
 
@@ -890,9 +881,6 @@ func (s *AgentManagementService) ApplyInviteGroupDefaultsToChild(ctx context.Con
 	actor, err := s.requireManager(ctx, actorID)
 	if err != nil {
 		return err
-	}
-	if actor.Role == RoleAdmin {
-		return nil
 	}
 	child, err := s.requireDirectChild(ctx, actor, childID)
 	if err != nil {
@@ -969,7 +957,7 @@ func isAgentManagerRoleForInviteDefaults(ctx context.Context, repo UserRepositor
 	if err != nil {
 		return false
 	}
-	return user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2
+	return user.Role == RoleAdmin || user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2
 }
 
 func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context.Context, managerID int64, groupID int64) error {

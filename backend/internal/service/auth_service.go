@@ -999,11 +999,14 @@ func (s *AuthService) applyInvitationPostCreateDefaults(ctx context.Context, use
 	if err != nil {
 		return err
 	}
-	if parent.Role == RoleAdmin || !isAgentManagerRole(parent.Role) {
+	if !isAgentManagerRole(parent.Role) {
 		return nil
 	}
 	if err := s.agentManagementService.ApplyInviteGroupDefaultsToChild(ctx, parent.ID, user.ID); err != nil {
 		return err
+	}
+	if parent.Role == RoleAdmin {
+		return nil
 	}
 	return s.agentManagementService.recalculateAgentEffectiveQuota(ctx, parent.ID)
 }

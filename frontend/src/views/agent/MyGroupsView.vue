@@ -190,7 +190,7 @@ const columns = computed<Column[]>(() => [
   { key: 'can_delegate', label: t('agentManagement.groups.canDelegate') },
 ])
 
-const showInviteDefaultGroups = computed(() => authStore.isAgent)
+const showInviteDefaultGroups = computed(() => authStore.isAdmin || authStore.isAgent)
 const inviteDefaultAssignedCount = computed(() => (
   inviteDefaultGroupOptions.value.filter((item) => {
     const draft = inviteDefaultDrafts[item.group.id]
