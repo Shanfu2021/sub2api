@@ -194,10 +194,10 @@ type AgentEnterpriseDeletionCleanupRepository interface {
 }
 
 type AgentManagementService struct {
-	repo                   AgentManagementRepository
-	userRepo               UserRepository
-	groupRepo              GroupRepository
-	authCacheInvalidator   APIKeyAuthCacheInvalidator
+	repo                  AgentManagementRepository
+	userRepo              UserRepository
+	groupRepo             GroupRepository
+	authCacheInvalidator  APIKeyAuthCacheInvalidator
 	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository
 }
 
