@@ -209,55 +209,9 @@ func (r *apiKeyRepository) applyAgentAllocationForAuth(ctx context.Context, key 
 		return nil
 	}
 	concurrency, rpm := service.EffectiveAPIUsageCapacity(key.User)
-	if key.User.Role == service.RoleAgentLevel1 || key.User.Role == service.RoleAgentLevel2 || key.User.Role == service.RoleAdmin {
-		concurrency, rpm = managerCapacityForAuth(key.User)
-		childConcurrency, childRPM, err := r.sumDirectChildAllocationsForAuth(ctx, key.User.ID)
-		if err != nil {
-			return err
-		}
-		concurrency -= childConcurrency
-		rpm -= childRPM
-		if concurrency < 0 {
-			concurrency = 0
-		}
-		if rpm < 0 {
-			rpm = 0
-		}
-	}
 	key.User.Concurrency = concurrency
 	key.User.RPMLimit = rpm
 	return nil
-}
-
-func managerCapacityForAuth(user *service.User) (concurrency int, rpm int) {
-	if user == nil {
-		return 0, 0
-	}
-	if user.Role == service.RoleAdmin {
-		return user.Concurrency, user.RPMLimit
-	}
-	return user.AllocatedConcurrency, user.AllocatedRPM
-}
-
-func (r *apiKeyRepository) sumDirectChildAllocationsForAuth(ctx context.Context, parentID int64) (concurrency int, rpm int, err error) {
-	var result []struct {
-		Concurrency int `json:"concurrency"`
-		RPM         int `json:"rpm"`
-	}
-	err = clientFromContext(ctx, r.client).User.Query().
-		Where(user.ParentUserIDEQ(parentID)).
-		Aggregate(
-			dbent.As(dbent.Sum(user.FieldAllocatedConcurrency), "concurrency"),
-			dbent.As(dbent.Sum(user.FieldAllocatedRpm), "rpm"),
-		).
-		Scan(ctx, &result)
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(result) == 0 {
-		return 0, 0, nil
-	}
-	return result[0].Concurrency, result[0].RPM, nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {

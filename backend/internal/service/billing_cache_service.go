@@ -762,6 +762,9 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 	if s == nil || s.userRPMCache == nil || user == nil {
 		return nil
 	}
+	if user.RPMLimit < 0 {
+		return ErrUserRPMExceeded
+	}
 
 	// ── 第一层：分组级检查（override 或 group.rpm_limit） ──
 	if group != nil {

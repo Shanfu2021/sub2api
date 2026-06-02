@@ -10,9 +10,6 @@ func EffectiveAPIUsageCapacity(user *User) (concurrency int, rpm int) {
 		if concurrency < 0 {
 			concurrency = 0
 		}
-		if rpm < 0 {
-			rpm = 0
-		}
 		return concurrency, rpm
 	}
 	if user.ParentUserID != nil && !isAgentManagerRole(user.Role) {

@@ -173,7 +173,7 @@ func (s *AgentManagementRepoSuite) TestAgentProfilePoolQuotaUsage() {
 	s.Require().NoError(err)
 	s.Require().Equal(10, usage.Concurrency)
 	s.Require().Equal(100, usage.RPM)
-	s.Require().True(usage.UnlimitedConcurrency)
+	s.Require().False(usage.UnlimitedConcurrency)
 	s.Require().True(usage.UnlimitedRPM)
 
 	s.Require().NoError(s.repo.SetEffectiveQuota(s.ctx, ordinary.ID, 25, 250))

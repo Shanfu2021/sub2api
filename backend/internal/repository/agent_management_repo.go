@@ -198,9 +198,9 @@ func (r *agentManagementRepository) GetEnterpriseEmployeeQuotaUsage(ctx context.
 	var usage service.QuotaUsageSummary
 	err := scanSingleRow(ctx, exec, `
 SELECT
-  COALESCE(SUM(CASE WHEN concurrency = 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
-  COALESCE(SUM(CASE WHEN rpm_limit = 0 THEN 0 ELSE rpm_limit END), 0) AS rpm,
-  COALESCE(BOOL_OR(concurrency = 0), false) AS unlimited_concurrency,
+  COALESCE(SUM(CASE WHEN concurrency < 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
+  COALESCE(SUM(CASE WHEN rpm_limit <= 0 THEN 0 ELSE rpm_limit END), 0) AS rpm,
+  false AS unlimited_concurrency,
   COALESCE(BOOL_OR(rpm_limit = 0), false) AS unlimited_rpm
 FROM users
 WHERE parent_user_id = $1
@@ -269,9 +269,9 @@ WITH direct_children AS (
     AND ($2::bigint IS NULL OR u.id <> $2::bigint)
 )
 SELECT
-  COALESCE(SUM(CASE WHEN concurrency = 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
-  COALESCE(SUM(CASE WHEN rpm = 0 THEN 0 ELSE rpm END), 0) AS rpm,
-  COALESCE(BOOL_OR(concurrency = 0), false) AS unlimited_concurrency,
+  COALESCE(SUM(CASE WHEN concurrency < 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
+  COALESCE(SUM(CASE WHEN rpm <= 0 THEN 0 ELSE rpm END), 0) AS rpm,
+  false AS unlimited_concurrency,
   COALESCE(BOOL_OR(rpm = 0), false) AS unlimited_rpm
 FROM direct_children`,
 		parentID,
@@ -299,8 +299,8 @@ func (r *agentManagementRepository) SetEffectiveQuota(ctx context.Context, userI
 	}
 	res, err := exec.ExecContext(ctx, `
 UPDATE users
-SET concurrency = CASE WHEN $2 < 0 THEN 0 ELSE $2 END,
-    rpm_limit = CASE WHEN $3 < 0 THEN 0 ELSE $3 END,
+SET concurrency = $2,
+    rpm_limit = $3,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1 AND deleted_at IS NULL`,
 		userID,
@@ -562,7 +562,7 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 			if err != nil {
 				return nil, err
 			}
-			if err := r.SetEffectiveQuota(ctx, parent.ID, repoQuotaRemaining(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency), repoQuotaRemaining(totalRPM, usage.RPM, usage.UnlimitedRPM)); err != nil {
+			if err := r.SetEffectiveQuota(ctx, parent.ID, repoConcurrencyRemainingForStorage(totalConcurrency, usage.Concurrency), repoRPMRemainingForStorage(totalRPM, usage.RPM, usage.UnlimitedRPM)); err != nil {
 				return nil, err
 			}
 		} else if err != nil && !dbent.IsNotFound(err) {
@@ -646,7 +646,7 @@ func (r *agentManagementRepository) RecalculateAgentQuota(ctx context.Context, a
 	if err != nil {
 		return err
 	}
-	return r.SetEffectiveQuota(ctx, agent.ID, repoQuotaRemaining(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency), repoQuotaRemaining(totalRPM, usage.RPM, usage.UnlimitedRPM))
+	return r.SetEffectiveQuota(ctx, agent.ID, repoConcurrencyRemainingForStorage(totalConcurrency, usage.Concurrency), repoRPMRemainingForStorage(totalRPM, usage.RPM, usage.UnlimitedRPM))
 }
 
 func (r *agentManagementRepository) ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]service.AgentGroupDelegation, error) {
@@ -830,6 +830,30 @@ func repoQuotaRemaining(total int, allocated int, allocatedUnlimited bool) int {
 	remaining := total - allocated
 	if remaining < 0 {
 		return 0
+	}
+	return remaining
+}
+
+func repoConcurrencyRemaining(total int, allocated int) int {
+	remaining := total - allocated
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func repoConcurrencyRemainingForStorage(total int, allocated int) int {
+	remaining := repoConcurrencyRemaining(total, allocated)
+	if remaining == 0 {
+		return -1
+	}
+	return remaining
+}
+
+func repoRPMRemainingForStorage(total int, allocated int, allocatedUnlimited bool) int {
+	remaining := repoQuotaRemaining(total, allocated, allocatedUnlimited)
+	if total > 0 && remaining == 0 {
+		return -1
 	}
 	return remaining
 }

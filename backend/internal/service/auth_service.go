@@ -292,6 +292,7 @@ func (s *AuthService) resolveInvitationRegistrationQuota(ctx context.Context, pa
 		return quota, err
 	}
 	if parent.Role == RoleAdmin {
+		quota = s.resolveAdminInvitationRegistrationQuota(ctx, fallbackConcurrency, fallbackRPM)
 		return quota, nil
 	}
 	if !isAgentManagerRole(parent.Role) {
@@ -306,8 +307,8 @@ func (s *AuthService) resolveInvitationRegistrationQuota(ctx context.Context, pa
 		return quota, err
 	}
 	if profile != nil {
-		quota.Concurrency = normalizedAgentInviteDefault(profile.InviteDefaultConcurrency, DefaultAgentInviteConcurrency)
-		quota.RPM = normalizedAgentInviteDefault(profile.InviteDefaultRPM, DefaultAgentInviteRPM)
+		quota.Concurrency = normalizedAgentInviteDefaultConcurrency(profile.InviteDefaultConcurrency, DefaultAgentInviteConcurrency)
+		quota.RPM = normalizedAgentInviteDefaultRPM(profile.InviteDefaultRPM, DefaultAgentInviteRPM)
 	}
 	totalConcurrency, totalRPM, err := s.agentManagementService.managerCapacity(ctx, parent)
 	if err != nil {
@@ -317,14 +318,39 @@ func (s *AuthService) resolveInvitationRegistrationQuota(ctx context.Context, pa
 	if err != nil {
 		return quota, err
 	}
-	if quotaRequestExceedsCapacity(totalConcurrency, usage.Concurrency, usage.UnlimitedConcurrency, quota.Concurrency) ||
-		quotaRequestExceedsCapacity(totalRPM, usage.RPM, usage.UnlimitedRPM, quota.RPM) {
+	if concurrencyRequestExceedsCapacity(totalConcurrency, usage.Concurrency, quota.Concurrency) ||
+		rpmRequestExceedsCapacity(totalRPM, usage.RPM, usage.UnlimitedRPM, quota.RPM) {
 		return quota, ErrInvitationAgentQuotaInsufficient
 	}
 	return quota, nil
 }
 
-func normalizedAgentInviteDefault(value int, fallback int) int {
+func (s *AuthService) resolveAdminInvitationRegistrationQuota(ctx context.Context, fallbackConcurrency int, fallbackRPM int) registrationQuota {
+	quota := registrationQuota{Concurrency: fallbackConcurrency, RPM: fallbackRPM}
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return quota
+	}
+	if value, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyDefaultConcurrency); err == nil {
+		if parsed, parseErr := strconv.Atoi(value); parseErr == nil && parsed >= 1 {
+			quota.Concurrency = parsed
+		}
+	}
+	if value, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit); err == nil {
+		if parsed, parseErr := strconv.Atoi(value); parseErr == nil && parsed >= 0 {
+			quota.RPM = parsed
+		}
+	}
+	return quota
+}
+
+func normalizedAgentInviteDefaultConcurrency(value int, fallback int) int {
+	if value < 1 {
+		return fallback
+	}
+	return value
+}
+
+func normalizedAgentInviteDefaultRPM(value int, fallback int) int {
 	if value < 0 {
 		return fallback
 	}

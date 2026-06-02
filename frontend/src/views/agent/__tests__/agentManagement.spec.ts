@@ -355,6 +355,25 @@ describe('agent management pages', () => {
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.direct.inviteDefaultsSaved')
   })
 
+  it('lets admins save global registration defaults from the direct users page', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="invite-default-concurrency"]').element as HTMLInputElement).value).toBe('2')
+    expect((wrapper.get('[data-test="invite-default-rpm"]').element as HTMLInputElement).value).toBe('20')
+
+    await wrapper.get('[data-test="invite-default-concurrency"]').setValue('6')
+    await wrapper.get('[data-test="invite-default-rpm"]').setValue('60')
+    await wrapper.get('[data-test="invite-default-submit"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateInviteDefaults).toHaveBeenCalledWith({
+      invite_default_concurrency: 6,
+      invite_default_rpm: 60,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.direct.inviteDefaultsSaved')
+  })
+
   it('sends search query when filtering direct children', async () => {
     const wrapper = mountAgentView(DirectUsersView, 'admin')
     await flushPromises()
@@ -406,6 +425,8 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="create-direct-user"]').trigger('click')
     expect(wrapper.find('[data-test="create-direct-user-modal"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('admin.users.columns.balance')
+    expect((wrapper.get('[data-test="create-direct-user-concurrency"]').element as HTMLInputElement).value).toBe('2')
+    expect((wrapper.get('[data-test="create-direct-user-rpm"]').element as HTMLInputElement).value).toBe('20')
 
     await wrapper.get('[data-test="create-direct-user-email"]').setValue('direct@example.com')
     await wrapper.get('[data-test="create-direct-user-password"]').setValue('secret123')
@@ -445,12 +466,41 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="create-direct-user"]').trigger('click')
     await wrapper.get('[data-test="create-direct-user-email"]').setValue('direct@example.com')
     await wrapper.get('[data-test="create-direct-user-password"]').setValue('secret123')
-    await wrapper.get('[data-test="create-direct-user-concurrency"]').setValue('3')
+    await wrapper.get('[data-test="create-direct-user-concurrency"]').setValue('2')
     await wrapper.get('[data-test="create-direct-user-rpm"]').setValue('11')
     await wrapper.get('[data-test="create-direct-user-submit"]').trigger('submit')
     await flushPromises()
 
     expect(createDirectUser).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('agentManagement.direct.insufficientAllocation')
+  })
+
+  it('blocks direct allocation updates that would leave the agent with no own capacity', async () => {
+    getSummary.mockResolvedValue({
+      allocation: {
+        total_concurrency: 20,
+        allocated_concurrency: 18,
+        remaining_concurrency: 2,
+        total_rpm: 200,
+        allocated_rpm: 190,
+        remaining_rpm: 10,
+        unlimited_capacity: false,
+        unlimited_concurrency: false,
+        unlimited_rpm: false,
+      },
+    })
+    listDirectUsers.mockResolvedValue(makeChildrenResponse([
+      makeChild({ concurrency: 3, rpm_limit: 30, allocated_concurrency: 0, allocated_rpm: 0 }),
+    ]))
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="allocation-concurrency-12"]').setValue('5')
+    await wrapper.get('[data-test="allocation-rpm-12"]').setValue('40')
+    await wrapper.get('[data-test="save-allocation-12"]').trigger('click')
+    await flushPromises()
+
+    expect(updateAllocation).not.toHaveBeenCalled()
     expect(showError).toHaveBeenCalledWith('agentManagement.direct.insufficientAllocation')
   })
 
@@ -494,17 +544,17 @@ describe('agent management pages', () => {
     expect(wrapper.text()).not.toContain('agentManagement.direct.adminUnlimitedCapacity')
   })
 
-  it('shows unlimited labels for agents with unlimited pool dimensions', async () => {
+  it('shows only RPM unlimited labels for agents with unlimited RPM pool', async () => {
     getSummary.mockResolvedValue({
       allocation: {
-        total_concurrency: 0,
+        total_concurrency: 10,
         allocated_concurrency: 0,
-        remaining_concurrency: 0,
+        remaining_concurrency: 10,
         total_rpm: 0,
         allocated_rpm: 0,
         remaining_rpm: 0,
-        unlimited_capacity: true,
-        unlimited_concurrency: true,
+        unlimited_capacity: false,
+        unlimited_concurrency: false,
         unlimited_rpm: true,
       },
       invite_defaults: {
@@ -515,7 +565,7 @@ describe('agent management pages', () => {
     const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('agentManagement.direct.remainingConcurrency: common.unlimited')
+    expect(wrapper.text()).toContain('agentManagement.direct.remainingConcurrency: 10')
     expect(wrapper.text()).toContain('agentManagement.direct.remainingRpm: common.unlimited')
     expect(wrapper.text()).not.toContain('agentManagement.direct.adminUnlimitedCapacity')
   })

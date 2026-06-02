@@ -87,7 +87,7 @@ func (r *enterpriseManagementRepoStub) UpdateEmployeeAllocation(_ context.Contex
 	user.AllocatedRPM = target.RPM
 	r.updateAllocationCalls = append(r.updateAllocationCalls, target)
 	clone := *user
-	return &EmployeeAllocationResult{User: &clone, Allocation: AllocationSummary{TotalConcurrency: 0, TotalRPM: 0, UnlimitedCapacity: true, UnlimitedConcurrency: true, UnlimitedRPM: true}}, nil
+	return &EmployeeAllocationResult{User: &clone, Allocation: AllocationSummary{TotalConcurrency: 0, TotalRPM: 0, UnlimitedCapacity: false, UnlimitedConcurrency: false, UnlimitedRPM: true}}, nil
 }
 
 func (r *enterpriseManagementRepoStub) DeleteEmployeeAndReturnAllocation(_ context.Context, _ int64, employeeID int64, _ int64) ([]int64, error) {
@@ -254,30 +254,28 @@ func TestEnterpriseManagementCreateEmployeeSetsEmployeeRoleAndParent(t *testing.
 	require.Len(t, repo.createEmployeeCalls, 1)
 }
 
-func TestEnterpriseManagementUpdateEmployeeAllocationTreatsZeroQuotaAsUnlimited(t *testing.T) {
+func TestEnterpriseManagementUpdateEmployeeAllocationRejectsZeroConcurrency(t *testing.T) {
 	enterpriseID := int64(1)
 	employeeID := int64(2)
 	repo := newEnterpriseManagementRepoStub(
 		&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive},
 		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Balance: 10, Status: StatusActive},
 	)
-	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 0, PoolRPM: 0}
+	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 0}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
 
-	summary, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
+	_, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
 		Balance:     10,
 		Concurrency: 0,
 		RPM:         0,
 	})
 
-	require.NoError(t, err)
-	require.True(t, summary.UnlimitedConcurrency)
-	require.True(t, summary.UnlimitedRPM)
-	require.Len(t, repo.updateAllocationCalls, 1)
+	require.ErrorIs(t, err, ErrEnterpriseManagementInvalidAllocation)
+	require.Empty(t, repo.updateAllocationCalls)
 }
 
-func TestEnterpriseManagementUpdateEmployeeAllocationRejectsFinitePoolOverAllocation(t *testing.T) {
+func TestEnterpriseManagementUpdateEmployeeAllocationRejectsWhenItWouldExhaustEnterprisePool(t *testing.T) {
 	enterpriseID := int64(1)
 	employeeID := int64(2)
 	repo := newEnterpriseManagementRepoStub(
@@ -291,15 +289,36 @@ func TestEnterpriseManagementUpdateEmployeeAllocationRejectsFinitePoolOverAlloca
 
 	_, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
 		Balance:     10,
-		Concurrency: 3,
-		RPM:         30,
+		Concurrency: 2,
+		RPM:         20,
 	})
 
 	require.ErrorIs(t, err, ErrEnterpriseManagementAllocationExceeded)
 	require.Empty(t, repo.updateAllocationCalls)
 }
 
-func TestEffectiveAPIUsageCapacityTreatsNegativeEnterpriseRemainingAsZero(t *testing.T) {
+func TestEnterpriseManagementFiniteEnterpriseCannotAllocateUnlimitedRPMToEmployee(t *testing.T) {
+	enterpriseID := int64(1)
+	employeeID := int64(2)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Balance: 10, Status: StatusActive},
+	)
+	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
+
+	_, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
+		Balance:     10,
+		Concurrency: 1,
+		RPM:         0,
+	})
+
+	require.ErrorIs(t, err, ErrEnterpriseManagementAllocationExceeded)
+	require.Empty(t, repo.updateAllocationCalls)
+}
+
+func TestEffectiveAPIUsageCapacityPreservesNegativeEnterpriseRPMAsNoAvailableRPM(t *testing.T) {
 	concurrency, rpm := EffectiveAPIUsageCapacity(&User{
 		ID:                   1,
 		Role:                 RoleEnterprise,
@@ -310,7 +329,7 @@ func TestEffectiveAPIUsageCapacityTreatsNegativeEnterpriseRemainingAsZero(t *tes
 	})
 
 	require.Equal(t, 0, concurrency)
-	require.Equal(t, 0, rpm)
+	require.Equal(t, -1, rpm)
 }
 
 func TestEnterpriseManagementSetEmployeeGroupUsesEnterpriseRateWithoutDelegation(t *testing.T) {

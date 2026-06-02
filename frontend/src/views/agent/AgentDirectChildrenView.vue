@@ -66,7 +66,7 @@
               data-test="invite-default-concurrency"
               class="input h-9"
               type="number"
-              min="0"
+              min="1"
               step="1"
             />
           </label>
@@ -113,7 +113,7 @@
                   :data-test="`allocation-concurrency-${row.id}`"
                   class="input h-9"
                   type="number"
-                  min="0"
+                  min="1"
                   :value="draftFor(row).concurrency"
                   @input="updateDraft(row.id, 'concurrency', ($event.target as HTMLInputElement).value)"
                 />
@@ -134,7 +134,12 @@
 
           <template #cell-actions="{ row }">
             <div class="flex flex-wrap items-center gap-2">
-              <button class="btn btn-primary btn-sm" :disabled="savingChildId === row.id" @click="saveAllocation(row)">
+              <button
+                :data-test="`save-allocation-${row.id}`"
+                class="btn btn-primary btn-sm"
+                :disabled="savingChildId === row.id"
+                @click="saveAllocation(row)"
+              >
                 <Icon name="check" size="sm" />
                 <span>{{ t('agentManagement.direct.saveAllocation') }}</span>
               </button>
@@ -204,6 +209,8 @@
       v-if="canCreateDirectUser"
       :show="showCreateUserModal"
       :loading="creatingUser"
+      :default-concurrency="inviteDefaultsDraft.invite_default_concurrency"
+      :default-rpm="inviteDefaultsDraft.invite_default_rpm"
       @close="showCreateUserModal = false"
       @submit="createDirectUser"
     />
@@ -395,7 +402,7 @@ const canCreateDirectUser = computed(() => props.kind === 'users')
 
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 const isAgent = computed(() => authStore.user?.role === 'agent_level1' || authStore.user?.role === 'agent_level2')
-const showInviteDefaultsForm = computed(() => props.kind === 'users' && isAgent.value)
+const showInviteDefaultsForm = computed(() => props.kind === 'users' && (isAdmin.value || isAgent.value))
 const isAdminUnlimitedCapacity = computed(() => isAdmin.value)
 
 const directSubtitle = computed(() => {
@@ -449,21 +456,25 @@ function syncDrafts(items: AgentManagedUser[]) {
 }
 
 function syncInviteDefaults(defaults?: AgentInviteDefaultsUpdate) {
-  inviteDefaultsDraft.invite_default_concurrency = normalizedNonNegative(defaults?.invite_default_concurrency ?? 1)
+  inviteDefaultsDraft.invite_default_concurrency = normalizedPositiveInt(defaults?.invite_default_concurrency ?? 1)
   inviteDefaultsDraft.invite_default_rpm = normalizedNonNegative(defaults?.invite_default_rpm ?? 1)
 }
 
 function quotaFor(child: AgentManagedUser): AgentAllocationUpdate {
   if (props.kind === 'agents') {
     return {
-      concurrency: child.pool_concurrency || 0,
+      concurrency: normalizedPositiveInt(child.pool_concurrency ?? 1),
       rpm: child.pool_rpm || 0,
     }
   }
   return {
-    concurrency: child.concurrency || 0,
+    concurrency: normalizedPositiveInt(child.concurrency ?? 1),
     rpm: child.rpm_limit || 0,
   }
+}
+
+function currentQuotaFor(child: AgentManagedUser): AgentAllocationUpdate {
+  return quotaFor(child)
 }
 
 async function listChildren(): Promise<AgentDirectChildrenResponse> {
@@ -523,11 +534,15 @@ function draftFor(child: AgentManagedUser): AgentAllocationUpdate {
 }
 
 function updateDraft(childId: number, key: keyof AgentAllocationUpdate, rawValue: string) {
-  const parsed = normalizedNonNegative(rawValue)
+  const parsed = key === 'concurrency' ? normalizedPositiveInt(rawValue) : normalizedNonNegative(rawValue)
   drafts[childId] = {
-    ...(drafts[childId] || { concurrency: 0, rpm: 0 }),
+    ...(drafts[childId] || { concurrency: 1, rpm: 0 }),
     [key]: parsed,
   }
+}
+
+function normalizedPositiveInt(value: unknown): number {
+  return Math.max(1, Number.parseInt(String(value ?? '1'), 10) || 1)
 }
 
 function normalizedNonNegative(value: unknown): number {
@@ -546,10 +561,17 @@ function exceedsQuota(totalRemaining: number, unlimited: boolean | undefined, re
   if (unlimited) {
     return false
   }
+  return requested >= totalRemaining
+}
+
+function exceedsRpmQuota(totalRemaining: number, unlimited: boolean | undefined, requested: number): boolean {
+  if (unlimited) {
+    return false
+  }
   if (requested === 0) {
     return true
   }
-  return requested > totalRemaining
+  return requested >= totalRemaining
 }
 
 function exceedsRemainingAllocation(payload: AgentDirectUserCreateRequest | AgentInviteDefaultsUpdate): boolean {
@@ -563,7 +585,20 @@ function exceedsRemainingAllocation(payload: AgentDirectUserCreateRequest | Agen
   const requestedConcurrency = 'allocated_concurrency' in payload ? payload.allocated_concurrency : payload.invite_default_concurrency
   const requestedRPM = 'allocated_rpm' in payload ? payload.allocated_rpm : payload.invite_default_rpm
   return exceedsQuota(current.remaining_concurrency, current.unlimited_concurrency, requestedConcurrency) ||
-    exceedsQuota(current.remaining_rpm, current.unlimited_rpm, requestedRPM)
+    exceedsRpmQuota(current.remaining_rpm, current.unlimited_rpm, requestedRPM)
+}
+
+function exceedsRemainingAllocationForExisting(child: AgentManagedUser, payload: AgentAllocationUpdate): boolean {
+  if (isAdminUnlimitedCapacity.value) {
+    return false
+  }
+  const current = allocation.value
+  if (!current) {
+    return false
+  }
+  const existing = currentQuotaFor(child)
+  return exceedsQuota(current.remaining_concurrency + existing.concurrency, current.unlimited_concurrency, payload.concurrency) ||
+    exceedsRpmQuota(current.remaining_rpm + (existing.rpm > 0 ? existing.rpm : 0), current.unlimited_rpm, payload.rpm)
 }
 
 async function createDirectUser(payload: AgentDirectUserCreateRequest) {
@@ -586,7 +621,7 @@ async function createDirectUser(payload: AgentDirectUserCreateRequest) {
 
 async function saveInviteDefaults() {
   const payload = {
-    invite_default_concurrency: normalizedNonNegative(inviteDefaultsDraft.invite_default_concurrency),
+    invite_default_concurrency: normalizedPositiveInt(inviteDefaultsDraft.invite_default_concurrency),
     invite_default_rpm: normalizedNonNegative(inviteDefaultsDraft.invite_default_rpm),
   }
   if (exceedsRemainingAllocation(payload)) {
@@ -610,9 +645,14 @@ async function saveInviteDefaults() {
 }
 
 async function saveAllocation(child: AgentManagedUser) {
+  const draft = draftFor(child)
+  if (exceedsRemainingAllocationForExisting(child, draft)) {
+    appStore.showError(t('agentManagement.direct.insufficientAllocation'))
+    return
+  }
   savingChildId.value = child.id
   try {
-    allocation.value = await agentManagementAPI.updateAllocation(child.id, draftFor(child))
+    allocation.value = await agentManagementAPI.updateAllocation(child.id, draft)
     appStore.showSuccess(t('agentManagement.direct.allocationSaved'))
     await loadData()
   } catch (error) {

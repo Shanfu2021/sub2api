@@ -127,9 +127,9 @@ func (r *enterpriseManagementRepository) GetEnterpriseEmployeeQuotaUsage(ctx con
 	var usage service.QuotaUsageSummary
 	err := scanSingleRow(ctx, exec, `
 SELECT
-  COALESCE(SUM(CASE WHEN concurrency = 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
-  COALESCE(SUM(CASE WHEN rpm_limit = 0 THEN 0 ELSE rpm_limit END), 0) AS rpm,
-  COALESCE(BOOL_OR(concurrency = 0), false) AS unlimited_concurrency,
+  COALESCE(SUM(CASE WHEN concurrency < 0 THEN 0 ELSE concurrency END), 0) AS concurrency,
+  COALESCE(SUM(CASE WHEN rpm_limit <= 0 THEN 0 ELSE rpm_limit END), 0) AS rpm,
+  false AS unlimited_concurrency,
   COALESCE(BOOL_OR(rpm_limit = 0), false) AS unlimited_rpm
 FROM users
 WHERE parent_user_id = $1
@@ -622,13 +622,11 @@ func (r *enterpriseManagementRepository) ensureEnterpriseAllocationAvailable(ctx
 	if err != nil {
 		return err
 	}
-	if profile.PoolConcurrency != 0 {
-		if targetConcurrency == 0 || usage.UnlimitedConcurrency || usage.Concurrency+targetConcurrency > profile.PoolConcurrency {
-			return service.ErrEnterpriseManagementAllocationExceeded
-		}
+	if targetConcurrency < 1 || usage.Concurrency+targetConcurrency >= profile.PoolConcurrency {
+		return service.ErrEnterpriseManagementAllocationExceeded
 	}
 	if profile.PoolRPM != 0 {
-		if targetRPM == 0 || usage.UnlimitedRPM || usage.RPM+targetRPM > profile.PoolRPM {
+		if targetRPM == 0 || usage.UnlimitedRPM || usage.RPM+targetRPM >= profile.PoolRPM {
 			return service.ErrEnterpriseManagementAllocationExceeded
 		}
 	}
@@ -645,8 +643,8 @@ func (r *enterpriseManagementRepository) recalculateEnterpriseQuota(ctx context.
 		return err
 	}
 	return r.setEnterpriseEffectiveQuota(ctx, enterpriseID,
-		enterpriseEffectiveRemainingForStorage(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency),
-		enterpriseEffectiveRemainingForStorage(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
+		enterpriseConcurrencyRemainingForStorage(profile.PoolConcurrency, usage.Concurrency),
+		enterpriseRPMRemainingForStorage(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
 	)
 }
 
@@ -917,7 +915,7 @@ WHERE parent_user_id = $1
 }
 
 func validateEnterpriseAllocationTarget(target service.EmployeeAllocationUpdate) error {
-	if target.Balance < 0 || target.Concurrency < 0 || target.RPM < 0 {
+	if target.Balance < 0 || target.Concurrency < 1 || target.RPM < 0 {
 		return service.ErrEnterpriseManagementInvalidAllocation
 	}
 	return nil
@@ -930,17 +928,25 @@ func enterpriseAllocationSummary(profile *service.EnterpriseProfile, usage servi
 	return service.AllocationSummary{
 		TotalConcurrency:     profile.PoolConcurrency,
 		AllocatedConcurrency: usage.Concurrency,
-		RemainingConcurrency: repoQuotaRemaining(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency),
+		RemainingConcurrency: repoConcurrencyRemaining(profile.PoolConcurrency, usage.Concurrency),
 		TotalRPM:             profile.PoolRPM,
 		AllocatedRPM:         usage.RPM,
 		RemainingRPM:         repoQuotaRemaining(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
-		UnlimitedCapacity:    profile.PoolConcurrency == 0 || profile.PoolRPM == 0 || usage.UnlimitedConcurrency || usage.UnlimitedRPM,
-		UnlimitedConcurrency: profile.PoolConcurrency == 0 || usage.UnlimitedConcurrency,
-		UnlimitedRPM:         profile.PoolRPM == 0 || usage.UnlimitedRPM,
+		UnlimitedCapacity:    false,
+		UnlimitedConcurrency: false,
+		UnlimitedRPM:         profile.PoolRPM == 0,
 	}
 }
 
-func enterpriseEffectiveRemainingForStorage(total int, allocated int, allocatedUnlimited bool) int {
+func enterpriseConcurrencyRemainingForStorage(total int, allocated int) int {
+	remaining := repoConcurrencyRemaining(total, allocated)
+	if remaining == 0 {
+		return -1
+	}
+	return remaining
+}
+
+func enterpriseRPMRemainingForStorage(total int, allocated int, allocatedUnlimited bool) int {
 	remaining := repoQuotaRemaining(total, allocated, allocatedUnlimited)
 	if total > 0 && remaining == 0 {
 		return -1

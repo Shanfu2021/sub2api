@@ -189,12 +189,15 @@ func TestAcquireUserSlot_IndependentFromAccount(t *testing.T) {
 	require.NotNil(t, result.ReleaseFunc)
 }
 
-func TestAcquireUserSlot_UnlimitedConcurrency(t *testing.T) {
+func TestAcquireUserSlot_NonPositiveConcurrencyCannotAcquire(t *testing.T) {
 	svc := NewConcurrencyService(&stubConcurrencyCacheForTest{})
 
-	result, err := svc.AcquireUserSlot(context.Background(), 1, 0)
-	require.NoError(t, err)
-	require.True(t, result.Acquired)
+	for _, maxConcurrency := range []int{0, -1} {
+		result, err := svc.AcquireUserSlot(context.Background(), 1, maxConcurrency)
+		require.NoError(t, err)
+		require.False(t, result.Acquired)
+		require.Nil(t, result.ReleaseFunc)
+	}
 }
 
 func TestGenerateRequestID_UsesStablePrefixAndMonotonicCounter(t *testing.T) {

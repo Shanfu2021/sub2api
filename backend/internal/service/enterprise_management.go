@@ -104,7 +104,7 @@ func (s *EnterpriseManagementService) ListEmployeesWithQuery(ctx context.Context
 }
 
 func (s *EnterpriseManagementService) CreateEmployee(ctx context.Context, actorID int64, input EmployeeCreateInput) (*User, error) {
-	if input.Balance < 0 || input.Concurrency < 0 || input.RPM < 0 {
+	if input.Balance < 0 || input.Concurrency < 1 || input.RPM < 0 {
 		return nil, ErrEnterpriseManagementInvalidAllocation
 	}
 	actor, err := s.requireEnterpriseActor(ctx, actorID)
@@ -146,7 +146,7 @@ func (s *EnterpriseManagementService) CreateEmployee(ctx context.Context, actorI
 }
 
 func (s *EnterpriseManagementService) UpdateEmployeeAllocation(ctx context.Context, actorID int64, employeeID int64, input EmployeeAllocationUpdate) (*AllocationSummary, error) {
-	if input.Balance < 0 || input.Concurrency < 0 || input.RPM < 0 {
+	if input.Balance < 0 || input.Concurrency < 1 || input.RPM < 0 {
 		return nil, ErrEnterpriseManagementInvalidAllocation
 	}
 	actor, err := s.requireEnterpriseActor(ctx, actorID)
@@ -371,8 +371,8 @@ func (s *EnterpriseManagementService) ensureEnterpriseQuotaAvailable(ctx context
 	if err != nil {
 		return err
 	}
-	if quotaRequestExceedsCapacity(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency, requestedConcurrency) ||
-		quotaRequestExceedsCapacity(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM, requestedRPM) {
+	if concurrencyRequestExceedsCapacity(profile.PoolConcurrency, usage.Concurrency, requestedConcurrency) ||
+		rpmRequestExceedsCapacity(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM, requestedRPM) {
 		return ErrEnterpriseManagementAllocationExceeded
 	}
 	return nil
@@ -432,12 +432,12 @@ func buildEnterpriseAllocationSummary(profile *EnterpriseProfile, usage QuotaUsa
 	return AllocationSummary{
 		TotalConcurrency:     profile.PoolConcurrency,
 		AllocatedConcurrency: usage.Concurrency,
-		RemainingConcurrency: quotaRemaining(profile.PoolConcurrency, usage.Concurrency, usage.UnlimitedConcurrency),
+		RemainingConcurrency: concurrencyRemaining(profile.PoolConcurrency, usage.Concurrency),
 		TotalRPM:             profile.PoolRPM,
 		AllocatedRPM:         usage.RPM,
-		RemainingRPM:         quotaRemaining(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
-		UnlimitedCapacity:    profile.PoolConcurrency == 0 && profile.PoolRPM == 0,
-		UnlimitedConcurrency: profile.PoolConcurrency == 0,
+		RemainingRPM:         rpmRemaining(profile.PoolRPM, usage.RPM, usage.UnlimitedRPM),
+		UnlimitedCapacity:    false,
+		UnlimitedConcurrency: false,
 		UnlimitedRPM:         profile.PoolRPM == 0,
 	}
 }

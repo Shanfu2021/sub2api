@@ -167,7 +167,7 @@ func (s *EnterpriseManagementRepoSuite) TestCreateEmployeeRejectsBalanceAndQuota
 		Email:        "employee-too-large@test.local",
 		PasswordHash: "test-password-hash",
 		Balance:      1,
-		Concurrency:  3,
+		Concurrency:  2,
 		RPMLimit:     10,
 		Status:       service.StatusActive,
 	}
@@ -186,7 +186,7 @@ SELECT COUNT(*) FROM users WHERE parent_user_id = $1 AND role = $2`,
 
 func (s *EnterpriseManagementRepoSuite) TestUpdateEmployeeAllocationMovesOnlyBalanceDelta() {
 	enterprise := s.mustCreateEnterprise("enterprise-update@test.local", 100, service.StatusActive)
-	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 10, 100))
+	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 11, 101))
 	employee := s.mustCreateEmployeeThroughRepo(enterprise.ID, "employee-update@test.local", 25, 3, 30)
 
 	_, err := s.repo.UpdateEmployeeAllocation(s.ctx, enterprise.ID, employee.ID, enterprise.ID, service.EmployeeAllocationUpdate{
@@ -355,17 +355,17 @@ func (s *EnterpriseManagementRepoSuite) TestEnterpriseProfileUsageAndRecalculate
 	s.Require().Equal(3, reloaded.Concurrency)
 	s.Require().Equal(30, reloaded.RpmLimit)
 
-	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 0, 100))
+	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 11, 100))
 	_, err = s.repo.UpdateEmployeeAllocation(s.ctx, enterprise.ID, employeeA.ID, enterprise.ID, service.EmployeeAllocationUpdate{
 		Balance:     0,
-		Concurrency: 0,
+		Concurrency: 1,
 		RPM:         30,
 	})
 	s.Require().NoError(err)
 	s.Require().NoError(s.repo.RecalculateEnterpriseQuota(s.ctx, enterprise.ID))
 	reloaded, err = s.client.User.Get(s.ctx, enterprise.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(0, reloaded.Concurrency)
+	s.Require().Equal(6, reloaded.Concurrency)
 	s.Require().Equal(30, reloaded.RpmLimit)
 }
 
@@ -382,7 +382,7 @@ func (s *EnterpriseManagementRepoSuite) TestFiniteEnterprisePoolExhaustionIsStor
 	s.Require().Equal(-1, reloaded.RpmLimit)
 	concurrency, rpm := service.EffectiveAPIUsageCapacity(userEntityToService(reloaded))
 	s.Require().Equal(0, concurrency)
-	s.Require().Equal(0, rpm)
+	s.Require().Equal(-1, rpm)
 }
 
 func (s *EnterpriseManagementRepoSuite) TestHardDeleteEnterpriseWithEmployees() {

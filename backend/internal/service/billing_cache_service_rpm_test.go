@@ -201,6 +201,20 @@ func TestBillingCacheService_CheckRPM_UserLevelFallbackWhenGroupUnlimited(t *tes
 	require.EqualValues(t, 3, atomic.LoadInt32(&cache.userCalls))
 }
 
+func TestBillingCacheService_CheckRPM_NegativeUserLimitRejectsWithoutCounting(t *testing.T) {
+	cache := &userRPMCacheStub{}
+	repo := &rpmOverrideRepoStub{override: nil}
+	svc := newBillingServiceForRPM(t, cache, repo)
+
+	user := &User{ID: 1, RPMLimit: -1}
+	group := &Group{ID: 10, RPMLimit: 0}
+
+	require.ErrorIs(t, svc.checkRPM(context.Background(), user, group), ErrUserRPMExceeded)
+	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userGroupCalls))
+	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userCalls))
+	require.EqualValues(t, 0, atomic.LoadInt32(&repo.calls))
+}
+
 func TestBillingCacheService_CheckRPM_NoLimitsConfiguredIsNoop(t *testing.T) {
 	cache := &userRPMCacheStub{}
 	repo := &rpmOverrideRepoStub{override: nil}

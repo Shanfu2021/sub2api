@@ -57,7 +57,7 @@
               v-model.number="form.allocated_concurrency"
               data-test="create-direct-user-concurrency"
               type="number"
-              min="0"
+              min="1"
               step="1"
               class="input"
             />
@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AgentDirectUserCreateRequest } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -100,6 +100,8 @@ import Icon from '@/components/icons/Icon.vue'
 const props = defineProps<{
   show: boolean
   loading?: boolean
+  defaultConcurrency?: number
+  defaultRpm?: number
 }>()
 
 const emit = defineEmits<{
@@ -109,11 +111,14 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+const defaultConcurrency = computed(() => positiveIntValue(props.defaultConcurrency))
+const defaultRpm = computed(() => numericValue(props.defaultRpm))
+
 const form = reactive({
   email: '',
   password: '',
   username: '',
-  allocated_concurrency: 0,
+  allocated_concurrency: 1,
   allocated_rpm: 0,
 })
 
@@ -122,8 +127,8 @@ function resetForm() {
     email: '',
     password: '',
     username: '',
-    allocated_concurrency: 0,
-    allocated_rpm: 0,
+    allocated_concurrency: defaultConcurrency.value,
+    allocated_rpm: defaultRpm.value,
   })
 }
 
@@ -131,12 +136,16 @@ function numericValue(value: unknown): number {
   return Math.max(0, Number(value) || 0)
 }
 
+function positiveIntValue(value: unknown): number {
+  return Math.max(1, Number(value) || 1)
+}
+
 function submit() {
   emit('submit', {
     email: form.email.trim(),
     password: form.password,
     username: form.username.trim(),
-    allocated_concurrency: numericValue(form.allocated_concurrency),
+    allocated_concurrency: positiveIntValue(form.allocated_concurrency),
     allocated_rpm: numericValue(form.allocated_rpm),
   })
 }

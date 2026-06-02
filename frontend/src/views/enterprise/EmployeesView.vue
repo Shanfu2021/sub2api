@@ -81,7 +81,7 @@
                   :data-test="`employee-concurrency-${row.id}`"
                   class="input h-9"
                   type="number"
-                  min="0"
+                  min="1"
                   step="1"
                   :value="draftFor(row).concurrency"
                   @input="updateDraft(row.id, 'concurrency', ($event.target as HTMLInputElement).value)"
@@ -110,7 +110,12 @@
 
           <template #cell-actions="{ row }">
             <div class="flex flex-wrap items-center gap-2">
-              <button class="btn btn-primary btn-sm" :disabled="savingEmployeeId === row.id" @click="saveAllocation(row)">
+              <button
+                :data-test="`employee-save-allocation-${row.id}`"
+                class="btn btn-primary btn-sm"
+                :disabled="savingEmployeeId === row.id"
+                @click="saveAllocation(row)"
+              >
                 <Icon name="check" size="sm" />
                 <span>{{ t('agentManagement.direct.saveAllocation') }}</span>
               </button>
@@ -182,7 +187,7 @@
           </div>
           <div>
             <label class="input-label">{{ t('agentManagement.direct.allocatedConcurrency') }}</label>
-            <input v-model.number="createForm.concurrency" data-test="employee-create-concurrency" type="number" min="0" step="1" class="input" />
+            <input v-model.number="createForm.concurrency" data-test="employee-create-concurrency" type="number" min="1" step="1" class="input" />
           </div>
           <div>
             <label class="input-label">{{ t('agentManagement.direct.allocatedRpm') }}</label>
@@ -357,8 +362,16 @@ function extractPagination(result: EnterpriseEmployeesResponse) {
 function quotaFor(employee: EnterpriseEmployee): EnterpriseEmployeeAllocationUpdate {
   return {
     balance: Number(employee.balance || 0),
-    concurrency: Number(employee.concurrency || employee.allocated_concurrency || 0),
+    concurrency: normalizedPositiveInt(employee.concurrency || employee.allocated_concurrency || 1),
     rpm: Number(employee.rpm_limit || employee.allocated_rpm || 0),
+  }
+}
+
+function currentQuotaFor(employee: EnterpriseEmployee): Pick<EnterpriseEmployeeAllocationUpdate, 'concurrency' | 'rpm'> {
+  const quota = quotaFor(employee)
+  return {
+    concurrency: quota.concurrency,
+    rpm: quota.rpm,
   }
 }
 
@@ -419,6 +432,10 @@ function normalizedNonNegativeInt(value: unknown): number {
   return Math.max(0, Number.parseInt(String(value ?? '0'), 10) || 0)
 }
 
+function normalizedPositiveInt(value: unknown): number {
+  return Math.max(1, Number.parseInt(String(value ?? '1'), 10) || 1)
+}
+
 function normalizedNonNegativeNumber(value: unknown): number {
   const parsed = Number.parseFloat(String(value ?? '0'))
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -428,10 +445,10 @@ function normalizedNonNegativeNumber(value: unknown): number {
 }
 
 function updateDraft(employeeId: number, key: keyof EnterpriseEmployeeAllocationUpdate, rawValue: string) {
-  const current = drafts[employeeId] || { balance: 0, concurrency: 0, rpm: 0 }
+  const current = drafts[employeeId] || { balance: 0, concurrency: 1, rpm: 0 }
   drafts[employeeId] = {
     ...current,
-    [key]: key === 'balance' ? normalizedNonNegativeNumber(rawValue) : normalizedNonNegativeInt(rawValue),
+    [key]: key === 'balance' ? normalizedNonNegativeNumber(rawValue) : key === 'concurrency' ? normalizedPositiveInt(rawValue) : normalizedNonNegativeInt(rawValue),
   }
 }
 
@@ -439,10 +456,17 @@ function exceedsQuota(totalRemaining: number, unlimited: boolean | undefined, re
   if (unlimited) {
     return false
   }
+  return requested >= totalRemaining
+}
+
+function exceedsRpmQuota(totalRemaining: number, unlimited: boolean | undefined, requested: number): boolean {
+  if (unlimited) {
+    return false
+  }
   if (requested === 0) {
     return true
   }
-  return requested > totalRemaining
+  return requested >= totalRemaining
 }
 
 function exceedsRemainingAllocation(payload: Pick<EnterpriseEmployeeAllocationUpdate, 'concurrency' | 'rpm'>): boolean {
@@ -451,7 +475,17 @@ function exceedsRemainingAllocation(payload: Pick<EnterpriseEmployeeAllocationUp
     return false
   }
   return exceedsQuota(current.remaining_concurrency, current.unlimited_concurrency, payload.concurrency) ||
-    exceedsQuota(current.remaining_rpm, current.unlimited_rpm, payload.rpm)
+    exceedsRpmQuota(current.remaining_rpm, current.unlimited_rpm, payload.rpm)
+}
+
+function exceedsRemainingAllocationForExisting(employee: EnterpriseEmployee, payload: Pick<EnterpriseEmployeeAllocationUpdate, 'concurrency' | 'rpm'>): boolean {
+  const current = allocation.value
+  if (!current) {
+    return false
+  }
+  const existing = currentQuotaFor(employee)
+  return exceedsQuota(current.remaining_concurrency + existing.concurrency, current.unlimited_concurrency, payload.concurrency) ||
+    exceedsRpmQuota(current.remaining_rpm + (existing.rpm > 0 ? existing.rpm : 0), current.unlimited_rpm, payload.rpm)
 }
 
 function resetCreateForm() {
@@ -482,7 +516,7 @@ async function createEmployee() {
     password: createForm.password,
     username: String(createForm.username ?? '').trim(),
     balance: normalizedNonNegativeNumber(createForm.balance),
-    concurrency: normalizedNonNegativeInt(createForm.concurrency),
+    concurrency: normalizedPositiveInt(createForm.concurrency),
     rpm: normalizedNonNegativeInt(createForm.rpm),
   }
   if (exceedsRemainingAllocation(payload)) {
@@ -504,13 +538,18 @@ async function createEmployee() {
 
 async function saveAllocation(employee: EnterpriseEmployee) {
   const draft = draftFor(employee)
+  const payload = {
+    balance: normalizedNonNegativeNumber(draft.balance),
+    concurrency: normalizedPositiveInt(draft.concurrency),
+    rpm: normalizedNonNegativeInt(draft.rpm),
+  }
+  if (exceedsRemainingAllocationForExisting(employee, payload)) {
+    appStore.showError(t('enterpriseManagement.employees.insufficientAllocation'))
+    return
+  }
   savingEmployeeId.value = employee.id
   try {
-    allocation.value = await enterpriseManagementAPI.updateEmployeeAllocation(employee.id, {
-      balance: normalizedNonNegativeNumber(draft.balance),
-      concurrency: normalizedNonNegativeInt(draft.concurrency),
-      rpm: normalizedNonNegativeInt(draft.rpm),
-    })
+    allocation.value = await enterpriseManagementAPI.updateEmployeeAllocation(employee.id, payload)
     appStore.showSuccess(t('agentManagement.direct.allocationSaved'))
     await loadData()
   } catch (error) {
