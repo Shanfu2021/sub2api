@@ -5,7 +5,7 @@ import DirectUsersView from '@/views/agent/DirectUsersView.vue'
 import DirectAgentsView from '@/views/agent/DirectAgentsView.vue'
 import DirectEnterprisesView from '@/views/agent/DirectEnterprisesView.vue'
 import MyGroupsView from '@/views/agent/MyGroupsView.vue'
-import type { AgentDirectChildrenResponse, AgentManagedUser, User, UserRole } from '@/types'
+import type { AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, Group, User, UserRole } from '@/types'
 
 const {
   getCurrentUser,
@@ -19,6 +19,8 @@ const {
   upgradeChild,
   deleteDirectChild,
   listGroups,
+  setChildGroupDelegation,
+  removeChildGroupDelegation,
   showError,
   showSuccess,
 } = vi.hoisted(() => ({
@@ -33,6 +35,8 @@ const {
   upgradeChild: vi.fn(),
   deleteDirectChild: vi.fn(),
   listGroups: vi.fn(),
+  setChildGroupDelegation: vi.fn(),
+  removeChildGroupDelegation: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
@@ -49,8 +53,8 @@ vi.mock('@/api/agentManagement', () => ({
     upgradeChild,
     deleteDirectChild,
     listGroups,
-    setChildGroupDelegation: vi.fn(),
-    removeChildGroupDelegation: vi.fn(),
+    setChildGroupDelegation,
+    removeChildGroupDelegation,
   },
 }))
 
@@ -147,6 +151,46 @@ function makeChild(overrides: Partial<AgentManagedUser> = {}): AgentManagedUser 
   }
 }
 
+function makeGroup(overrides: Partial<Group> = {}): Group {
+  return {
+    id: 7,
+    name: 'Exclusive Retail',
+    description: null,
+    platform: 'openai',
+    rate_multiplier: 1.7,
+    is_exclusive: true,
+    status: 'active',
+    subscription_type: 'standard',
+    daily_limit_usd: null,
+    weekly_limit_usd: null,
+    monthly_limit_usd: null,
+    allow_image_generation: false,
+    image_rate_independent: false,
+    image_rate_multiplier: 1,
+    image_price_1k: null,
+    image_price_2k: null,
+    image_price_4k: null,
+    claude_code_only: false,
+    fallback_group_id: null,
+    fallback_group_id_on_invalid_request: null,
+    require_oauth_only: false,
+    require_privacy_set: false,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeAgentGroupRate(overrides: Partial<AgentGroupRate> = {}): AgentGroupRate {
+  return {
+    group: makeGroup(),
+    effective_rate: 2.4,
+    can_delegate: true,
+    source: 'delegated',
+    ...overrides,
+  }
+}
+
 function makeChildrenResponse(items: AgentManagedUser[]): AgentDirectChildrenResponse {
   return {
     items,
@@ -223,39 +267,9 @@ describe('agent management pages', () => {
     })
     upgradeChild.mockResolvedValue(makeChild({ role: 'agent_level1' }))
     deleteDirectChild.mockResolvedValue({ id: 12 })
-    listGroups.mockResolvedValue([
-      {
-        group: {
-          id: 7,
-          name: 'Exclusive Retail',
-          description: null,
-          platform: 'openai',
-          rate_multiplier: 1.7,
-          is_exclusive: true,
-          status: 'active',
-          subscription_type: 'standard',
-          daily_limit_usd: null,
-          weekly_limit_usd: null,
-          monthly_limit_usd: null,
-          allow_image_generation: false,
-          image_rate_independent: false,
-          image_rate_multiplier: 1,
-          image_price_1k: null,
-          image_price_2k: null,
-          image_price_4k: null,
-          claude_code_only: false,
-          fallback_group_id: null,
-          fallback_group_id_on_invalid_request: null,
-          require_oauth_only: false,
-          require_privacy_set: false,
-          created_at: '2026-06-01T00:00:00Z',
-          updated_at: '2026-06-01T00:00:00Z',
-        },
-        effective_rate: 2.4,
-        can_delegate: true,
-        source: 'delegated',
-      },
-    ])
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    setChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
+    removeChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
   })
 
   it('does not render balance, recharge, disable, or official delete actions on direct users', async () => {
@@ -519,6 +533,64 @@ describe('agent management pages', () => {
     expect(upgradeChild).toHaveBeenCalledWith(12, {
       target_role: 'enterprise',
     })
+  })
+
+  it('lets managers delegate a group rate to a direct child', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
+    await flushPromises()
+
+    expect(listGroups).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Exclusive Retail')
+    expect(wrapper.text()).not.toContain('1.7')
+
+    await wrapper.get('[data-test="group-rate-7"]').setValue('2.8')
+    await wrapper.get('[data-test="group-can-delegate-7"]').setValue(true)
+    await wrapper.get('[data-test="save-group-7"]').trigger('click')
+    await flushPromises()
+
+    expect(setChildGroupDelegation).toHaveBeenCalledWith(12, 7, {
+      rate_multiplier: 2.8,
+      can_delegate: true,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.delegationSaved')
+  })
+
+  it('lets managers reclaim a delegated group from a direct child', async () => {
+    const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="remove-group-7"]').trigger('click')
+    await flushPromises()
+
+    expect(removeChildGroupDelegation).toHaveBeenCalledWith(12, 7)
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.delegationRemoved')
+  })
+
+  it('only offers child group delegation for groups the manager can delegate', async () => {
+    listGroups.mockResolvedValue([
+      makeAgentGroupRate({
+        group: makeGroup({ id: 4, name: 'Public Shared', rate_multiplier: 1, is_exclusive: false }),
+        effective_rate: 1,
+        can_delegate: false,
+        source: 'public',
+      }),
+      makeAgentGroupRate(),
+    ])
+    const wrapper = mountAgentView(DirectEnterprisesView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Exclusive Retail')
+    expect(wrapper.text()).not.toContain('Public Shared')
+    expect(wrapper.find('[data-test="save-group-4"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="save-group-7"]').exists()).toBe(true)
   })
 
   it('renders effective group rates without upstream cost fields', async () => {

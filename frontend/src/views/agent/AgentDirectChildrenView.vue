@@ -151,6 +151,16 @@
                 <span>{{ roleLabel(targetRole) }}</span>
               </button>
 
+              <button
+                :data-test="`manage-groups-${row.id}`"
+                class="btn btn-secondary btn-sm"
+                :disabled="savingChildId === row.id"
+                @click="openGroupDialog(row)"
+              >
+                <Icon name="grid" size="sm" />
+                <span>{{ t('agentManagement.groups.manage') }}</span>
+              </button>
+
               <button class="btn btn-secondary btn-sm text-red-600 dark:text-red-400" @click="askDetach(row)">
                 <Icon name="trash" size="sm" />
                 <span>{{ deleteActionLabel(row) }}</span>
@@ -189,6 +199,95 @@
       @close="showCreateUserModal = false"
       @submit="createDirectUser"
     />
+
+    <BaseDialog
+      :show="groupDialog.show"
+      :title="groupDialogTitle"
+      width="wide"
+      @close="closeGroupDialog"
+    >
+      <div class="space-y-4" data-test="group-delegation-modal">
+        <div v-if="groupDialog.loading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+
+        <div
+          v-else-if="delegableGroups.length === 0"
+          class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+        >
+          {{ t('agentManagement.groups.emptyDelegable') }}
+        </div>
+
+        <div v-else class="space-y-3">
+          <div
+            v-for="groupRate in delegableGroups"
+            :key="groupRate.group.id"
+            class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+          >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h4 class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ groupRate.group.name }}
+                  </h4>
+                  <span class="badge badge-gray">{{ sourceLabel(groupRate.source) }}</span>
+                </div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('agentManagement.groups.effectiveRate') }}: {{ groupRate.effective_rate }}
+                </div>
+              </div>
+
+              <div class="grid w-full gap-3 sm:grid-cols-[minmax(140px,1fr)_auto] lg:w-auto lg:grid-cols-[160px_auto] lg:items-end">
+                <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                  <span>{{ t('agentManagement.groups.childRate') }}</span>
+                  <input
+                    :data-test="`group-rate-${groupRate.group.id}`"
+                    class="input h-9"
+                    type="number"
+                    min="0.000001"
+                    step="0.000001"
+                    :value="groupDraftFor(groupRate).rate_multiplier"
+                    @input="updateGroupRateDraft(groupRate.group.id, ($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+
+                <label class="flex min-h-9 items-center gap-2 text-xs text-gray-600 dark:text-dark-300">
+                  <input
+                    :data-test="`group-can-delegate-${groupRate.group.id}`"
+                    class="checkbox"
+                    type="checkbox"
+                    :checked="groupDraftFor(groupRate).can_delegate"
+                    @change="updateGroupCanDelegateDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                  <span>{{ t('agentManagement.groups.allowChildDelegate') }}</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap justify-end gap-2">
+              <button
+                :data-test="`remove-group-${groupRate.group.id}`"
+                class="btn btn-secondary btn-sm text-red-600 dark:text-red-400"
+                :disabled="groupDialog.savingGroupId === groupRate.group.id"
+                @click="removeGroupDelegation(groupRate)"
+              >
+                <Icon name="trash" size="sm" />
+                <span>{{ t('agentManagement.groups.removeDelegation') }}</span>
+              </button>
+              <button
+                :data-test="`save-group-${groupRate.group.id}`"
+                class="btn btn-primary btn-sm"
+                :disabled="groupDialog.savingGroupId === groupRate.group.id"
+                @click="saveGroupDelegation(groupRate)"
+              >
+                <Icon name="check" size="sm" />
+                <span>{{ t('agentManagement.groups.saveDelegation') }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -203,6 +302,7 @@ import type {
   AgentAllocationUpdate,
   AgentDirectChildrenResponse,
   AgentDirectUserCreateRequest,
+  AgentGroupRate,
   AgentInviteDefaultsUpdate,
   AgentManagedUser,
   AgentUpgradeTargetRole,
@@ -214,6 +314,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import AgentDirectUserCreateModal from '@/components/agent/AgentDirectUserCreateModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -244,6 +345,20 @@ const inviteDefaultsDraft = reactive<AgentInviteDefaultsUpdate>({
 const drafts = reactive<Record<number, AgentAllocationUpdate>>({})
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const detachDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>({ show: false, child: null })
+const groupDialog = reactive<{
+  show: boolean
+  child: AgentManagedUser | null
+  loading: boolean
+  savingGroupId: number | null
+  groups: AgentGroupRate[]
+}>({
+  show: false,
+  child: null,
+  loading: false,
+  savingGroupId: null,
+  groups: [],
+})
+const groupDrafts = reactive<Record<number, { rate_multiplier: number; can_delegate: boolean }>>({})
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
@@ -288,6 +403,8 @@ const deleteDialogMessage = computed(() => {
 const deleteDialogConfirmText = computed(() => deleteDialogIsTrueDelete.value ? t('agentManagement.direct.deleteUser') : t('agentManagement.direct.detach'))
 const remainingConcurrencyText = computed(() => allocation.value?.unlimited_concurrency ? t('common.unlimited') : String(allocation.value?.remaining_concurrency ?? '-'))
 const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
+const delegableGroups = computed(() => groupDialog.groups.filter((item) => item.can_delegate))
+const groupDialogTitle = computed(() => t('agentManagement.groups.manageTitle', { email: groupDialog.child?.email || '' }))
 
 function extractPagination(result: AgentDirectChildrenResponse) {
   const source = result.pagination || {}
@@ -371,6 +488,14 @@ function updateDraft(childId: number, key: keyof AgentAllocationUpdate, rawValue
 
 function normalizedNonNegative(value: unknown): number {
   return Math.max(0, Number.parseInt(String(value ?? '0'), 10) || 0)
+}
+
+function normalizedPositiveFloat(value: unknown): number {
+  const parsed = Number.parseFloat(String(value ?? '0'))
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0
+  }
+  return parsed
 }
 
 function exceedsQuota(totalRemaining: number, unlimited: boolean | undefined, requested: number): boolean {
@@ -473,6 +598,110 @@ async function upgrade(child: AgentManagedUser, targetRole: AgentUpgradeTargetRo
     appStore.showError((error as { message?: string }).message || t('agentManagement.direct.upgradeFailed'))
   } finally {
     savingChildId.value = null
+  }
+}
+
+function sourceLabel(source: AgentGroupRate['source']): string {
+  return t(`agentManagement.groups.sources.${source}`)
+}
+
+function clearGroupDrafts() {
+  for (const key of Object.keys(groupDrafts)) {
+    delete groupDrafts[Number(key)]
+  }
+}
+
+function syncGroupDrafts(groups: AgentGroupRate[]) {
+  clearGroupDrafts()
+  for (const item of groups) {
+    if (!item.can_delegate) continue
+    groupDrafts[item.group.id] = {
+      rate_multiplier: item.effective_rate,
+      can_delegate: false,
+    }
+  }
+}
+
+function groupDraftFor(groupRate: AgentGroupRate) {
+  if (!groupDrafts[groupRate.group.id]) {
+    groupDrafts[groupRate.group.id] = {
+      rate_multiplier: groupRate.effective_rate,
+      can_delegate: false,
+    }
+  }
+  return groupDrafts[groupRate.group.id]
+}
+
+function updateGroupRateDraft(groupID: number, rawValue: string) {
+  groupDrafts[groupID] = {
+    ...(groupDrafts[groupID] || { rate_multiplier: 0, can_delegate: false }),
+    rate_multiplier: normalizedPositiveFloat(rawValue),
+  }
+}
+
+function updateGroupCanDelegateDraft(groupID: number, canDelegate: boolean) {
+  groupDrafts[groupID] = {
+    ...(groupDrafts[groupID] || { rate_multiplier: 0, can_delegate: false }),
+    can_delegate: canDelegate,
+  }
+}
+
+async function openGroupDialog(child: AgentManagedUser) {
+  groupDialog.child = child
+  groupDialog.show = true
+  groupDialog.loading = true
+  groupDialog.groups = []
+  clearGroupDrafts()
+  try {
+    const groups = await agentManagementAPI.listGroups()
+    groupDialog.groups = groups
+    syncGroupDrafts(groups)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    groupDialog.loading = false
+  }
+}
+
+function closeGroupDialog() {
+  groupDialog.show = false
+  groupDialog.child = null
+  groupDialog.groups = []
+  groupDialog.savingGroupId = null
+  clearGroupDrafts()
+}
+
+async function saveGroupDelegation(groupRate: AgentGroupRate) {
+  if (!groupDialog.child) return
+  const draft = groupDraftFor(groupRate)
+  if (draft.rate_multiplier <= 0) {
+    appStore.showError(t('agentManagement.groups.invalidRate'))
+    return
+  }
+  groupDialog.savingGroupId = groupRate.group.id
+  try {
+    await agentManagementAPI.setChildGroupDelegation(groupDialog.child.id, groupRate.group.id, {
+      rate_multiplier: draft.rate_multiplier,
+      can_delegate: draft.can_delegate,
+    })
+    appStore.showSuccess(t('agentManagement.groups.delegationSaved'))
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.delegationFailed'))
+  } finally {
+    groupDialog.savingGroupId = null
+  }
+}
+
+async function removeGroupDelegation(groupRate: AgentGroupRate) {
+  if (!groupDialog.child) return
+  groupDialog.savingGroupId = groupRate.group.id
+  try {
+    await agentManagementAPI.removeChildGroupDelegation(groupDialog.child.id, groupRate.group.id)
+    appStore.showSuccess(t('agentManagement.groups.delegationRemoved'))
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.removeFailed'))
+  } finally {
+    groupDialog.savingGroupId = null
   }
 }
 
