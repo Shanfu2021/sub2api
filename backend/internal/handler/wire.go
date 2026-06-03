@@ -113,6 +113,7 @@ func ProvideHandlers(
 	availableChannelHandler *AvailableChannelHandler,
 	agentManagementHandler *AgentManagementHandler,
 	enterpriseManagementHandler *EnterpriseManagementHandler,
+	purchaseInfoHandler *PurchaseInfoHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -135,6 +136,7 @@ func ProvideHandlers(
 		AvailableChannel:     availableChannelHandler,
 		AgentManagement:      agentManagementHandler,
 		EnterpriseManagement: enterpriseManagementHandler,
+		PurchaseInfo:         purchaseInfoHandler,
 	}
 }
 
@@ -158,6 +160,7 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 	NewAgentManagementHandler,
 	NewEnterpriseManagementHandler,
+	NewPurchaseInfoHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

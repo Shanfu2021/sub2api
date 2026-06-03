@@ -58,6 +58,7 @@ type Handlers struct {
 	AvailableChannel     *AvailableChannelHandler
 	AgentManagement      *AgentManagementHandler
 	EnterpriseManagement *EnterpriseManagementHandler
+	PurchaseInfo         *PurchaseInfoHandler
 }
 
 // BuildInfo contains build-time information
