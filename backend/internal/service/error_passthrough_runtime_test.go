@@ -109,6 +109,74 @@ func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
 	assert.Equal(t, "Upstream request failed", errField["message"])
 }
 
+func TestSanitizeUpstreamErrorMessage_RedactsGenericUpstreamLocations(t *testing.T) {
+	msg := `upstream request failed: POST https://upstream.example.net/v1/chat/completions?api_key=secret&client_secret=top failed; base_url: http://10.2.3.4:8080/internal/path; mirror api.vendor.example.org/v1/models`
+
+	got := sanitizeUpstreamErrorMessage(msg)
+
+	assert.NotContains(t, got, "upstream.example.net")
+	assert.NotContains(t, got, "10.2.3.4")
+	assert.NotContains(t, got, "api.vendor.example.org")
+	assert.NotContains(t, got, "/v1/chat/completions")
+	assert.NotContains(t, got, "/internal/path")
+	assert.Contains(t, got, "[upstream]")
+}
+
+func TestApplyErrorPassthroughRule_RedactsURLWhenPassthroughBodyEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	rule := newNonFailoverPassthroughRule(http.StatusBadGateway, "connect failed", http.StatusBadGateway, "ignored")
+	rule.PassthroughBody = true
+	rule.CustomMessage = nil
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadGateway,
+		[]byte(`{"error":{"message":"connect failed to https://private-upstream.example.com/v1/responses?access_token=token from 172.16.0.5:8443"}}`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	assert.NotContains(t, errMsg, "private-upstream.example.com")
+	assert.NotContains(t, errMsg, "172.16.0.5")
+	assert.NotContains(t, errMsg, "access_token")
+	assert.Contains(t, errMsg, "[upstream]")
+}
+
+func TestApplyErrorPassthroughRule_KeepsCustomMessageLiteral(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	customMessage := "请查看 status.example.com 获取状态"
+	rule := newNonFailoverPassthroughRule(http.StatusBadGateway, "connect failed", http.StatusBadGateway, customMessage)
+	rule.PassthroughBody = false
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadGateway,
+		[]byte(`{"error":{"message":"connect failed to https://private-upstream.example.com/v1/responses"}}`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	assert.Equal(t, customMessage, errMsg)
+}
+
 func TestGatewayHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

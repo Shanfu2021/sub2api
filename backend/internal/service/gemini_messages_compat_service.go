@@ -1689,6 +1689,10 @@ func sleepGeminiBackoff(attempt int) {
 
 var (
 	sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\s]+`)
+	upstreamURLRegex         = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>)}\]]+`)
+	upstreamURLFieldRegex    = regexp.MustCompile(`(?i)\b((?:base_url|request_url|upstream_url|proxy_url|url)\s*[:=]\s*)("[^"]+"|'[^']+'|[^\s,;)}\]]+)`)
+	upstreamIPv4Regex        = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?:/[^\s"'<>)}\]]*)?`)
+	upstreamDomainRegex      = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,})(?::\d{1,5})?(?:/[^\s"'<>)}\]]*)?`)
 	retryInRegex             = regexp.MustCompile(`Please retry in ([0-9.]+)s`)
 )
 
@@ -1696,7 +1700,17 @@ func sanitizeUpstreamErrorMessage(msg string) string {
 	if msg == "" {
 		return msg
 	}
-	return sensitiveQueryParamRegex.ReplaceAllString(msg, `$1***`)
+	msg = sensitiveQueryParamRegex.ReplaceAllString(msg, `$1***`)
+	msg = upstreamURLFieldRegex.ReplaceAllString(msg, `${1}[upstream]`)
+	msg = upstreamURLRegex.ReplaceAllString(msg, `[upstream]`)
+	msg = upstreamIPv4Regex.ReplaceAllString(msg, `[upstream]`)
+	msg = upstreamDomainRegex.ReplaceAllString(msg, `[upstream]`)
+	return msg
+}
+
+// SanitizeUpstreamErrorMessage redacts upstream locations and sensitive URL fragments from client-facing error text.
+func SanitizeUpstreamErrorMessage(msg string) string {
+	return sanitizeUpstreamErrorMessage(msg)
 }
 
 func (s *GeminiMessagesCompatService) writeGeminiMappedError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {

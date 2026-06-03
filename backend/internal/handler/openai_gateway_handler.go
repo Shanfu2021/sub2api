@@ -1741,6 +1741,8 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			msg := service.ExtractUpstreamErrorMessage(responseBody)
 			if !rule.PassthroughBody && rule.CustomMessage != nil {
 				msg = *rule.CustomMessage
+			} else {
+				msg = service.SanitizeUpstreamErrorMessage(msg)
 			}
 
 			if rule.SkipMonitoring {
