@@ -110,6 +110,10 @@ export const useAuthStore = defineStore('auth', () => {
     return isEnterprise.value
   })
 
+  const canUsePurchaseInfo = computed(() => {
+    return isAuthenticated.value && !isEmployee.value
+  })
+
   const isSimpleMode = computed(() => runMode.value === 'simple')
   const hasPendingAuthSession = computed(() => pendingAuthSession.value !== null)
 
@@ -501,6 +505,7 @@ export const useAuthStore = defineStore('auth', () => {
     isEmployee,
     canUseAgentManagement,
     canUseEnterpriseManagement,
+    canUsePurchaseInfo,
     isSimpleMode,
     hasPendingAuthSession,
 

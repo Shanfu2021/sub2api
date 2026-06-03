@@ -352,6 +352,7 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
+    purchaseInfo: '购买信息',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
@@ -1261,6 +1262,32 @@ export default {
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
     pleaseEnterCode: '请输入兑换码'
+  },
+
+  purchaseInfo: {
+    title: '购买信息',
+    description: '查看上级提供的兑换码购买链接和服务联系方式。',
+    availableTitle: '可购买服务',
+    emptyVisible: '上级暂未配置购买信息',
+    openLink: '打开链接',
+    manageTitle: '传播给下游的信息',
+    manageDescription: '这些内容会展示给你的直属用户、代理和企业账号。',
+    emptyManaged: '还没有配置要传播的购买信息',
+    addCard: '新增信息',
+    editCard: '编辑信息',
+    cardTitle: '标题',
+    purchaseUrl: '购买链接',
+    contact: '联系方式',
+    cardDescription: '说明',
+    sortOrder: '排序',
+    sortOrderShort: '排序 {order}',
+    loadFailed: '加载购买信息失败',
+    saveFailed: '保存购买信息失败',
+    deleteFailed: '删除购买信息失败',
+    created: '购买信息已创建',
+    updated: '购买信息已更新',
+    deleted: '购买信息已删除',
+    deleteConfirm: "删除 '{title}'？"
   },
 
   // Profile

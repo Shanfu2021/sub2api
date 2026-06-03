@@ -35,6 +35,7 @@ const navMessages = {
   buySubscription: 'Buy Subscription',
   myOrders: 'My Orders',
   redeem: 'Redeem',
+  purchaseInfo: 'Purchase Info',
   affiliate: 'Affiliate',
   profile: 'Profile',
   myAccount: 'My Account',
@@ -113,6 +114,7 @@ async function mountSidebar(options: {
       { path: '/purchase', component: { template: '<div />' } },
       { path: '/orders', component: { template: '<div />' } },
       { path: '/redeem', component: { template: '<div />' } },
+      { path: '/purchase-info', component: { template: '<div />' } },
       { path: '/affiliate', component: { template: '<div />' } },
       { path: '/profile', component: { template: '<div />' } },
       { path: '/agent/direct-users', component: { template: '<div />' } },
@@ -294,9 +296,36 @@ describe('AppSidebar employee visibility', () => {
     expect(wrapper.text()).not.toContain('Buy Subscription')
     expect(wrapper.text()).not.toContain('My Orders')
     expect(wrapper.text()).not.toContain('Redeem')
+    expect(wrapper.text()).not.toContain('Purchase Info')
     expect(wrapper.text()).not.toContain('Affiliate')
     expect(wrapper.text()).not.toContain('Enterprise Management')
     expect(wrapper.text()).not.toContain('Agent Management')
+  })
+})
+
+describe('AppSidebar purchase info visibility', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.restoreAllMocks()
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  })
+
+  it.each([
+    ['user' as UserRole],
+    ['agent_level1' as UserRole],
+    ['enterprise' as UserRole],
+    ['admin' as UserRole],
+  ])('shows purchase info to %s accounts', async (role) => {
+    const wrapper = await mountSidebar({ role })
+
+    expect(wrapper.text()).toContain('Purchase Info')
   })
 })
 

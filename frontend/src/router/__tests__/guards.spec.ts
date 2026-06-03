@@ -134,6 +134,7 @@ function simulateGuard(
       '/orders',
       '/payment/qrcode',
       '/redeem',
+      '/purchase-info',
       '/affiliate',
     ]
     if (employeeRestrictedPaths.some((path) => toPath.startsWith(path))) {
@@ -149,6 +150,7 @@ function simulateGuard(
       '/admin/redeem',
       '/subscriptions',
       '/redeem',
+      '/purchase-info',
     ]
     if (restrictedPaths.some((path) => toPath.startsWith(path))) {
       return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
@@ -384,6 +386,7 @@ describe('路由守卫逻辑', () => {
       '/orders',
       '/payment/qrcode',
       '/redeem',
+      '/purchase-info',
       '/affiliate',
     ])('员工访问 %s 重定向到 /dashboard', (path) => {
       const authState: MockAuthState = {

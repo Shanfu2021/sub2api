@@ -352,6 +352,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
+    purchaseInfo: 'Purchase Info',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
     affiliateInviteRecords: 'Invite Records',
@@ -1257,6 +1258,32 @@ export default {
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
+  },
+
+  purchaseInfo: {
+    title: 'Purchase Info',
+    description: 'View redeem-code purchase links and service contact details from your upstream.',
+    availableTitle: 'Available Services',
+    emptyVisible: 'Your upstream has not configured purchase information yet',
+    openLink: 'Open Link',
+    manageTitle: 'Information Shared Downstream',
+    manageDescription: 'These cards are shown to your direct users, agents, and enterprise accounts.',
+    emptyManaged: 'No purchase information has been configured for downstream users',
+    addCard: 'Add Info',
+    editCard: 'Edit Info',
+    cardTitle: 'Title',
+    purchaseUrl: 'Purchase Link',
+    contact: 'Contact',
+    cardDescription: 'Description',
+    sortOrder: 'Sort Order',
+    sortOrderShort: 'Sort {order}',
+    loadFailed: 'Failed to load purchase information',
+    saveFailed: 'Failed to save purchase information',
+    deleteFailed: 'Failed to delete purchase information',
+    created: 'Purchase information created',
+    updated: 'Purchase information updated',
+    deleted: 'Purchase information deleted',
+    deleteConfirm: "Delete '{title}'?"
   },
 
   // Profile

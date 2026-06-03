@@ -414,6 +414,26 @@ export interface EnterpriseManagementSummary {
   allocation: EnterpriseAllocationSummary
 }
 
+export interface PurchaseInfoCard {
+  id: number
+  owner_user_id?: number | null
+  title: string
+  description: string
+  purchase_url: string
+  contact: string
+  sort_order: number
+  enabled: boolean
+}
+
+export interface PurchaseInfoCardInput {
+  title: string
+  description: string
+  purchase_url: string
+  contact: string
+  sort_order: number
+  enabled: boolean
+}
+
 // ==================== Subscription Types ====================
 
 export interface Subscription {

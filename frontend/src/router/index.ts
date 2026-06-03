@@ -229,6 +229,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/purchase-info',
+    name: 'PurchaseInfo',
+    component: () => import('@/views/user/PurchaseInfoView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Purchase Info',
+      titleKey: 'purchaseInfo.title',
+      descriptionKey: 'purchaseInfo.description'
+    }
+  },
+  {
     path: '/affiliate',
     name: 'Affiliate',
     component: () => import('@/views/user/AffiliateView.vue'),
@@ -927,6 +939,7 @@ router.beforeEach(async (to, _from, next) => {
       '/orders',
       '/payment/qrcode',
       '/redeem',
+      '/purchase-info',
       '/affiliate',
     ]
 
@@ -943,7 +956,8 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
-      '/redeem'
+      '/redeem',
+      '/purchase-info',
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
