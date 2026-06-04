@@ -150,9 +150,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
-	if invitationResolution != nil {
-		user.ParentUserID = invitationResolution.ParentID
-	}
+	user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
@@ -161,7 +159,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
-	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, err
 	}
@@ -252,9 +250,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
-	if invitationResolution != nil {
-		user.ParentUserID = invitationResolution.ParentID
-	}
+	user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
@@ -262,7 +258,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		}
 		return nil, nil, ErrServiceUnavailable
 	}
-	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, err
 	}
@@ -301,9 +297,17 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 			return ErrInvitationCodeInvalid
 		}
 	}
+	if user.ParentUserID == nil {
+		user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
+		if user.ParentUserID != nil {
+			if err := s.userRepo.Update(ctx, user); err != nil {
+				return ErrServiceUnavailable
+			}
+		}
+	}
 
 	s.updateOAuthSignupSource(ctx, user.ID, signupSource)
-	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
 		return err
 	}
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)

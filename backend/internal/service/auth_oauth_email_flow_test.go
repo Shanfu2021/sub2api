@@ -285,6 +285,53 @@ func TestRegisterOAuthEmailAccountUsesAgentInviteDefaultQuota(t *testing.T) {
 	require.Equal(t, 40, user.RPMLimit)
 }
 
+func TestRegisterOAuthEmailAccountWithoutInvitationAssignsParentToRootAdmin(t *testing.T) {
+	rootID := int64(1)
+	userRepo := &userRepoStub{
+		nextID: 47,
+		usersByEmail: map[string]*User{
+			"admin@example.com": {ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled: "true",
+			SettingKeyEmailVerifyEnabled:  "true",
+		},
+		emailCache,
+		nil,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
+	require.Len(t, userRepo.created, 1)
+	require.NotNil(t, userRepo.created[0].ParentUserID)
+	require.Equal(t, rootID, *userRepo.created[0].ParentUserID)
+}
+
 func TestRegisterVerifiedOAuthEmailAccountBindsAffiliateInvitationCode(t *testing.T) {
 	rootID := int64(1)
 	ordinaryID := int64(2)

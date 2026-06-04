@@ -277,6 +277,22 @@ func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitat
 	return resolved, nil
 }
 
+func (s *AuthService) resolveRegistrationParentID(ctx context.Context, invitationResolution *registrationInvitationResolution) *int64 {
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		return invitationResolution.ParentID
+	}
+	if s == nil || s.userRepo == nil {
+		return nil
+	}
+	admin, err := s.userRepo.GetFirstAdmin(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to resolve default registration parent admin: %v", err)
+		return nil
+	}
+	adminID := admin.ID
+	return &adminID
+}
+
 type registrationQuota struct {
 	Concurrency int
 	RPM         int
@@ -443,9 +459,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 	}
-	if invitationResolution != nil {
-		user.ParentUserID = invitationResolution.ParentID
-	}
+	user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
@@ -456,7 +470,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, ErrServiceUnavailable
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
-	if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
 		_ = s.userRepo.HardDelete(ctx, user.ID)
 		return "", nil, err
 	}
@@ -762,6 +776,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
+			newUser.ParentUserID = s.resolveRegistrationParentID(ctx, nil)
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
 				if errors.Is(err, ErrEmailExists) {
@@ -897,9 +912,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
-			if invitationResolution != nil {
-				newUser.ParentUserID = invitationResolution.ParentID
-			}
+			newUser.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 			if s.entClient != nil && invitationResolution != nil && invitationResolution.RedeemCode != nil {
 				tx, err := s.entClient.Tx(ctx)
@@ -931,7 +944,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					}
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
-					if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+					if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
 						_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 						return nil, nil, err
 					}
@@ -959,7 +972,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				} else {
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
-					if err := s.applyInvitationPostCreateDefaults(ctx, user); err != nil {
+					if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
 						_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 						return nil, nil, err
 					}
@@ -1035,6 +1048,13 @@ func (s *AuthService) applyInvitationPostCreateDefaults(ctx context.Context, use
 		return nil
 	}
 	return s.agentManagementService.recalculateAgentEffectiveQuota(ctx, parent.ID)
+}
+
+func (s *AuthService) applyRegistrationInvitationPostCreateDefaults(ctx context.Context, user *User, invitationResolution *registrationInvitationResolution) error {
+	if invitationResolution == nil || invitationResolution.ParentID == nil {
+		return nil
+	}
+	return s.applyInvitationPostCreateDefaults(ctx, user)
 }
 
 func (s *AuthService) resolveSignupGrantPlan(ctx context.Context, signupSource string) signupGrantPlan {

@@ -657,6 +657,30 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.True(t, user.CheckPassword("password"))
 }
 
+func TestAuthService_RegisterWithoutInvitationAssignsParentToRootAdmin(t *testing.T) {
+	rootID := int64(1)
+	repo := &userRepoStub{
+		nextID: 110,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyAuthSourceDefaultEmailGrantOnSignup: "false",
+	}, nil, nil)
+
+	_, user, err := service.Register(context.Background(), "direct@test.com", "password")
+
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ParentUserID)
+	require.Equal(t, rootID, *repo.created[0].ParentUserID)
+}
+
 func TestRegisterInvitationOnlyAcceptsAffiliateCodeAsInvitation(t *testing.T) {
 	repo := &userRepoStub{
 		nextID: 100,
@@ -1325,6 +1349,32 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(22), assigner.calls[0].GroupID)
 	require.Equal(t, 14, assigner.calls[0].ValidityDays)
+}
+
+func TestAuthService_LoginOrRegisterOAuthWithTokenPairWithoutInvitationAssignsParentToRootAdmin(t *testing.T) {
+	rootID := int64(1)
+	repo := &userRepoStub{
+		nextID: 63,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                   "true",
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup: "false",
+	}, nil, nil)
+	service.refreshTokenCache = &refreshTokenCacheStub{}
+
+	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), "linuxdo-direct@test.com", "linuxdo_user", "", "", "linuxdo")
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ParentUserID)
+	require.Equal(t, rootID, *repo.created[0].ParentUserID)
 }
 
 func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesAgentInviteDefaultQuota(t *testing.T) {
