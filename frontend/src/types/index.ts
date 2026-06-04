@@ -300,6 +300,15 @@ export interface AgentAdminTreeResponse {
   items: AgentAdminTreeAgent[]
 }
 
+export interface AgentStructureResponse {
+  owner_options: AgentManagedUser[]
+  selected_owner: AgentManagedUser
+  users: AgentManagedUser[]
+  enterprises: AgentAdminTreeEnterprise[]
+}
+
+export interface AgentUsageLog extends UsageLog {}
+
 export interface AgentAllocationUpdate {
   concurrency: number
   rpm: number

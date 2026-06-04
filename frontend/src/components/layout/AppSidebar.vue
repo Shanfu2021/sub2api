@@ -280,6 +280,7 @@ interface NavItem {
   icon: unknown
   iconSvg?: string
   adminOnly?: boolean
+  agentOnly?: boolean
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -804,6 +805,9 @@ function finalizeNav(items: NavItem[]): NavItem[] {
   if (!isAdmin.value) {
     visible = visible.filter(item => !item.adminOnly)
   }
+  if (!authStore.isAgent) {
+    visible = visible.filter(item => !item.agentOnly)
+  }
   if (authStore.isEmployee) {
     visible = visible.filter(item => employeeSelfNavPaths.has(item.path))
   }
@@ -819,9 +823,10 @@ const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(tru
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
 
 const agentManagementNavItems = computed((): NavItem[] => finalizeNav([
-  { path: '/agent/admin-overview', label: t('nav.agentAdminOverview'), icon: UsersIcon, adminOnly: true },
+  { path: '/agent/admin-overview', label: t('nav.agentAdminOverview'), icon: UsersIcon },
+  { path: '/agent/usage', label: t('nav.agentUsage'), icon: ChartIcon, agentOnly: true },
   { path: '/agent/direct-users', label: t('nav.agentDirectUsers'), icon: UsersIcon },
-  { path: '/agent/direct-agents', label: t('nav.agentDirectAgents'), icon: UsersIcon },
+  { path: '/agent/direct-agents', label: t('nav.agentDirectAgents'), icon: UsersIcon, adminOnly: true },
   { path: '/agent/direct-enterprises', label: t('nav.agentDirectEnterprises'), icon: GlobeIcon },
   { path: '/agent/groups', label: t('nav.agentGroups'), icon: FolderIcon },
 ]))

@@ -53,6 +53,37 @@ describe('agent management api', () => {
     expect(get).toHaveBeenCalledWith('/agent-management/admin-agent-tree')
   })
 
+  it('loads subordinate structure with optional owner id', async () => {
+    const response = { owner_options: [], selected_owner: { id: 1 }, users: [], enterprises: [] }
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.getStructure(12)).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/structure', { params: { owner_id: 12 } })
+  })
+
+  it('loads agent-scoped usage records and stats', async () => {
+    const listResponse = { items: [], total: 0, page: 1, page_size: 20, pages: 1 }
+    const statsResponse = { total_requests: 0, total_actual_cost: 0 }
+    get.mockResolvedValueOnce({ data: listResponse })
+    get.mockResolvedValueOnce({ data: statsResponse })
+
+    await expect(agentManagementAPI.listUsage({ page: 1, page_size: 20, user_id: 99 })).resolves.toEqual(listResponse)
+    await expect(agentManagementAPI.getUsageStats({ user_id: 99 })).resolves.toEqual(statsResponse)
+
+    expect(get).toHaveBeenNthCalledWith(1, '/agent-management/usage', { params: { page: 1, page_size: 20, user_id: 99 } })
+    expect(get).toHaveBeenNthCalledWith(2, '/agent-management/usage/stats', { params: { user_id: 99 } })
+  })
+
+  it('loads agent usage user options', async () => {
+    const response = [{ id: 99, email: 'user@example.test', role: 'user' }]
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.listUsageUsers()).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/usage/users')
+  })
+
   it('updates a direct child allocation without balance fields', async () => {
     const response = {
       total_concurrency: 100,

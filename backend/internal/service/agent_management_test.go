@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/stretchr/testify/require"
 )
 
@@ -106,6 +107,27 @@ type agentManagementRepoStub struct {
 	upsertInviteDefaults  []agentGroupDelegationRecord
 	deletedInviteDefaults []agentGroupDelegationRecord
 	agentIncomeTotals     map[int64]float64
+}
+
+type agentManagementUsageServiceStub struct {
+	listCalls       int
+	statsCalls      int
+	lastListParams  pagination.PaginationParams
+	lastListFilter  usagestats.UsageLogFilters
+	lastStatsFilter usagestats.UsageLogFilters
+}
+
+func (s *agentManagementUsageServiceStub) ListWithFilters(_ context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {
+	s.listCalls++
+	s.lastListParams = params
+	s.lastListFilter = filters
+	return []UsageLog{{ID: 9001, UserID: filters.UserID, ActualCost: 1.25}}, &pagination.PaginationResult{Total: 1, Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
+}
+
+func (s *agentManagementUsageServiceStub) GetStatsWithFilters(_ context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
+	s.statsCalls++
+	s.lastStatsFilter = filters
+	return &usagestats.UsageStats{TotalRequests: 1, TotalActualCost: 1.25}, nil
 }
 
 type agentEnterpriseCleanupRepoStub struct {
@@ -1142,6 +1164,112 @@ func TestAgentManagementAdminAgentTreeRejectsAgents(t *testing.T) {
 
 	_, err := svc.GetAdminAgentTree(context.Background(), agentID)
 
+	require.ErrorIs(t, err, ErrAgentManagementForbidden)
+}
+
+func TestAgentManagementSubordinateStructureForAdminCanSelectRootOrAgent(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	adminUserID := int64(3)
+	adminEnterpriseID := int64(4)
+	adminEmployeeID := int64(5)
+	agentUserID := int64(6)
+	agentEnterpriseID := int64(7)
+	agentEmployeeID := int64(8)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Email: "admin@example.test", Status: StatusActive},
+		&User{ID: agentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Email: "agent@example.test", Status: StatusActive},
+		&User{ID: adminUserID, Role: RoleUser, ParentUserID: &rootID, Email: "admin-user@example.test", Status: StatusActive},
+		&User{ID: adminEnterpriseID, Role: RoleEnterprise, ParentUserID: &rootID, Email: "admin-enterprise@example.test", Status: StatusActive},
+		&User{ID: adminEmployeeID, Role: RoleEmployee, ParentUserID: &adminEnterpriseID, Email: "admin-employee@example.test", Status: StatusActive},
+		&User{ID: agentUserID, Role: RoleUser, ParentUserID: &agentID, Email: "agent-user@example.test", Status: StatusActive},
+		&User{ID: agentEnterpriseID, Role: RoleEnterprise, ParentUserID: &agentID, Email: "agent-enterprise@example.test", Status: StatusActive},
+		&User{ID: agentEmployeeID, Role: RoleEmployee, ParentUserID: &agentEnterpriseID, Email: "agent-employee@example.test", Status: StatusActive},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	rootStructure, err := svc.GetSubordinateStructure(context.Background(), rootID, nil)
+	require.NoError(t, err)
+	require.Equal(t, rootID, rootStructure.SelectedOwner.ID)
+	require.Len(t, rootStructure.OwnerOptions, 2)
+	require.Equal(t, rootID, rootStructure.OwnerOptions[0].ID)
+	require.Equal(t, agentID, rootStructure.OwnerOptions[1].ID)
+	require.Len(t, rootStructure.Users, 1)
+	require.Equal(t, adminUserID, rootStructure.Users[0].ID)
+	require.Len(t, rootStructure.Enterprises, 1)
+	require.Equal(t, adminEnterpriseID, rootStructure.Enterprises[0].Enterprise.ID)
+	require.Len(t, rootStructure.Enterprises[0].Employees, 1)
+	require.Equal(t, adminEmployeeID, rootStructure.Enterprises[0].Employees[0].ID)
+
+	agentStructure, err := svc.GetSubordinateStructure(context.Background(), rootID, &agentID)
+	require.NoError(t, err)
+	require.Equal(t, agentID, agentStructure.SelectedOwner.ID)
+	require.Len(t, agentStructure.Users, 1)
+	require.Equal(t, agentUserID, agentStructure.Users[0].ID)
+	require.Len(t, agentStructure.Enterprises, 1)
+	require.Equal(t, agentEnterpriseID, agentStructure.Enterprises[0].Enterprise.ID)
+	require.Len(t, agentStructure.Enterprises[0].Employees, 1)
+	require.Equal(t, agentEmployeeID, agentStructure.Enterprises[0].Employees[0].ID)
+}
+
+func TestAgentManagementSubordinateStructureForAgentIsSelfOnly(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	otherAgentID := int64(3)
+	userID := int64(4)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Email: "agent@example.test", Status: StatusActive},
+		&User{ID: otherAgentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Email: "other@example.test", Status: StatusActive},
+		&User{ID: userID, Role: RoleUser, ParentUserID: &agentID, Email: "user@example.test", Status: StatusActive},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	got, err := svc.GetSubordinateStructure(context.Background(), agentID, &otherAgentID)
+	require.NoError(t, err)
+	require.Equal(t, agentID, got.SelectedOwner.ID)
+	require.Len(t, got.OwnerOptions, 1)
+	require.Equal(t, agentID, got.OwnerOptions[0].ID)
+	require.Len(t, got.Users, 1)
+	require.Equal(t, userID, got.Users[0].ID)
+}
+
+func TestAgentManagementListAgentUsageFiltersToCurrentSubordinates(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	directUserID := int64(3)
+	enterpriseID := int64(4)
+	employeeID := int64(5)
+	outsideUserID := int64(6)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &agentID, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &agentID, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Status: StatusActive},
+		&User{ID: outsideUserID, Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+	)
+	usageSvc := &agentManagementUsageServiceStub{}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+	svc.SetUsageService(usageSvc)
+
+	_, _, err := svc.ListAgentUsage(context.Background(), agentID, pagination.PaginationParams{Page: 2, PageSize: 25}, usagestats.UsageLogFilters{Model: "gpt-test"})
+	require.NoError(t, err)
+	require.Equal(t, 1, usageSvc.listCalls)
+	require.Equal(t, 2, usageSvc.lastListParams.Page)
+	require.ElementsMatch(t, []int64{directUserID, enterpriseID, employeeID}, usageSvc.lastListFilter.UserIDs)
+	require.Equal(t, int64(0), usageSvc.lastListFilter.UserID)
+	require.Equal(t, "gpt-test", usageSvc.lastListFilter.Model)
+
+	_, _, err = svc.ListAgentUsage(context.Background(), agentID, pagination.PaginationParams{Page: 1, PageSize: 10}, usagestats.UsageLogFilters{UserID: employeeID})
+	require.NoError(t, err)
+	require.Equal(t, employeeID, usageSvc.lastListFilter.UserID)
+	require.Empty(t, usageSvc.lastListFilter.UserIDs)
+
+	_, _, err = svc.ListAgentUsage(context.Background(), agentID, pagination.PaginationParams{Page: 1, PageSize: 10}, usagestats.UsageLogFilters{UserID: outsideUserID})
 	require.ErrorIs(t, err, ErrAgentManagementForbidden)
 }
 

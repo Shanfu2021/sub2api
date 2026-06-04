@@ -8,7 +8,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -45,6 +48,16 @@ type fakeAgentManagementService struct {
 	removeInviteDefaultGroupID    int64
 	adminAgentTreeCalls           int
 	adminAgentTreeActor           int64
+	structureCalls                int
+	structureActor                int64
+	structureOwnerID              *int64
+	listUsageCalls                int
+	listUsageActor                int64
+	listUsageParams               pagination.PaginationParams
+	listUsageFilters              usagestats.UsageLogFilters
+	usageStatsCalls               int
+	usageStatsActor               int64
+	usageStatsFilters             usagestats.UsageLogFilters
 }
 
 func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*service.DirectChildrenResult, error) {
@@ -124,6 +137,75 @@ func (s *fakeAgentManagementService) GetAdminAgentTree(_ context.Context, actorI
 			},
 		},
 	}, nil
+}
+
+func (s *fakeAgentManagementService) GetSubordinateStructure(_ context.Context, actorID int64, ownerID *int64) (*service.SubordinateStructureResult, error) {
+	s.structureCalls++
+	s.structureActor = actorID
+	if ownerID != nil {
+		id := *ownerID
+		s.structureOwnerID = &id
+	}
+	enterpriseID := int64(30)
+	return &service.SubordinateStructureResult{
+		OwnerOptions: []service.User{
+			{ID: 1, Email: "admin@example.test", Username: "admin", Role: service.RoleAdmin, Status: service.StatusActive},
+			{ID: 10, Email: "agent@example.test", Username: "agent", Role: service.RoleAgentLevel1, Status: service.StatusActive},
+		},
+		SelectedOwner: service.User{ID: 10, Email: "agent@example.test", Username: "agent", Role: service.RoleAgentLevel1, Status: service.StatusActive},
+		Users: []service.User{
+			{ID: 20, Email: "user@example.test", Username: "user", Role: service.RoleUser, Status: service.StatusActive},
+		},
+		Enterprises: []service.AdminAgentTreeEnterprise{
+			{
+				Enterprise: service.User{ID: enterpriseID, Email: "enterprise@example.test", Username: "enterprise", Role: service.RoleEnterprise, Status: service.StatusActive},
+				Employees: []service.User{
+					{ID: 40, Email: "employee@example.test", Username: "employee", Role: service.RoleEmployee, ParentUserID: &enterpriseID, Status: service.StatusActive},
+				},
+			},
+		},
+	}, nil
+}
+
+func (s *fakeAgentManagementService) ListAgentUsage(_ context.Context, actorID int64, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	s.listUsageCalls++
+	s.listUsageActor = actorID
+	s.listUsageParams = params
+	s.listUsageFilters = filters
+	groupID := int64(50)
+	upstreamEndpoint := "/v1/internal/upstream"
+	accountRateMultiplier := 0.4
+	ipAddress := "203.0.113.10"
+	return []service.UsageLog{
+		{
+			ID:                    9001,
+			UserID:                filters.UserID,
+			AccountID:             88,
+			Model:                 "gpt-test",
+			UpstreamEndpoint:      &upstreamEndpoint,
+			GroupID:               &groupID,
+			ActualCost:            1.25,
+			RequestType:           service.RequestTypeStream,
+			Stream:                true,
+			CreatedAt:             time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC),
+			User:                  &service.User{ID: filters.UserID, Email: "user@example.test", Role: service.RoleUser},
+			APIKey:                &service.APIKey{ID: 77, Name: "hidden-key-name", Key: "sk-hidden"},
+			AccountRateMultiplier: &accountRateMultiplier,
+			IPAddress:             &ipAddress,
+			Account:               &service.Account{ID: 88, Name: "hidden-upstream-account"},
+		},
+	}, &pagination.PaginationResult{Total: 1, Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
+}
+
+func (s *fakeAgentManagementService) GetAgentUsageStats(_ context.Context, actorID int64, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
+	s.usageStatsCalls++
+	s.usageStatsActor = actorID
+	s.usageStatsFilters = filters
+	return &usagestats.UsageStats{TotalRequests: 1, TotalActualCost: 1.25}, nil
+}
+
+func (s *fakeAgentManagementService) ListAgentUsageUsers(context.Context, int64) ([]service.User, error) {
+	return []service.User{{ID: 20, Email: "user@example.test", Role: service.RoleUser}}, nil
 }
 
 func (s *fakeAgentManagementService) CreateDirectUser(_ context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error) {
@@ -257,6 +339,9 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	r.PUT("/invite-default-groups/:group_id", h.SetInviteGroupDefault)
 	r.DELETE("/invite-default-groups/:group_id", h.RemoveInviteGroupDefault)
 	r.GET("/admin-agent-tree", h.AdminAgentTree)
+	r.GET("/structure", h.SubordinateStructure)
+	r.GET("/usage", h.ListUsage)
+	r.GET("/usage/stats", h.UsageStats)
 	return r
 }
 
@@ -316,6 +401,108 @@ func TestAgentManagementHandlerReturnsAdminAgentTree(t *testing.T) {
 	require.Equal(t, 10, body.Data.Items[0].Enterprises[0].Enterprise.PoolConcurrency)
 	require.Len(t, body.Data.Items[0].Enterprises[0].Employees, 1)
 	require.Equal(t, "employee@example.test", body.Data.Items[0].Enterprises[0].Employees[0].Email)
+}
+
+func TestAgentManagementHandlerReturnsSubordinateStructure(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/structure?owner_id=10", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.structureCalls)
+	require.Equal(t, int64(42), svc.structureActor)
+	require.NotNil(t, svc.structureOwnerID)
+	require.Equal(t, int64(10), *svc.structureOwnerID)
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			OwnerOptions []struct {
+				ID   int64  `json:"id"`
+				Role string `json:"role"`
+			} `json:"owner_options"`
+			SelectedOwner struct {
+				ID    int64  `json:"id"`
+				Email string `json:"email"`
+				Role  string `json:"role"`
+			} `json:"selected_owner"`
+			Users []struct {
+				Email string `json:"email"`
+				Role  string `json:"role"`
+			} `json:"users"`
+			Enterprises []struct {
+				Enterprise struct {
+					Email string `json:"email"`
+					Role  string `json:"role"`
+				} `json:"enterprise"`
+				Employees []struct {
+					Email string `json:"email"`
+					Role  string `json:"role"`
+				} `json:"employees"`
+			} `json:"enterprises"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, 0, body.Code)
+	require.Len(t, body.Data.OwnerOptions, 2)
+	require.Equal(t, int64(10), body.Data.SelectedOwner.ID)
+	require.Equal(t, service.RoleAgentLevel1, body.Data.SelectedOwner.Role)
+	require.Len(t, body.Data.Users, 1)
+	require.Equal(t, "user@example.test", body.Data.Users[0].Email)
+	require.Len(t, body.Data.Enterprises, 1)
+	require.Equal(t, "enterprise@example.test", body.Data.Enterprises[0].Enterprise.Email)
+	require.Len(t, body.Data.Enterprises[0].Employees, 1)
+	require.Equal(t, "employee@example.test", body.Data.Enterprises[0].Employees[0].Email)
+}
+
+func TestAgentManagementHandlerListsAgentUsageWithFilters(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage?page=2&page_size=25&user_id=20&group_id=50&model=gpt-test&request_type=stream&start_date=2026-06-01&end_date=2026-06-04&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listUsageCalls)
+	require.Equal(t, int64(42), svc.listUsageActor)
+	require.Equal(t, 2, svc.listUsageParams.Page)
+	require.Equal(t, 25, svc.listUsageParams.PageSize)
+	require.Equal(t, int64(20), svc.listUsageFilters.UserID)
+	require.Equal(t, int64(50), svc.listUsageFilters.GroupID)
+	require.Equal(t, "gpt-test", svc.listUsageFilters.Model)
+	require.NotNil(t, svc.listUsageFilters.RequestType)
+	require.Equal(t, int16(service.RequestTypeStream), *svc.listUsageFilters.RequestType)
+	require.NotNil(t, svc.listUsageFilters.StartTime)
+	require.NotNil(t, svc.listUsageFilters.EndTime)
+	require.Contains(t, rec.Body.String(), `"items"`)
+	require.Contains(t, rec.Body.String(), `"user@example.test"`)
+	require.NotContains(t, rec.Body.String(), "hidden-upstream-account")
+	require.NotContains(t, rec.Body.String(), "hidden-key-name")
+	require.NotContains(t, rec.Body.String(), "sk-hidden")
+	require.NotContains(t, rec.Body.String(), "upstream_endpoint")
+	require.NotContains(t, rec.Body.String(), "account_rate_multiplier")
+	require.NotContains(t, rec.Body.String(), "ip_address")
+	require.Contains(t, rec.Body.String(), `"account_id":0`)
+}
+
+func TestAgentManagementHandlerReturnsAgentUsageStats(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/stats?user_id=20&period=today&nocache=1", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.usageStatsCalls)
+	require.Equal(t, int64(42), svc.usageStatsActor)
+	require.Equal(t, int64(20), svc.usageStatsFilters.UserID)
+	require.NotNil(t, svc.usageStatsFilters.StartTime)
+	require.NotNil(t, svc.usageStatsFilters.EndTime)
+	require.Contains(t, rec.Body.String(), `"total_requests":1`)
 }
 
 func TestAgentManagementHandlerPassesSearchToDirectUsers(t *testing.T) {

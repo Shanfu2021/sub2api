@@ -360,6 +360,7 @@ export default {
     affiliateTransferRecords: 'Transfer Records',
     agentManagement: 'Agent Management',
     agentAdminOverview: 'Agent Overview',
+    agentUsage: 'Subordinate Usage',
     agentDirectUsers: 'Direct Users',
     agentDirectAgents: 'Direct Agents',
     agentDirectEnterprises: 'Direct Enterprises',
@@ -636,6 +637,17 @@ export default {
       poolConcurrency: 'Pool concurrency',
       poolRpm: 'Pool RPM',
       loadFailed: 'Failed to load agent overview'
+    },
+    usage: {
+      title: 'Subordinate Usage',
+      subtitle: 'Read-only usage records for your current direct users, direct enterprises, and enterprise employees.',
+      timeRange: 'Time range',
+      userFilter: 'User',
+      allUsers: 'All subordinates',
+      modelPlaceholder: 'Model name',
+      groupPlaceholder: 'Group ID',
+      loadFailed: 'Failed to load usage records',
+      usersLoadFailed: 'Failed to load subordinate users'
     },
     direct: {
       subtitle: 'Manage direct relationships and distribute your available concurrency and RPM.',

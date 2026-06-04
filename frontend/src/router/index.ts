@@ -406,10 +406,21 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/agent/AdminOverviewView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
       requiresAgentManagement: true,
       title: 'Agent Overview',
       titleKey: 'nav.agentAdminOverview'
+    }
+  },
+  {
+    path: '/agent/usage',
+    name: 'AgentUsage',
+    component: () => import('@/views/agent/UsageView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      requiresAgent: true,
+      title: 'Subordinate Usage',
+      titleKey: 'nav.agentUsage'
     }
   },
   {
@@ -418,6 +429,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/agent/DirectAgentsView.vue'),
     meta: {
       requiresAuth: true,
+      requiresAdmin: true,
       requiresAgentManagement: true,
       title: 'Direct Agents',
       titleKey: 'nav.agentDirectAgents'
@@ -859,6 +871,7 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresAgent = to.meta.requiresAgent === true
   const requiresAgentManagement = to.meta.requiresAgentManagement === true
   const requiresEnterpriseManagement = to.meta.requiresEnterpriseManagement === true
 
@@ -914,6 +927,11 @@ router.beforeEach(async (to, _from, next) => {
   if (requiresAdmin && !authStore.isAdmin) {
     // User is authenticated but not admin, redirect to user dashboard
     next('/dashboard')
+    return
+  }
+
+  if (requiresAgent && !authStore.isAgent) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
     return
   }
 

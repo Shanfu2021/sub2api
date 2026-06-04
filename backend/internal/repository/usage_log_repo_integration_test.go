@@ -649,6 +649,29 @@ func (s *UsageLogRepoSuite) TestListWithFilters() {
 	s.Require().Equal(int64(1), page.Total)
 }
 
+func (s *UsageLogRepoSuite) TestListWithFilters_UserIDsFilter() {
+	userA := mustCreateUser(s.T(), s.client, &service.User{Email: "filters-userids-a@test.com"})
+	userB := mustCreateUser(s.T(), s.client, &service.User{Email: "filters-userids-b@test.com"})
+	userC := mustCreateUser(s.T(), s.client, &service.User{Email: "filters-userids-c@test.com"})
+	apiKeyA := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userA.ID, Key: "sk-filters-userids-a", Name: "a"})
+	apiKeyB := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userB.ID, Key: "sk-filters-userids-b", Name: "b"})
+	apiKeyC := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userC.ID, Key: "sk-filters-userids-c", Name: "c"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-filters-userids"})
+
+	now := time.Now().UTC()
+	s.createUsageLog(userA, apiKeyA, account, 10, 20, 0.5, now)
+	s.createUsageLog(userB, apiKeyB, account, 11, 21, 0.6, now)
+	s.createUsageLog(userC, apiKeyC, account, 12, 22, 0.7, now)
+
+	filters := usagestats.UsageLogFilters{UserIDs: []int64{userA.ID, userB.ID}}
+	logs, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10, SortBy: "user_id", SortOrder: "asc"}, filters)
+	s.Require().NoError(err, "ListWithFilters userIDs")
+	s.Require().Len(logs, 2)
+	s.Require().Equal(int64(2), page.Total)
+	gotUserIDs := []int64{logs[0].UserID, logs[1].UserID}
+	s.Require().ElementsMatch([]int64{userA.ID, userB.ID}, gotUserIDs)
+}
+
 // --- GetDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {

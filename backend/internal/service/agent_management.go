@@ -8,6 +8,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 var (
@@ -117,6 +118,13 @@ type AdminAgentTreeEnterprise struct {
 	Employees  []User `json:"employees"`
 }
 
+type SubordinateStructureResult struct {
+	OwnerOptions  []User                     `json:"owner_options"`
+	SelectedOwner User                       `json:"selected_owner"`
+	Users         []User                     `json:"users"`
+	Enterprises   []AdminAgentTreeEnterprise `json:"enterprises"`
+}
+
 type DirectChildrenQuery struct {
 	Pagination pagination.PaginationParams
 	Search     string
@@ -214,11 +222,17 @@ type AgentEnterpriseDeletionCleanupRepository interface {
 type AgentManagementService struct {
 	repo                  AgentManagementRepository
 	userRepo              UserRepository
+	usageService          agentUsageQueryService
 	settingRepo           SettingRepository
 	groupRepo             GroupRepository
 	userGroupRateRepo     UserGroupRateRepository
 	authCacheInvalidator  APIKeyAuthCacheInvalidator
 	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository
+}
+
+type agentUsageQueryService interface {
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error)
+	GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error)
 }
 
 func NewAgentManagementService(repo AgentManagementRepository, userRepo UserRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *AgentManagementService {
@@ -240,6 +254,10 @@ func (s *AgentManagementService) SetEnterpriseCleanupRepository(repo AgentEnterp
 
 func (s *AgentManagementService) SetUserGroupRateRepository(repo UserGroupRateRepository) {
 	s.userGroupRateRepo = repo
+}
+
+func (s *AgentManagementService) SetUsageService(usageService agentUsageQueryService) {
+	s.usageService = usageService
 }
 
 func (s *AgentManagementService) ListDirectUsers(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
@@ -365,6 +383,98 @@ func (s *AgentManagementService) GetAdminAgentTree(ctx context.Context, actorID 
 	}
 
 	return &AdminAgentTreeResult{Items: items}, nil
+}
+
+func (s *AgentManagementService) GetSubordinateStructure(ctx context.Context, actorID int64, ownerID *int64) (*SubordinateStructureResult, error) {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !isAgentManagerRole(actor.Role) {
+		return nil, ErrAgentManagementForbidden
+	}
+
+	if actor.Role == RoleAdmin {
+		rootAdmin, err := s.repo.GetRootAdmin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+		}
+		owners := []User{*rootAdmin}
+		agents, err := s.listAllDirectChildrenForRoles(ctx, rootAdmin.ID, []string{RoleAgentLevel1})
+		if err != nil {
+			return nil, err
+		}
+		if err := s.populateProfileBackedUsers(ctx, agents); err != nil {
+			return nil, err
+		}
+		if err := s.populateAgentIncomeTotals(ctx, agents); err != nil {
+			return nil, err
+		}
+		owners = append(owners, agents...)
+
+		selectedOwner := *rootAdmin
+		if ownerID != nil && *ownerID > 0 {
+			selectedOwner = User{}
+			for i := range owners {
+				if owners[i].ID == *ownerID {
+					selectedOwner = owners[i]
+					break
+				}
+			}
+			if selectedOwner.ID == 0 {
+				return nil, ErrAgentManagementForbidden
+			}
+		}
+		return s.buildSubordinateStructureForOwner(ctx, owners, selectedOwner)
+	}
+
+	owners := []User{*actor}
+	if err := s.populateProfileBackedUsers(ctx, owners); err != nil {
+		return nil, err
+	}
+	if err := s.populateAgentIncomeTotals(ctx, owners); err != nil {
+		return nil, err
+	}
+	return s.buildSubordinateStructureForOwner(ctx, owners, owners[0])
+}
+
+func (s *AgentManagementService) ListAgentUsage(ctx context.Context, actorID int64, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {
+	if s.usageService == nil {
+		return nil, nil, ErrServiceUnavailable
+	}
+	if params.PageSize == 0 {
+		params = pagination.DefaultPagination()
+	}
+	scopedFilters, err := s.scopeAgentUsageFilters(ctx, actorID, filters)
+	if err != nil {
+		return nil, nil, err
+	}
+	if scopedFilters.UserID == 0 && len(scopedFilters.UserIDs) == 0 {
+		return []UsageLog{}, &pagination.PaginationResult{Total: 0, Page: params.Page, PageSize: params.Limit(), Pages: 0}, nil
+	}
+	return s.usageService.ListWithFilters(ctx, params, scopedFilters)
+}
+
+func (s *AgentManagementService) GetAgentUsageStats(ctx context.Context, actorID int64, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
+	if s.usageService == nil {
+		return nil, ErrServiceUnavailable
+	}
+	scopedFilters, err := s.scopeAgentUsageFilters(ctx, actorID, filters)
+	if err != nil {
+		return nil, err
+	}
+	if scopedFilters.UserID == 0 && len(scopedFilters.UserIDs) == 0 {
+		return &usagestats.UsageStats{}, nil
+	}
+	return s.usageService.GetStatsWithFilters(ctx, scopedFilters)
+}
+
+func (s *AgentManagementService) ListAgentUsageUsers(ctx context.Context, actorID int64) ([]User, error) {
+	users, err := s.listCurrentUsageVisibleUsers(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
 }
 
 func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID int64, input CreateDirectUserInput) (*User, error) {
@@ -1112,6 +1222,103 @@ func (s *AgentManagementService) listAllDirectChildrenForRoles(ctx context.Conte
 		if len(children) == 0 || result == nil || page >= result.Pages {
 			break
 		}
+	}
+	return out, nil
+}
+
+func (s *AgentManagementService) buildSubordinateStructureForOwner(ctx context.Context, ownerOptions []User, selectedOwner User) (*SubordinateStructureResult, error) {
+	users, err := s.listAllDirectChildrenForRoles(ctx, selectedOwner.ID, []string{RoleUser})
+	if err != nil {
+		return nil, err
+	}
+	enterprises, err := s.listAllDirectChildrenForRoles(ctx, selectedOwner.ID, []string{RoleEnterprise})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateProfileBackedUsers(ctx, enterprises); err != nil {
+		return nil, err
+	}
+	enterpriseNodes := make([]AdminAgentTreeEnterprise, 0, len(enterprises))
+	for i := range enterprises {
+		employees, err := s.listAllDirectChildrenForRoles(ctx, enterprises[i].ID, []string{RoleEmployee})
+		if err != nil {
+			return nil, err
+		}
+		enterpriseNodes = append(enterpriseNodes, AdminAgentTreeEnterprise{
+			Enterprise: enterprises[i],
+			Employees:  employees,
+		})
+	}
+	return &SubordinateStructureResult{
+		OwnerOptions:  ownerOptions,
+		SelectedOwner: selectedOwner,
+		Users:         users,
+		Enterprises:   enterpriseNodes,
+	}, nil
+}
+
+func (s *AgentManagementService) scopeAgentUsageFilters(ctx context.Context, actorID int64, filters usagestats.UsageLogFilters) (usagestats.UsageLogFilters, error) {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return filters, err
+	}
+	if actor.Role != RoleAgentLevel1 {
+		return filters, ErrAgentManagementForbidden
+	}
+	visibleUsers, err := s.listCurrentUsageVisibleUsersForActor(ctx, actor)
+	if err != nil {
+		return filters, err
+	}
+	visibleIDs := make([]int64, 0, len(visibleUsers))
+	visibleSet := make(map[int64]struct{}, len(visibleUsers))
+	for i := range visibleUsers {
+		visibleIDs = append(visibleIDs, visibleUsers[i].ID)
+		visibleSet[visibleUsers[i].ID] = struct{}{}
+	}
+
+	filters.UserIDs = nil
+	if filters.UserID > 0 {
+		if _, ok := visibleSet[filters.UserID]; !ok {
+			return filters, ErrAgentManagementForbidden
+		}
+		return filters, nil
+	}
+	filters.UserIDs = visibleIDs
+	return filters, nil
+}
+
+func (s *AgentManagementService) listCurrentUsageVisibleUsers(ctx context.Context, actorID int64) ([]User, error) {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role != RoleAgentLevel1 {
+		return nil, ErrAgentManagementForbidden
+	}
+	return s.listCurrentUsageVisibleUsersForActor(ctx, actor)
+}
+
+func (s *AgentManagementService) listCurrentUsageVisibleUsersForActor(ctx context.Context, actor *User) ([]User, error) {
+	if actor == nil || actor.Role != RoleAgentLevel1 {
+		return nil, ErrAgentManagementForbidden
+	}
+	users, err := s.listAllDirectChildrenForRoles(ctx, actor.ID, []string{RoleUser})
+	if err != nil {
+		return nil, err
+	}
+	enterprises, err := s.listAllDirectChildrenForRoles(ctx, actor.ID, []string{RoleEnterprise})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]User, 0, len(users)+len(enterprises))
+	out = append(out, users...)
+	for i := range enterprises {
+		out = append(out, enterprises[i])
+		employees, err := s.listAllDirectChildrenForRoles(ctx, enterprises[i].ID, []string{RoleEmployee})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, employees...)
 	}
 	return out, nil
 }

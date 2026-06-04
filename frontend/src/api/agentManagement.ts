@@ -15,8 +15,12 @@ import type {
   AgentManagementSummary,
   AgentProfile,
   AgentUpgradeRequest,
-  AgentAllocationUpdate
+  AgentAllocationUpdate,
+  AgentStructureResponse,
+  AgentUsageLog,
+  PaginatedResponse
 } from '@/types'
+import type { AdminUsageQueryParams, AdminUsageStatsResponse } from '@/api/admin/usage'
 
 const BASE_PATH = '/agent-management'
 
@@ -48,6 +52,33 @@ export async function listDirectEnterprises(query: AgentDirectChildrenQuery = {}
 
 export async function getAdminAgentTree(): Promise<AgentAdminTreeResponse> {
   const { data } = await apiClient.get<AgentAdminTreeResponse>(`${BASE_PATH}/admin-agent-tree`)
+  return data
+}
+
+export async function getStructure(ownerId?: number): Promise<AgentStructureResponse> {
+  const params = ownerId ? { owner_id: ownerId } : {}
+  const { data } = await apiClient.get<AgentStructureResponse>(`${BASE_PATH}/structure`, { params })
+  return data
+}
+
+export async function listUsage(
+  params: AdminUsageQueryParams,
+  options?: { signal?: AbortSignal }
+): Promise<PaginatedResponse<AgentUsageLog>> {
+  const { data } = await apiClient.get<PaginatedResponse<AgentUsageLog>>(`${BASE_PATH}/usage`, {
+    params,
+    signal: options?.signal
+  })
+  return data
+}
+
+export async function getUsageStats(params: AdminUsageQueryParams): Promise<AdminUsageStatsResponse> {
+  const { data } = await apiClient.get<AdminUsageStatsResponse>(`${BASE_PATH}/usage/stats`, { params })
+  return data
+}
+
+export async function listUsageUsers(): Promise<AgentManagedUser[]> {
+  const { data } = await apiClient.get<AgentManagedUser[]>(`${BASE_PATH}/usage/users`)
   return data
 }
 
@@ -134,6 +165,10 @@ export const agentManagementAPI = {
   listDirectAgents,
   listDirectEnterprises,
   getAdminAgentTree,
+  getStructure,
+  listUsage,
+  getUsageStats,
+  listUsageUsers,
   createDirectUser,
   updateAllocation,
   updateInviteDefaults,

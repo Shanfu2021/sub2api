@@ -5,8 +5,9 @@ import DirectUsersView from '@/views/agent/DirectUsersView.vue'
 import DirectAgentsView from '@/views/agent/DirectAgentsView.vue'
 import DirectEnterprisesView from '@/views/agent/DirectEnterprisesView.vue'
 import AdminOverviewView from '@/views/agent/AdminOverviewView.vue'
+import AgentUsageView from '@/views/agent/UsageView.vue'
 import MyGroupsView from '@/views/agent/MyGroupsView.vue'
-import type { AgentAdminTreeResponse, AgentChildGroupDelegationOption, AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, Group, User, UserRole } from '@/types'
+import type { AgentAdminTreeResponse, AgentChildGroupDelegationOption, AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, AgentStructureResponse, AdminUsageLog, Group, PaginatedResponse, User, UserRole } from '@/types'
 
 const {
   getCurrentUser,
@@ -15,6 +16,10 @@ const {
   listDirectAgents,
   listDirectEnterprises,
   getAdminAgentTree,
+  getStructure,
+  listUsage,
+  getUsageStats,
+  listUsageUsers,
   updateAllocation,
   createDirectUser,
   updateInviteDefaults,
@@ -36,6 +41,10 @@ const {
   listDirectAgents: vi.fn(),
   listDirectEnterprises: vi.fn(),
   getAdminAgentTree: vi.fn(),
+  getStructure: vi.fn(),
+  listUsage: vi.fn(),
+  getUsageStats: vi.fn(),
+  listUsageUsers: vi.fn(),
   updateAllocation: vi.fn(),
   createDirectUser: vi.fn(),
   updateInviteDefaults: vi.fn(),
@@ -59,6 +68,10 @@ vi.mock('@/api/agentManagement', () => ({
     listDirectAgents,
     listDirectEnterprises,
     getAdminAgentTree,
+    getStructure,
+    listUsage,
+    getUsageStats,
+    listUsageUsers,
     updateAllocation,
     createDirectUser,
     updateInviteDefaults,
@@ -283,6 +296,105 @@ function makeAdminTreeResponse(): AgentAdminTreeResponse {
   }
 }
 
+function makeStructureResponse(): AgentStructureResponse {
+  return {
+    owner_options: [
+      makeChild({ id: 1, role: 'admin', email: 'admin@example.com', username: 'admin' }),
+      makeChild({
+        id: 21,
+        role: 'agent_level1',
+        email: 'agent@example.com',
+        username: 'agent',
+        pool_concurrency: 100,
+        pool_rpm: 1000,
+        agent_income: 8.75,
+      }),
+    ],
+    selected_owner: makeChild({
+      id: 21,
+      role: 'agent_level1',
+      email: 'agent@example.com',
+      username: 'agent',
+      pool_concurrency: 100,
+      pool_rpm: 1000,
+      agent_income: 8.75,
+    }),
+    users: [
+      makeChild({ id: 22, email: 'agent-user@example.com', username: 'agent-user', concurrency: 5, rpm_limit: 50, balance: 3.25 }),
+    ],
+    enterprises: [
+      {
+        enterprise: makeChild({
+          id: 23,
+          role: 'enterprise',
+          email: 'enterprise@example.com',
+          username: 'enterprise',
+          pool_concurrency: 20,
+          pool_rpm: 200,
+        }),
+        employees: [
+          makeChild({
+            id: 24,
+            role: 'employee',
+            parent_user_id: 23,
+            email: 'employee@example.com',
+            username: 'employee',
+            concurrency: 2,
+            rpm_limit: 20,
+            balance: 1.5,
+          }),
+        ],
+      },
+    ],
+  }
+}
+
+function makeUsageLog(overrides: Partial<AdminUsageLog> = {}): AdminUsageLog {
+  return {
+    id: 9001,
+    user_id: 22,
+    api_key_id: 10,
+    account_id: 0,
+    request_id: 'req-agent-usage',
+    model: 'gpt-test',
+    group_id: null,
+    subscription_id: null,
+    input_tokens: 10,
+    output_tokens: 20,
+    cache_creation_tokens: 0,
+    cache_read_tokens: 0,
+    cache_creation_5m_tokens: 0,
+    cache_creation_1h_tokens: 0,
+    input_cost: 0.1,
+    output_cost: 0.2,
+    cache_creation_cost: 0,
+    cache_read_cost: 0,
+    total_cost: 0.3,
+    actual_cost: 0.6,
+    rate_multiplier: 2,
+    billing_type: 0,
+    request_type: 'sync',
+    stream: false,
+    duration_ms: 100,
+    first_token_ms: null,
+    image_count: 0,
+    image_size: null,
+    image_input_size: null,
+    image_output_size: null,
+    image_size_source: null,
+    image_size_breakdown: null,
+    user_agent: null,
+    cache_ttl_overridden: false,
+    created_at: '2026-06-04T10:00:00Z',
+    user: makeUser('user'),
+    ...overrides,
+  }
+}
+
+function makeUsageResponse(items: AdminUsageLog[] = [makeUsageLog()]): PaginatedResponse<AdminUsageLog> {
+  return { items, total: items.length, page: 1, page_size: 20, pages: 1 }
+}
+
 function mountAgentView(component: unknown, role: UserRole = 'admin') {
   localStorage.setItem('auth_token', `${role}-token`)
   localStorage.setItem('auth_user', JSON.stringify(makeUser(role)))
@@ -294,6 +406,8 @@ function mountAgentView(component: unknown, role: UserRole = 'admin') {
         AppLayout: AppLayoutStub,
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
+        UsageStatsCards: true,
+        UsageTable: DataTableStub,
         Pagination: true,
         ConfirmDialog: ConfirmDialogStub,
         BaseDialog: { template: '<div v-if="show"><slot /><slot name="footer" /></div>', props: ['show'] },
@@ -332,6 +446,23 @@ describe('agent management pages', () => {
     listDirectAgents.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'agent_level1', agent_income: 8.75 })]))
     listDirectEnterprises.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'enterprise' })]))
     getAdminAgentTree.mockResolvedValue(makeAdminTreeResponse())
+    getStructure.mockResolvedValue(makeStructureResponse())
+    listUsage.mockResolvedValue(makeUsageResponse())
+    getUsageStats.mockResolvedValue({
+      total_requests: 1,
+      total_input_tokens: 10,
+      total_output_tokens: 20,
+      total_cache_tokens: 0,
+      total_tokens: 30,
+      total_cost: 0.3,
+      total_actual_cost: 0.6,
+      total_account_cost: 0,
+      average_duration_ms: 100,
+    })
+    listUsageUsers.mockResolvedValue([
+      makeChild({ id: 22, email: 'agent-user@example.com', role: 'user' }),
+      makeChild({ id: 24, email: 'employee@example.com', role: 'employee' }),
+    ])
     updateAllocation.mockResolvedValue({
       total_concurrency: 20,
       allocated_concurrency: 5,
@@ -371,19 +502,54 @@ describe('agent management pages', () => {
     expect(wrapper.text()).not.toContain('Official Delete')
   })
 
-  it('renders the admin agent tree as a read-only overview', async () => {
+  it('renders the subordinate structure as a read-only overview', async () => {
     const wrapper = mountAgentView(AdminOverviewView, 'admin')
     await flushPromises()
 
-    expect(getAdminAgentTree).toHaveBeenCalled()
+    expect(getStructure).toHaveBeenCalledWith(undefined)
     expect(wrapper.text()).toContain('agent@example.com')
     expect(wrapper.text()).toContain('agent-user@example.com')
     expect(wrapper.text()).toContain('enterprise@example.com')
     expect(wrapper.text()).toContain('employee@example.com')
     expect(wrapper.text()).toContain('$8.75')
+    expect(wrapper.text()).toContain('agentManagement.overview.directUsers')
+    expect(wrapper.text()).toContain('agentManagement.overview.employeeCount')
     expect(wrapper.text()).not.toContain('agentManagement.direct.saveAllocation')
     expect(wrapper.text()).not.toContain('agentManagement.direct.deleteAgent')
     expect(wrapper.find('[data-test="save-allocation-21"]').exists()).toBe(false)
+  })
+
+  it('lets admins switch subordinate structure owner', async () => {
+    const wrapper = mountAgentView(AdminOverviewView, 'admin')
+    await flushPromises()
+
+    const select = wrapper.get('[data-test="structure-owner-select"]')
+    await select.setValue('21')
+    await flushPromises()
+
+    expect(getStructure).toHaveBeenLastCalledWith(21)
+  })
+
+  it('lets agents view their own subordinate structure without admin-only owner switch', async () => {
+    const wrapper = mountAgentView(AdminOverviewView, 'agent_level1')
+    await flushPromises()
+
+    expect(getStructure).toHaveBeenCalledWith(undefined)
+    expect(wrapper.text()).toContain('agent-user@example.com')
+    expect(wrapper.find('[data-test="structure-owner-select"]').exists()).toBe(false)
+  })
+
+  it('renders agent usage as read-only scoped records', async () => {
+    const wrapper = mountAgentView(AgentUsageView, 'agent_level1')
+    await flushPromises()
+
+    expect(listUsageUsers).toHaveBeenCalled()
+    expect(listUsage).toHaveBeenCalled()
+    expect(getUsageStats).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('agentManagement.usage.title')
+    expect(wrapper.text()).toContain('agent-user@example.com')
+    expect(wrapper.text()).not.toContain('admin.usage.cleanup.button')
+    expect(wrapper.text()).not.toContain('usage.exportExcel')
   })
 
   it('renders direct child balance as read-only context', async () => {

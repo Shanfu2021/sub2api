@@ -7,10 +7,13 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -25,6 +28,10 @@ type agentManagementService interface {
 	ListDirectEnterprises(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
 	ListDirectEnterprisesWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	GetAdminAgentTree(ctx context.Context, actorID int64) (*service.AdminAgentTreeResult, error)
+	GetSubordinateStructure(ctx context.Context, actorID int64, ownerID *int64) (*service.SubordinateStructureResult, error)
+	ListAgentUsage(ctx context.Context, actorID int64, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error)
+	GetAgentUsageStats(ctx context.Context, actorID int64, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error)
+	ListAgentUsageUsers(ctx context.Context, actorID int64) ([]service.User, error)
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
@@ -92,6 +99,97 @@ func (h *AgentManagementHandler) AdminAgentTree(c *gin.Context) {
 		items = append(items, adminAgentTreeAgentFromService(result.Items[i]))
 	}
 	response.Success(c, gin.H{"items": items})
+}
+
+func (h *AgentManagementHandler) SubordinateStructure(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var ownerID *int64
+	if raw := strings.TrimSpace(c.Query("owner_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid owner_id")
+			return
+		}
+		ownerID = &id
+	}
+	result, err := h.service.GetSubordinateStructure(c.Request.Context(), actorID, ownerID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, subordinateStructureFromService(result))
+}
+
+func (h *AgentManagementHandler) ListUsage(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+	}
+	filters, ok := parseAgentUsageFilters(c, false)
+	if !ok {
+		return
+	}
+	records, result, err := h.service.ListAgentUsage(c.Request.Context(), actorID, params, filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.UsageLog, 0, len(records))
+	for i := range records {
+		item := dto.UsageLogFromService(&records[i])
+		if item == nil {
+			continue
+		}
+		item.AccountID = 0
+		item.UpstreamEndpoint = nil
+		item.APIKey = nil
+		out = append(out, *item)
+	}
+	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+func (h *AgentManagementHandler) UsageStats(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	filters, ok := parseAgentUsageFilters(c, true)
+	if !ok {
+		return
+	}
+	stats, err := h.service.GetAgentUsageStats(c.Request.Context(), actorID, filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+func (h *AgentManagementHandler) ListUsageUsers(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	users, err := h.service.ListAgentUsageUsers(c.Request.Context(), actorID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]agentManagedUserResponse, 0, len(users))
+	for i := range users {
+		out = append(out, agentManagedUserFromService(&users[i]))
+	}
+	response.Success(c, out)
 }
 
 func (h *AgentManagementHandler) CreateDirectUser(c *gin.Context) {
@@ -444,6 +542,121 @@ func bindCreateDirectUser(c *gin.Context) (service.CreateDirectUserInput, bool) 
 	return req, true
 }
 
+func parseAgentUsageFilters(c *gin.Context, withDefaultPeriod bool) (usagestats.UsageLogFilters, bool) {
+	var userID, apiKeyID, groupID int64
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return usagestats.UsageLogFilters{}, false
+		}
+		userID = id
+	}
+	if raw := strings.TrimSpace(c.Query("api_key_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return usagestats.UsageLogFilters{}, false
+		}
+		apiKeyID = id
+	}
+	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid group_id")
+			return usagestats.UsageLogFilters{}, false
+		}
+		groupID = id
+	}
+
+	var requestType *int16
+	var stream *bool
+	if raw := strings.TrimSpace(c.Query("request_type")); raw != "" {
+		parsed, err := service.ParseUsageRequestType(raw)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return usagestats.UsageLogFilters{}, false
+		}
+		value := int16(parsed)
+		requestType = &value
+	} else if raw := strings.TrimSpace(c.Query("stream")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return usagestats.UsageLogFilters{}, false
+		}
+		stream = &parsed
+	}
+
+	var billingType *int8
+	if raw := strings.TrimSpace(c.Query("billing_type")); raw != "" {
+		parsed, err := strconv.ParseInt(raw, 10, 8)
+		if err != nil {
+			response.BadRequest(c, "Invalid billing_type")
+			return usagestats.UsageLogFilters{}, false
+		}
+		value := int8(parsed)
+		billingType = &value
+	}
+
+	startTime, endTime, ok := parseAgentUsageTimeRange(c, withDefaultPeriod)
+	if !ok {
+		return usagestats.UsageLogFilters{}, false
+	}
+
+	return usagestats.UsageLogFilters{
+		UserID:      userID,
+		APIKeyID:    apiKeyID,
+		GroupID:     groupID,
+		Model:       c.Query("model"),
+		RequestType: requestType,
+		Stream:      stream,
+		BillingType: billingType,
+		BillingMode: strings.TrimSpace(c.Query("billing_mode")),
+		StartTime:   startTime,
+		EndTime:     endTime,
+	}, true
+}
+
+func parseAgentUsageTimeRange(c *gin.Context, withDefaultPeriod bool) (*time.Time, *time.Time, bool) {
+	userTZ := c.Query("timezone")
+	startRaw := strings.TrimSpace(c.Query("start_date"))
+	endRaw := strings.TrimSpace(c.Query("end_date"))
+	var startTime, endTime *time.Time
+	if startRaw != "" {
+		parsed, err := timezone.ParseInUserLocation("2006-01-02", startRaw, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return nil, nil, false
+		}
+		startTime = &parsed
+	}
+	if endRaw != "" {
+		parsed, err := timezone.ParseInUserLocation("2006-01-02", endRaw, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return nil, nil, false
+		}
+		parsed = parsed.AddDate(0, 0, 1)
+		endTime = &parsed
+	}
+	if !withDefaultPeriod || startTime != nil || endTime != nil {
+		return startTime, endTime, true
+	}
+
+	now := timezone.NowInUserLocation(userTZ)
+	var start time.Time
+	switch c.DefaultQuery("period", "today") {
+	case "week":
+		start = now.AddDate(0, 0, -7)
+	case "month":
+		start = now.AddDate(0, -1, 0)
+	default:
+		start = timezone.StartOfDayInUserLocation(now, userTZ)
+	}
+	return &start, &now, true
+}
+
 type agentManagedUserResponse struct {
 	ID                       int64   `json:"id"`
 	Email                    string  `json:"email"`
@@ -493,6 +706,13 @@ type adminAgentTreeEnterpriseResponse struct {
 	Employees  []agentManagedUserResponse `json:"employees"`
 }
 
+type subordinateStructureResponse struct {
+	OwnerOptions  []agentManagedUserResponse         `json:"owner_options"`
+	SelectedOwner agentManagedUserResponse           `json:"selected_owner"`
+	Users         []agentManagedUserResponse         `json:"users"`
+	Enterprises   []adminAgentTreeEnterpriseResponse `json:"enterprises"`
+}
+
 func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 	if u == nil {
 		return agentManagedUserResponse{}
@@ -529,6 +749,30 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		Status:                   u.Status,
 		CreatedAt:                u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:                u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func subordinateStructureFromService(in *service.SubordinateStructureResult) subordinateStructureResponse {
+	if in == nil {
+		return subordinateStructureResponse{}
+	}
+	ownerOptions := make([]agentManagedUserResponse, 0, len(in.OwnerOptions))
+	for i := range in.OwnerOptions {
+		ownerOptions = append(ownerOptions, agentManagedUserFromService(&in.OwnerOptions[i]))
+	}
+	users := make([]agentManagedUserResponse, 0, len(in.Users))
+	for i := range in.Users {
+		users = append(users, agentManagedUserFromService(&in.Users[i]))
+	}
+	enterprises := make([]adminAgentTreeEnterpriseResponse, 0, len(in.Enterprises))
+	for i := range in.Enterprises {
+		enterprises = append(enterprises, adminAgentTreeEnterpriseFromService(in.Enterprises[i]))
+	}
+	return subordinateStructureResponse{
+		OwnerOptions:  ownerOptions,
+		SelectedOwner: agentManagedUserFromService(&in.SelectedOwner),
+		Users:         users,
+		Enterprises:   enterprises,
 	}
 }
 

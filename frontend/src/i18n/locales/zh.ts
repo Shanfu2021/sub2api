@@ -360,6 +360,7 @@ export default {
     affiliateTransferRecords: '提取记录',
     agentManagement: '推广代理管理',
     agentAdminOverview: '代理结构总览',
+    agentUsage: '下级使用记录',
     agentDirectUsers: '直属用户管理',
     agentDirectAgents: '直属代理管理',
     agentDirectEnterprises: '直属企业管理',
@@ -635,6 +636,17 @@ export default {
       poolConcurrency: '池并发',
       poolRpm: '池 RPM',
       loadFailed: '加载代理结构失败'
+    },
+    usage: {
+      title: '下级使用记录',
+      subtitle: '只读查看当前归属在你下面的直属用户、直属企业和企业员工的使用记录。',
+      timeRange: '时间范围',
+      userFilter: '用户',
+      allUsers: '全部下级',
+      modelPlaceholder: '模型名称',
+      groupPlaceholder: '分组 ID',
+      loadFailed: '加载使用记录失败',
+      usersLoadFailed: '加载下级用户失败'
     },
     direct: {
       subtitle: '管理直属关系，并分配你可用的并发和 RPM。',

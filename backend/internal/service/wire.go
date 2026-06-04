@@ -89,11 +89,13 @@ func ProvideAgentManagementService(
 	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	settingRepo SettingRepository,
+	usageService *UsageService,
 ) *AgentManagementService {
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, authCacheInvalidator)
 	svc.SetEnterpriseCleanupRepository(enterpriseCleanupRepo)
 	svc.SetUserGroupRateRepository(userGroupRateRepo)
 	svc.SetSettingRepository(settingRepo)
+	svc.SetUsageService(usageService)
 	return svc
 }
 
