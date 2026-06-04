@@ -211,10 +211,10 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBe('/login')
     })
 
-    it('访问管理页面重定向到 /login', () => {
-      const redirect = simulateGuard('/admin/dashboard', { requiresAdmin: true }, authState)
-      expect(redirect).toBe('/login')
-    })
+  it('访问管理页面重定向到 /login', () => {
+    const redirect = simulateGuard('/admin/dashboard', { requiresAdmin: true }, authState)
+    expect(redirect).toBe('/login')
+  })
 
     it('访问公开页面允许通过', () => {
       const redirect = simulateGuard('/login', { requiresAuth: false }, authState)
@@ -225,6 +225,32 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard('/home', { requiresAuth: false }, authState)
       expect(redirect).toBeNull()
     })
+  })
+
+  it('代理账号访问管理员代理总览会回到普通仪表盘', () => {
+    const redirect = simulateGuard('/agent/admin-overview', { requiresAdmin: true, requiresAgentManagement: true }, {
+      isAuthenticated: true,
+      isAdmin: false,
+      canUseAgentManagement: true,
+      isSimpleMode: false,
+      backendModeEnabled: false,
+      hasPendingAuthSession: false,
+    })
+
+    expect(redirect).toBe('/dashboard')
+  })
+
+  it('管理员可以访问代理结构总览', () => {
+    const redirect = simulateGuard('/agent/admin-overview', { requiresAdmin: true, requiresAgentManagement: true }, {
+      isAuthenticated: true,
+      isAdmin: true,
+      canUseAgentManagement: true,
+      isSimpleMode: false,
+      backendModeEnabled: false,
+      hasPendingAuthSession: false,
+    })
+
+    expect(redirect).toBeNull()
   })
 
   // --- 已认证普通用户 ---
@@ -295,7 +321,6 @@ describe('路由守卫逻辑', () => {
     it.each([
       { name: '管理员', state: { isAuthenticated: true, isAdmin: true, canUseAgentManagement: true } },
       { name: '一级代理', state: { isAuthenticated: true, isAdmin: false, canUseAgentManagement: true } },
-      { name: '二级代理', state: { isAuthenticated: true, isAdmin: false, canUseAgentManagement: true } },
     ])('$name 可访问代理管理页面', ({ state }) => {
       const authState: MockAuthState = {
         isSimpleMode: false,

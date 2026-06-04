@@ -856,7 +856,7 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		return errors.New("cannot delete admin user")
 	}
 
-	if user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2 {
+	if user.Role == RoleAgentLevel1 {
 		affectedUserIDs, err := s.deleteAgentFromAdminUsers(ctx, user)
 		if err != nil {
 			return err

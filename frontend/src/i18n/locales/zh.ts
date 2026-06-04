@@ -359,6 +359,7 @@ export default {
     affiliateRebateRecords: '返利记录',
     affiliateTransferRecords: '提取记录',
     agentManagement: '推广代理管理',
+    agentAdminOverview: '代理结构总览',
     agentDirectUsers: '直属用户管理',
     agentDirectAgents: '直属代理管理',
     agentDirectEnterprises: '直属企业管理',
@@ -621,11 +622,26 @@ export default {
   },
 
   agentManagement: {
+    overview: {
+      title: '代理结构总览',
+      subtitle: '只读查看代理下面的直属用户、直属企业和企业员工。',
+      empty: '暂无代理账号',
+      directUsers: '直属用户',
+      enterprises: '直属企业',
+      noDirectUsers: '暂无直属用户',
+      noEnterprises: '暂无直属企业',
+      noEmployees: '暂无员工',
+      employeeCount: '{count} 名员工',
+      poolConcurrency: '池并发',
+      poolRpm: '池 RPM',
+      loadFailed: '加载代理结构失败'
+    },
     direct: {
       subtitle: '管理直属关系，并分配你可用的并发和 RPM。',
       adminSubtitle: '管理直属关系，并为下级设置并发和 RPM；管理员不消耗自身额度。',
       role: '角色',
       balance: '余额',
+      agentIncome: '收入',
       allocation: '额度分配',
       allocatedConcurrency: '并发',
       allocatedRpm: 'RPM',
@@ -664,7 +680,7 @@ export default {
       userDeleted: '直属用户已删除',
       deleteAgent: '删除代理',
       deleteAgentTitle: '删除直属代理',
-      deleteAgentConfirm: "确定真实删除直属代理 '{email}' 吗？只删除该代理账号；其直属用户和企业会挂到管理员下，直属二级代理会升级为一级代理。",
+      deleteAgentConfirm: "确定真实删除直属代理 '{email}' 吗？只删除该代理账号；其直属用户和企业会挂到管理员下，相关分组和倍率配置保持不变。",
       deleteEnterprise: '删除企业',
       deleteEnterpriseTitle: '删除直属企业',
       deleteEnterpriseConfirm: "确定真实删除直属企业 '{email}' 吗？该企业账号和全部员工都会被删除。",
@@ -2056,7 +2072,6 @@ export default {
         admin: '管理员',
         user: '用户',
         agent_level1: '一级代理',
-        agent_level2: '二级代理',
         enterprise: '企业用户',
         employee: '员工'
       },

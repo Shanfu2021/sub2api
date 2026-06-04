@@ -63,7 +63,7 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
-export type UserRole = 'admin' | 'agent_level1' | 'agent_level2' | 'enterprise' | 'employee' | 'user'
+export type UserRole = 'admin' | 'agent_level1' | 'enterprise' | 'employee' | 'user'
 
 export interface User {
   id: number
@@ -263,6 +263,7 @@ export interface AgentManagedUser {
   allocated_rpm: number
   pool_concurrency: number
   pool_rpm: number
+  agent_income?: number
   invite_default_concurrency: number
   invite_default_rpm: number
   status: 'active' | 'disabled'
@@ -282,6 +283,21 @@ export interface AgentDirectChildrenResponse {
     PageSize?: number
     Pages?: number
   }
+}
+
+export interface AgentAdminTreeEnterprise {
+  enterprise: AgentManagedUser
+  employees: AgentManagedUser[]
+}
+
+export interface AgentAdminTreeAgent {
+  agent: AgentManagedUser
+  users: AgentManagedUser[]
+  enterprises: AgentAdminTreeEnterprise[]
+}
+
+export interface AgentAdminTreeResponse {
+  items: AgentAdminTreeAgent[]
 }
 
 export interface AgentAllocationUpdate {
@@ -327,7 +343,7 @@ export interface AgentManagementSummary {
   invite_defaults?: AgentInviteDefaultsUpdate
 }
 
-export type AgentUpgradeTargetRole = 'agent_level1' | 'agent_level2' | 'enterprise'
+export type AgentUpgradeTargetRole = 'agent_level1' | 'enterprise'
 
 export interface AgentUpgradeRequest {
   target_role: AgentUpgradeTargetRole

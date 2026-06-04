@@ -160,7 +160,7 @@ func (s *PurchaseInfoService) visibleOwnerID(ctx context.Context, actor *User) (
 	if parent.Role == RoleAdmin {
 		return nil, nil
 	}
-	if parent.Role == RoleAgentLevel1 || parent.Role == RoleAgentLevel2 {
+	if parent.Role == RoleAgentLevel1 {
 		parentID := parent.ID
 		return &parentID, nil
 	}
@@ -175,7 +175,7 @@ func (s *PurchaseInfoService) manageOwnerID(ctx context.Context, actorID int64) 
 	switch actor.Role {
 	case RoleAdmin:
 		return nil, nil
-	case RoleAgentLevel1, RoleAgentLevel2:
+	case RoleAgentLevel1:
 		id := actor.ID
 		return &id, nil
 	default:

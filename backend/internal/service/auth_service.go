@@ -190,7 +190,7 @@ func (s *AuthService) resolveInvitationParent(ctx context.Context, inviterID int
 	if err != nil {
 		return nil, err
 	}
-	if inviter.Role == RoleAdmin || inviter.Role == RoleAgentLevel1 || inviter.Role == RoleAgentLevel2 {
+	if inviter.Role == RoleAdmin || inviter.Role == RoleAgentLevel1 {
 		return &inviter.ID, nil
 	}
 	visited := map[int64]struct{}{inviter.ID: {}}
@@ -204,7 +204,7 @@ func (s *AuthService) resolveInvitationParent(ctx context.Context, inviterID int
 		if err != nil {
 			return nil, err
 		}
-		if parent.Role == RoleAgentLevel1 || parent.Role == RoleAgentLevel2 || parent.Role == RoleAdmin {
+		if parent.Role == RoleAgentLevel1 || parent.Role == RoleAdmin {
 			return &parent.ID, nil
 		}
 		parentID = parent.ParentUserID

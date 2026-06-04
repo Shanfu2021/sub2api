@@ -359,6 +359,7 @@ export default {
     affiliateRebateRecords: 'Rebate Records',
     affiliateTransferRecords: 'Transfer Records',
     agentManagement: 'Agent Management',
+    agentAdminOverview: 'Agent Overview',
     agentDirectUsers: 'Direct Users',
     agentDirectAgents: 'Direct Agents',
     agentDirectEnterprises: 'Direct Enterprises',
@@ -622,11 +623,26 @@ export default {
   },
 
   agentManagement: {
+    overview: {
+      title: 'Agent Overview',
+      subtitle: 'Read-only view of each agent, direct users, direct enterprises, and enterprise employees.',
+      empty: 'No agents',
+      directUsers: 'Direct users',
+      enterprises: 'Direct enterprises',
+      noDirectUsers: 'No direct users',
+      noEnterprises: 'No direct enterprises',
+      noEmployees: 'No employees',
+      employeeCount: '{count} employees',
+      poolConcurrency: 'Pool concurrency',
+      poolRpm: 'Pool RPM',
+      loadFailed: 'Failed to load agent overview'
+    },
     direct: {
       subtitle: 'Manage direct relationships and distribute your available concurrency and RPM.',
       adminSubtitle: 'Manage direct relationships and set child concurrency/RPM. Admin allocation does not consume the admin account quota.',
       role: 'Role',
       balance: 'Balance',
+      agentIncome: 'Income',
       allocation: 'Allocation',
       allocatedConcurrency: 'Concurrency',
       allocatedRpm: 'RPM',
@@ -665,7 +681,7 @@ export default {
       userDeleted: 'Direct user deleted',
       deleteAgent: 'Delete agent',
       deleteAgentTitle: 'Delete direct agent',
-      deleteAgentConfirm: "Permanently delete direct agent '{email}'? Only this agent account is deleted; direct users and enterprises move to admin, and direct level 2 agents become level 1 agents.",
+      deleteAgentConfirm: "Permanently delete direct agent '{email}'? Only this agent account is deleted; direct users and enterprises move to admin, with group and rate settings preserved.",
       deleteEnterprise: 'Delete enterprise',
       deleteEnterpriseTitle: 'Delete direct enterprise',
       deleteEnterpriseConfirm: "Permanently delete direct enterprise '{email}'? The enterprise account and all employees will be deleted.",
@@ -2111,7 +2127,6 @@ export default {
         admin: 'Admin',
         user: 'User',
         agent_level1: 'Level 1 Agent',
-        agent_level2: 'Level 2 Agent',
         enterprise: 'Enterprise',
         employee: 'Employee'
       },

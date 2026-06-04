@@ -43,6 +43,8 @@ type fakeAgentManagementService struct {
 	removeInviteDefaultGroupCalls int
 	removeInviteDefaultGroupActor int64
 	removeInviteDefaultGroupID    int64
+	adminAgentTreeCalls           int
+	adminAgentTreeActor           int64
 }
 
 func (s *fakeAgentManagementService) ListDirectUsers(context.Context, int64) (*service.DirectChildrenResult, error) {
@@ -75,6 +77,53 @@ func (s *fakeAgentManagementService) ListDirectEnterprisesWithQuery(context.Cont
 
 func (s *fakeAgentManagementService) GetSummary(context.Context, int64) (*service.AgentManagementSummary, error) {
 	return &service.AgentManagementSummary{}, nil
+}
+
+func (s *fakeAgentManagementService) GetAdminAgentTree(_ context.Context, actorID int64) (*service.AdminAgentTreeResult, error) {
+	s.adminAgentTreeCalls++
+	s.adminAgentTreeActor = actorID
+	enterpriseID := int64(30)
+	return &service.AdminAgentTreeResult{
+		Items: []service.AdminAgentTreeAgent{
+			{
+				Agent: service.User{
+					ID:          10,
+					Email:       "agent@example.test",
+					Username:    "agent",
+					Role:        service.RoleAgentLevel1,
+					AgentIncome: 8.75,
+					Status:      service.StatusActive,
+					AgentProfile: &service.AgentProfile{
+						UserID:          10,
+						PoolConcurrency: 100,
+						PoolRPM:         1000,
+					},
+				},
+				Users: []service.User{
+					{ID: 20, Email: "user@example.test", Username: "user", Role: service.RoleUser, Status: service.StatusActive},
+				},
+				Enterprises: []service.AdminAgentTreeEnterprise{
+					{
+						Enterprise: service.User{
+							ID:       enterpriseID,
+							Email:    "enterprise@example.test",
+							Username: "enterprise",
+							Role:     service.RoleEnterprise,
+							Status:   service.StatusActive,
+							EnterpriseProfile: &service.EnterpriseProfile{
+								UserID:          enterpriseID,
+								PoolConcurrency: 10,
+								PoolRPM:         100,
+							},
+						},
+						Employees: []service.User{
+							{ID: 40, Email: "employee@example.test", Username: "employee", Role: service.RoleEmployee, ParentUserID: &enterpriseID, Status: service.StatusActive},
+						},
+					},
+				},
+			},
+		},
+	}, nil
 }
 
 func (s *fakeAgentManagementService) CreateDirectUser(_ context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error) {
@@ -207,7 +256,66 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	r.GET("/invite-default-groups", h.ListInviteGroupDefaultOptions)
 	r.PUT("/invite-default-groups/:group_id", h.SetInviteGroupDefault)
 	r.DELETE("/invite-default-groups/:group_id", h.RemoveInviteGroupDefault)
+	r.GET("/admin-agent-tree", h.AdminAgentTree)
 	return r
+}
+
+func TestAgentManagementHandlerReturnsAdminAgentTree(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin-agent-tree", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.adminAgentTreeCalls)
+	require.Equal(t, int64(42), svc.adminAgentTreeActor)
+	var body struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Items []struct {
+				Agent struct {
+					ID              int64   `json:"id"`
+					Email           string  `json:"email"`
+					Role            string  `json:"role"`
+					AgentIncome     float64 `json:"agent_income"`
+					PoolConcurrency int     `json:"pool_concurrency"`
+				} `json:"agent"`
+				Users []struct {
+					Email string `json:"email"`
+					Role  string `json:"role"`
+				} `json:"users"`
+				Enterprises []struct {
+					Enterprise struct {
+						Email           string `json:"email"`
+						Role            string `json:"role"`
+						PoolConcurrency int    `json:"pool_concurrency"`
+					} `json:"enterprise"`
+					Employees []struct {
+						Email string `json:"email"`
+						Role  string `json:"role"`
+					} `json:"employees"`
+				} `json:"enterprises"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, 0, body.Code)
+	require.Equal(t, "success", body.Message)
+	require.Len(t, body.Data.Items, 1)
+	require.Equal(t, int64(10), body.Data.Items[0].Agent.ID)
+	require.Equal(t, service.RoleAgentLevel1, body.Data.Items[0].Agent.Role)
+	require.InDelta(t, 8.75, body.Data.Items[0].Agent.AgentIncome, 1e-12)
+	require.Equal(t, 100, body.Data.Items[0].Agent.PoolConcurrency)
+	require.Len(t, body.Data.Items[0].Users, 1)
+	require.Equal(t, "user@example.test", body.Data.Items[0].Users[0].Email)
+	require.Len(t, body.Data.Items[0].Enterprises, 1)
+	require.Equal(t, "enterprise@example.test", body.Data.Items[0].Enterprises[0].Enterprise.Email)
+	require.Equal(t, 10, body.Data.Items[0].Enterprises[0].Enterprise.PoolConcurrency)
+	require.Len(t, body.Data.Items[0].Enterprises[0].Employees, 1)
+	require.Equal(t, "employee@example.test", body.Data.Items[0].Enterprises[0].Employees[0].Email)
 }
 
 func TestAgentManagementHandlerPassesSearchToDirectUsers(t *testing.T) {
@@ -464,7 +572,7 @@ func TestAgentManagedUserResponseIncludesAgentProfilePool(t *testing.T) {
 	got := agentManagedUserFromService(&service.User{
 		ID:           userID,
 		Email:        "agent@example.com",
-		Role:         service.RoleAgentLevel2,
+		Role:         service.RoleAgentLevel1,
 		Concurrency:  5,
 		RPMLimit:     50,
 		AgentProfile: &service.AgentProfile{UserID: userID, PoolConcurrency: 30, PoolRPM: 300, InviteDefaultConcurrency: 2, InviteDefaultRPM: 20},

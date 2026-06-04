@@ -608,6 +608,7 @@ type GatewayService struct {
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
+	agentIncomeResolver   *AgentIncomeResolver
 	userGroupRateCache    *gocache.Cache
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
@@ -697,6 +698,7 @@ func NewGatewayService(
 		&svc.userGroupRateSF,
 		"service.gateway",
 	)
+	svc.agentIncomeResolver = NewAgentIncomeResolver(userRepo, userGroupRateRepo)
 	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
 	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
@@ -8896,6 +8898,21 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+	userIncomeRate := multiplier
+	if result.ImageCount > 0 {
+		userIncomeRate = imageMultiplier
+	}
+	groupDefaultRate := multiplier
+	if apiKey.Group != nil {
+		groupDefaultRate = apiKey.Group.RateMultiplier
+	}
+	if s.agentIncomeResolver != nil && cost != nil {
+		snapshot := s.agentIncomeResolver.Resolve(ctx, user, apiKey.GroupID, cost.ActualCost, userIncomeRate, groupDefaultRate)
+		usageLog.AgentOwnerUserID = snapshot.AgentOwnerUserID
+		usageLog.AgentUserRateMultiplier = snapshot.UserRateMultiplier
+		usageLog.AgentCostRateMultiplier = snapshot.AgentCostRateMultiplier
+		usageLog.AgentIncome = snapshot.AgentIncome
+	}
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {

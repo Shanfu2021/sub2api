@@ -14,6 +14,7 @@ func RegisterAgentManagementRoutes(authenticated *gin.RouterGroup, h *handler.Ha
 		agentManagement.POST("/direct-users", h.AgentManagement.CreateDirectUser)
 		agentManagement.GET("/direct-agents", h.AgentManagement.ListDirectAgents)
 		agentManagement.GET("/direct-enterprises", h.AgentManagement.ListDirectEnterprises)
+		agentManagement.GET("/admin-agent-tree", h.AgentManagement.AdminAgentTree)
 		agentManagement.PUT("/children/:id/allocation", h.AgentManagement.UpdateAllocation)
 		agentManagement.PUT("/invite-defaults", h.AgentManagement.UpdateInviteDefaults)
 		agentManagement.POST("/children/:id/upgrade", h.AgentManagement.UpgradeDirectUser)

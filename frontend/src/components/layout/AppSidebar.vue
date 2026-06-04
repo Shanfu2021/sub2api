@@ -279,6 +279,7 @@ interface NavItem {
   label: string
   icon: unknown
   iconSvg?: string
+  adminOnly?: boolean
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -800,6 +801,9 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
 // finalizeNav 合并过滤：featureFlag、员工基础入口白名单、simple 模式。
 function finalizeNav(items: NavItem[]): NavItem[] {
   let visible = applyFeatureFlags(items)
+  if (!isAdmin.value) {
+    visible = visible.filter(item => !item.adminOnly)
+  }
   if (authStore.isEmployee) {
     visible = visible.filter(item => employeeSelfNavPaths.has(item.path))
   }
@@ -815,6 +819,7 @@ const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(tru
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
 
 const agentManagementNavItems = computed((): NavItem[] => finalizeNav([
+  { path: '/agent/admin-overview', label: t('nav.agentAdminOverview'), icon: UsersIcon, adminOnly: true },
   { path: '/agent/direct-users', label: t('nav.agentDirectUsers'), icon: UsersIcon },
   { path: '/agent/direct-agents', label: t('nav.agentDirectAgents'), icon: UsersIcon },
   { path: '/agent/direct-enterprises', label: t('nav.agentDirectEnterprises'), icon: GlobeIcon },

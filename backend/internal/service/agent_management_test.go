@@ -105,6 +105,7 @@ type agentManagementRepoStub struct {
 	inviteGroupDefaults   []agentGroupDelegationRecord
 	upsertInviteDefaults  []agentGroupDelegationRecord
 	deletedInviteDefaults []agentGroupDelegationRecord
+	agentIncomeTotals     map[int64]float64
 }
 
 type agentEnterpriseCleanupRepoStub struct {
@@ -428,9 +429,6 @@ func (r *agentManagementRepoStub) DeleteLevel1AgentAndMoveChildren(_ context.Con
 			continue
 		}
 		child.ParentUserID = &rootAdminID
-		if child.Role == RoleAgentLevel2 {
-			child.Role = RoleAgentLevel1
-		}
 	}
 	delete(r.users, agentID)
 	return nil
@@ -533,6 +531,16 @@ func (r *agentManagementRepoStub) ListInviteGroupDefaults(_ context.Context, age
 	return out, nil
 }
 
+func (r *agentManagementRepoStub) GetAgentIncomeTotals(_ context.Context, agentIDs []int64) (map[int64]float64, error) {
+	out := make(map[int64]float64, len(agentIDs))
+	for _, id := range agentIDs {
+		if r.agentIncomeTotals != nil {
+			out[id] = r.agentIncomeTotals[id]
+		}
+	}
+	return out, nil
+}
+
 func (r *agentManagementRepoStub) UpsertInviteGroupDefault(_ context.Context, agentID int64, groupID int64, rateMultiplier float64) error {
 	record := agentGroupDelegationRecord{managerID: agentID, groupID: groupID, rateMultiplier: rateMultiplier}
 	r.upsertInviteDefaults = append(r.upsertInviteDefaults, record)
@@ -577,18 +585,11 @@ func (r *agentManagementRepoStub) DeleteAgentForAdminUserDeletion(_ context.Cont
 				continue
 			}
 			child.ParentUserID = &root.ID
-			if child.Role == RoleAgentLevel2 {
-				child.Role = RoleAgentLevel1
-			}
 			affected = append(affected, child.ID)
 		}
 		if stored, ok := r.users[user.ID]; ok {
 			stored.Role = RoleUser
 			stored.ParentUserID = &root.ID
-		}
-	} else if user.Role == RoleAgentLevel2 {
-		if err := r.SetRoleAndParent(context.Background(), user.ID, RoleAgentLevel1, &root.ID); err != nil {
-			return nil, err
 		}
 	}
 	return affected, nil
@@ -878,24 +879,19 @@ func agentRatesByGroupID(rates []AgentGroupRate) map[int64]AgentGroupRate {
 func TestAgentManagementUpgradeRules(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
 	userUnderAdminID := int64(10)
 	anotherUserUnderAdminID := int64(13)
 	userUnderLevel1ID := int64(11)
-	userUnderLevel2ID := int64(12)
 	users := []*User{
 		{ID: rootID, Role: RoleAdmin, AllocatedConcurrency: 1000, AllocatedRPM: 10000},
 		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllocatedConcurrency: 100, AllocatedRPM: 1000},
-		{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, AllocatedConcurrency: 50, AllocatedRPM: 500},
 		{ID: userUnderAdminID, Role: RoleUser, ParentUserID: &rootID},
 		{ID: anotherUserUnderAdminID, Role: RoleUser, ParentUserID: &rootID},
 		{ID: userUnderLevel1ID, Role: RoleUser, ParentUserID: &level1ID},
-		{ID: userUnderLevel2ID, Role: RoleUser, ParentUserID: &level2ID},
 	}
 	repo := newAgentManagementRepoStub(users...)
 	repo.agentProfiles = map[int64]AgentProfile{
 		level1ID: {UserID: level1ID, PoolConcurrency: 100, PoolRPM: 1000},
-		level2ID: {UserID: level2ID, PoolConcurrency: 50, PoolRPM: 500},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
@@ -906,17 +902,11 @@ func TestAgentManagementUpgradeRules(t *testing.T) {
 	require.Equal(t, RoleAgentLevel1, got.Role)
 	require.Contains(t, invalidator.userIDs, userUnderAdminID)
 
-	_, err = svc.UpgradeDirectUser(context.Background(), rootID, anotherUserUnderAdminID, AgentUpgradeInput{TargetRole: RoleAgentLevel2})
-	require.ErrorIs(t, err, ErrAgentManagementForbidden)
-
-	got, err = svc.UpgradeDirectUser(context.Background(), level1ID, userUnderLevel1ID, AgentUpgradeInput{TargetRole: RoleAgentLevel2, PoolConcurrency: 50, PoolRPM: 500})
+	got, err = svc.UpgradeDirectUser(context.Background(), rootID, anotherUserUnderAdminID, AgentUpgradeInput{TargetRole: RoleEnterprise, PoolConcurrency: 50, PoolRPM: 500})
 	require.NoError(t, err)
-	require.Equal(t, RoleAgentLevel2, got.Role)
+	require.Equal(t, RoleEnterprise, got.Role)
 
-	_, err = svc.UpgradeDirectUser(context.Background(), level2ID, userUnderLevel2ID, AgentUpgradeInput{TargetRole: RoleAgentLevel2})
-	require.ErrorIs(t, err, ErrAgentManagementForbidden)
-
-	got, err = svc.UpgradeDirectUser(context.Background(), level2ID, userUnderLevel2ID, AgentUpgradeInput{TargetRole: RoleEnterprise, PoolConcurrency: 10, PoolRPM: 100})
+	got, err = svc.UpgradeDirectUser(context.Background(), level1ID, userUnderLevel1ID, AgentUpgradeInput{TargetRole: RoleEnterprise, PoolConcurrency: 50, PoolRPM: 500})
 	require.NoError(t, err)
 	require.Equal(t, RoleEnterprise, got.Role)
 }
@@ -1047,6 +1037,9 @@ func TestAgentManagementDirectAgentsIncludeProfilePool(t *testing.T) {
 	repo.agentProfiles = map[int64]AgentProfile{
 		childAgentID: {UserID: childAgentID, PoolConcurrency: 30, PoolRPM: 300},
 	}
+	repo.agentIncomeTotals = map[int64]float64{
+		childAgentID: 8.75,
+	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, nil)
 
@@ -1058,6 +1051,7 @@ func TestAgentManagementDirectAgentsIncludeProfilePool(t *testing.T) {
 	require.Equal(t, 300, result.Users[0].AgentProfile.PoolRPM)
 	require.Equal(t, 5, result.Users[0].Concurrency)
 	require.Equal(t, 50, result.Users[0].RPMLimit)
+	require.InDelta(t, 8.75, result.Users[0].AgentIncome, 1e-12)
 }
 
 func TestAgentManagementDirectEnterprisesIncludeProfilePool(t *testing.T) {
@@ -1090,22 +1084,83 @@ func TestAgentManagementDirectEnterprisesIncludeProfilePool(t *testing.T) {
 	require.Equal(t, 50, result.Users[0].RPMLimit)
 }
 
+func TestAgentManagementAdminAgentTreeShowsAgentsUsersEnterprisesAndEmployees(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	directUserID := int64(3)
+	enterpriseID := int64(4)
+	employeeID := int64(5)
+	adminDirectUserID := int64(6)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Email: "agent@example.test", Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &agentID, Email: "user@example.test", Concurrency: 3, RPMLimit: 30, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &agentID, Email: "enterprise@example.test", Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Email: "employee@example.test", Concurrency: 2, RPMLimit: 20, Status: StatusActive},
+		&User{ID: adminDirectUserID, Role: RoleUser, ParentUserID: &rootID, Email: "admin-user@example.test", Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		agentID: {UserID: agentID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		enterpriseID: {UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100},
+	}
+	repo.agentIncomeTotals = map[int64]float64{agentID: 12.34}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.GetAdminAgentTree(context.Background(), rootID)
+	require.NoError(t, err)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, agentID, result.Items[0].Agent.ID)
+	require.NotNil(t, result.Items[0].Agent.AgentProfile)
+	require.Equal(t, 100, result.Items[0].Agent.AgentProfile.PoolConcurrency)
+	require.InDelta(t, 12.34, result.Items[0].Agent.AgentIncome, 1e-12)
+	require.Len(t, result.Items[0].Users, 1)
+	require.Equal(t, directUserID, result.Items[0].Users[0].ID)
+	require.Len(t, result.Items[0].Enterprises, 1)
+	require.Equal(t, enterpriseID, result.Items[0].Enterprises[0].Enterprise.ID)
+	require.NotNil(t, result.Items[0].Enterprises[0].Enterprise.EnterpriseProfile)
+	require.Equal(t, 10, result.Items[0].Enterprises[0].Enterprise.EnterpriseProfile.PoolConcurrency)
+	require.Len(t, result.Items[0].Enterprises[0].Employees, 1)
+	require.Equal(t, employeeID, result.Items[0].Enterprises[0].Employees[0].ID)
+	require.NotEqual(t, adminDirectUserID, result.Items[0].Users[0].ID)
+}
+
+func TestAgentManagementAdminAgentTreeRejectsAgents(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.agentProfiles = map[int64]AgentProfile{
+		agentID: {UserID: agentID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	_, err := svc.GetAdminAgentTree(context.Background(), agentID)
+
+	require.ErrorIs(t, err, ErrAgentManagementForbidden)
+}
+
 func TestAgentManagementAgentPoolControlsManagerCapacity(t *testing.T) {
 	rootID := int64(1)
 	managerID := int64(2)
 	childID := int64(10)
 	otherUserID := int64(11)
-	childAgentID := int64(12)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllocatedConcurrency: 0, AllocatedRPM: 0, Concurrency: 100, RPMLimit: 1000, Status: StatusActive},
 		&User{ID: childID, Role: RoleUser, ParentUserID: &managerID, AllocatedConcurrency: 0, AllocatedRPM: 0, Concurrency: 10, RPMLimit: 100, Status: StatusActive},
 		&User{ID: otherUserID, Role: RoleEnterprise, ParentUserID: &managerID, AllocatedConcurrency: 0, AllocatedRPM: 0, Concurrency: 20, RPMLimit: 200, Status: StatusActive},
-		&User{ID: childAgentID, Role: RoleAgentLevel2, ParentUserID: &managerID, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
-		managerID:    {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
-		childAgentID: {UserID: childAgentID, PoolConcurrency: 30, PoolRPM: 300},
+		managerID: {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		otherUserID: {UserID: otherUserID, PoolConcurrency: 30, PoolRPM: 300},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, nil)
@@ -1113,16 +1168,16 @@ func TestAgentManagementAgentPoolControlsManagerCapacity(t *testing.T) {
 	summary, err := svc.UpdateAllocation(context.Background(), managerID, childID, AllocationUpdate{AllocatedConcurrency: 40, AllocatedRPM: 400})
 	require.NoError(t, err)
 	require.Equal(t, 100, summary.TotalConcurrency)
-	require.Equal(t, 90, summary.AllocatedConcurrency)
-	require.Equal(t, 10, summary.RemainingConcurrency)
-	require.Equal(t, 10, repo.users[managerID].Concurrency)
-	require.Equal(t, 100, repo.users[managerID].RPMLimit)
+	require.Equal(t, 70, summary.AllocatedConcurrency)
+	require.Equal(t, 30, summary.RemainingConcurrency)
+	require.Equal(t, 30, repo.users[managerID].Concurrency)
+	require.Equal(t, 300, repo.users[managerID].RPMLimit)
 	require.Equal(t, 40, repo.users[childID].Concurrency)
 	require.Equal(t, 400, repo.users[childID].RPMLimit)
 	require.Equal(t, 0, repo.users[childID].AllocatedConcurrency)
 	require.Equal(t, 0, repo.users[childID].AllocatedRPM)
 
-	_, err = svc.UpdateAllocation(context.Background(), managerID, childID, AllocationUpdate{AllocatedConcurrency: 51, AllocatedRPM: 501})
+	_, err = svc.UpdateAllocation(context.Background(), managerID, childID, AllocationUpdate{AllocatedConcurrency: 70, AllocatedRPM: 700})
 	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
 }
 
@@ -1245,59 +1300,48 @@ func TestAgentManagementUpdateDirectEnterprisePoolRejectsReclaimThatLeavesNoCapa
 
 func TestAgentManagementUpdateDirectAgentPoolUpdatesProfileAndEffectiveQuota(t *testing.T) {
 	rootID := int64(1)
-	managerID := int64(2)
 	childAgentID := int64(3)
-	grandchildID := int64(4)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
-		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: childAgentID, Role: RoleAgentLevel2, ParentUserID: &managerID, Status: StatusActive},
-		&User{ID: grandchildID, Role: RoleUser, ParentUserID: &childAgentID, Concurrency: 20, RPMLimit: 200, Status: StatusActive},
+		&User{ID: childAgentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
-		managerID:    {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
 		childAgentID: {UserID: childAgentID, PoolConcurrency: 40, PoolRPM: 400},
 	}
 	invalidator := &agentManagementAuthInvalidatorStub{}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
 
-	summary, err := svc.UpdateAllocation(context.Background(), managerID, childAgentID, AllocationUpdate{
+	summary, err := svc.UpdateAllocation(context.Background(), rootID, childAgentID, AllocationUpdate{
 		Concurrency: intPtr(50),
 		RPM:         intPtr(500),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 50, repo.agentProfiles[childAgentID].PoolConcurrency)
 	require.Equal(t, 500, repo.agentProfiles[childAgentID].PoolRPM)
-	require.Equal(t, 30, repo.users[childAgentID].Concurrency)
-	require.Equal(t, 300, repo.users[childAgentID].RPMLimit)
-	require.Equal(t, 50, repo.users[managerID].Concurrency)
-	require.Equal(t, 500, repo.users[managerID].RPMLimit)
+	require.Equal(t, 50, repo.users[childAgentID].Concurrency)
+	require.Equal(t, 500, repo.users[childAgentID].RPMLimit)
 	require.Equal(t, 50, summary.AllocatedConcurrency)
 	require.Equal(t, 500, summary.AllocatedRPM)
 	require.Contains(t, invalidator.userIDs, childAgentID)
-	require.Contains(t, invalidator.userIDs, managerID)
 }
 
 func TestAgentManagementUpdateDirectAgentPoolRejectsReclaimThatLeavesNoCapacity(t *testing.T) {
 	rootID := int64(1)
-	managerID := int64(2)
 	childAgentID := int64(3)
 	grandchildID := int64(4)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
-		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: childAgentID, Role: RoleAgentLevel2, ParentUserID: &managerID, Status: StatusActive},
+		&User{ID: childAgentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
 		&User{ID: grandchildID, Role: RoleUser, ParentUserID: &childAgentID, Concurrency: 20, RPMLimit: 200, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
-		managerID:    {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
 		childAgentID: {UserID: childAgentID, PoolConcurrency: 40, PoolRPM: 400},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, nil)
 
-	_, err := svc.UpdateAllocation(context.Background(), managerID, childAgentID, AllocationUpdate{
+	_, err := svc.UpdateAllocation(context.Background(), rootID, childAgentID, AllocationUpdate{
 		Concurrency: intPtr(20),
 		RPM:         intPtr(200),
 	})
@@ -1315,49 +1359,53 @@ func TestAgentManagementUpdateDirectAgentPoolRejectsReclaimThatLeavesNoCapacity(
 func TestAgentManagementFiniteAgentCannotAllocateUnlimitedPool(t *testing.T) {
 	rootID := int64(1)
 	managerID := int64(2)
-	childAgentID := int64(3)
+	childEnterpriseID := int64(3)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: childAgentID, Role: RoleAgentLevel2, ParentUserID: &managerID, Status: StatusActive},
+		&User{ID: childEnterpriseID, Role: RoleEnterprise, ParentUserID: &managerID, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
-		managerID:    {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
-		childAgentID: {UserID: childAgentID, PoolConcurrency: 40, PoolRPM: 400},
+		managerID: {UserID: managerID, PoolConcurrency: 100, PoolRPM: 1000},
+	}
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		childEnterpriseID: {UserID: childEnterpriseID, PoolConcurrency: 40, PoolRPM: 400},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, nil)
 
-	_, err := svc.UpdateAllocation(context.Background(), managerID, childAgentID, AllocationUpdate{
+	_, err := svc.UpdateAllocation(context.Background(), managerID, childEnterpriseID, AllocationUpdate{
 		Concurrency: intPtr(0),
 		RPM:         intPtr(0),
 	})
-	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
+	require.ErrorIs(t, err, ErrAgentManagementInvalidAllocation)
 }
 
 func TestAgentManagementAgentWithUnlimitedRPMStillRequiresPositiveConcurrencyPool(t *testing.T) {
 	rootID := int64(1)
 	managerID := int64(2)
-	childAgentID := int64(3)
+	childEnterpriseID := int64(3)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: childAgentID, Role: RoleAgentLevel2, ParentUserID: &managerID, Status: StatusActive},
+		&User{ID: childEnterpriseID, Role: RoleEnterprise, ParentUserID: &managerID, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
-		managerID:    {UserID: managerID, PoolConcurrency: 10, PoolRPM: 0},
-		childAgentID: {UserID: childAgentID, PoolConcurrency: 40, PoolRPM: 400},
+		managerID: {UserID: managerID, PoolConcurrency: 10, PoolRPM: 0},
+	}
+	repo.enterpriseProfiles = map[int64]EnterpriseProfile{
+		childEnterpriseID: {UserID: childEnterpriseID, PoolConcurrency: 40, PoolRPM: 400},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, nil)
 
-	_, err := svc.UpdateAllocation(context.Background(), managerID, childAgentID, AllocationUpdate{
+	_, err := svc.UpdateAllocation(context.Background(), managerID, childEnterpriseID, AllocationUpdate{
 		Concurrency: intPtr(5),
 		RPM:         intPtr(0),
 	})
 	require.NoError(t, err)
-	require.Equal(t, 5, repo.agentProfiles[childAgentID].PoolConcurrency)
-	require.Equal(t, 0, repo.agentProfiles[childAgentID].PoolRPM)
+	require.Equal(t, 5, repo.enterpriseProfiles[childEnterpriseID].PoolConcurrency)
+	require.Equal(t, 0, repo.enterpriseProfiles[childEnterpriseID].PoolRPM)
 }
 
 func TestAgentManagementUpdateInviteDefaults(t *testing.T) {
@@ -1395,7 +1443,7 @@ func TestAgentManagementUpdateInviteDefaults(t *testing.T) {
 		InviteDefaultConcurrency: 0,
 		InviteDefaultRPM:         0,
 	})
-	require.ErrorIs(t, err, ErrAgentManagementAllocationExceeded)
+	require.ErrorIs(t, err, ErrAgentManagementInvalidAllocation)
 }
 
 func TestAgentManagementAdminInviteDefaultsSyncGlobalSettings(t *testing.T) {
@@ -1456,23 +1504,20 @@ func TestAgentManagementFiniteAgentCannotAllocateWhenExistingChildRPMIsUnlimited
 
 func TestAgentManagementCannotReclaimAgentPoolToFiniteWhenChildUsageIsUnlimited(t *testing.T) {
 	rootID := int64(1)
-	managerID := int64(2)
 	childAgentID := int64(3)
 	grandchildID := int64(4)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
-		&User{ID: managerID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: childAgentID, Role: RoleAgentLevel2, ParentUserID: &managerID, Status: StatusActive},
+		&User{ID: childAgentID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
 		&User{ID: grandchildID, Role: RoleUser, ParentUserID: &childAgentID, Concurrency: 1, RPMLimit: 0, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
-		managerID:    {UserID: managerID, PoolConcurrency: 100, PoolRPM: 0},
 		childAgentID: {UserID: childAgentID, PoolConcurrency: 100, PoolRPM: 0},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	svc := NewAgentManagementService(repo, userRepo, nil, nil)
 
-	_, err := svc.UpdateAllocation(context.Background(), managerID, childAgentID, AllocationUpdate{
+	_, err := svc.UpdateAllocation(context.Background(), rootID, childAgentID, AllocationUpdate{
 		Concurrency: intPtr(50),
 		RPM:         intPtr(500),
 	})
@@ -1701,31 +1746,29 @@ func TestAgentManagementCreateDirectUserAppliesInviteGroupDefaults(t *testing.T)
 func TestAgentManagementDeleteRules(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
 	level1DirectUserID := int64(10)
 	adminDirectUserID := int64(11)
 	adminDirectEnterpriseID := int64(12)
 	adminEnterpriseEmployeeID := int64(13)
 	level1UnderAdminID := int64(20)
 	userUnderDeletedAgentID := int64(21)
-	level2UnderDeletedAgentID := int64(22)
+	enterpriseUnderDeletedAgentID := int64(22)
 	users := []*User{
 		{ID: rootID, Role: RoleAdmin},
 		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID},
-		{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID},
 		{ID: level1DirectUserID, Role: RoleUser, ParentUserID: &level1ID},
 		{ID: adminDirectUserID, Role: RoleUser, ParentUserID: &rootID},
 		{ID: adminDirectEnterpriseID, Role: RoleEnterprise, ParentUserID: &rootID},
 		{ID: adminEnterpriseEmployeeID, Role: RoleEmployee, ParentUserID: &adminDirectEnterpriseID},
 		{ID: level1UnderAdminID, Role: RoleAgentLevel1, ParentUserID: &rootID},
 		{ID: userUnderDeletedAgentID, Role: RoleUser, ParentUserID: &level1UnderAdminID},
-		{ID: level2UnderDeletedAgentID, Role: RoleAgentLevel2, ParentUserID: &level1UnderAdminID},
+		{ID: enterpriseUnderDeletedAgentID, Role: RoleEnterprise, ParentUserID: &level1UnderAdminID},
 	}
 	repo := newAgentManagementRepoStub(users...)
 	repo.groupDelegations = []agentGroupDelegationRecord{
 		{managerID: level1ID, childID: level1DirectUserID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
 		{managerID: level1UnderAdminID, childID: userUnderDeletedAgentID, groupID: 21, rateMultiplier: 1.9, canDelegate: false},
-		{managerID: level1UnderAdminID, childID: level2UnderDeletedAgentID, groupID: 22, rateMultiplier: 2.7, canDelegate: true},
+		{managerID: level1UnderAdminID, childID: enterpriseUnderDeletedAgentID, groupID: 22, rateMultiplier: 2.7, canDelegate: true},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
@@ -1752,10 +1795,6 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.Equal(t, level1DirectUserID, repo.groupDelegations[0].childID)
 	require.Equal(t, 2.4, repo.groupDelegations[0].rateMultiplier)
 
-	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, level2ID))
-	require.Equal(t, rootID, *repo.users[level2ID].ParentUserID)
-	require.Equal(t, RoleAgentLevel1, repo.users[level2ID].Role)
-
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), rootID, level1UnderAdminID))
 	require.Len(t, repo.deleteLevel1Calls, 1)
 	require.Equal(t, level1UnderAdminID, repo.deleteLevel1Calls[0].agentID)
@@ -1763,21 +1802,20 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.NotContains(t, repo.users, level1UnderAdminID)
 	require.Equal(t, rootID, *repo.users[userUnderDeletedAgentID].ParentUserID)
 	require.Equal(t, RoleUser, repo.users[userUnderDeletedAgentID].Role)
-	require.Equal(t, rootID, *repo.users[level2UnderDeletedAgentID].ParentUserID)
-	require.Equal(t, RoleAgentLevel1, repo.users[level2UnderDeletedAgentID].Role)
+	require.Equal(t, rootID, *repo.users[enterpriseUnderDeletedAgentID].ParentUserID)
+	require.Equal(t, RoleEnterprise, repo.users[enterpriseUnderDeletedAgentID].Role)
 	require.Equal(t, []agentGroupDelegationRecord{
 		{managerID: rootID, childID: level1DirectUserID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
 		{managerID: rootID, childID: userUnderDeletedAgentID, groupID: 21, rateMultiplier: 1.9, canDelegate: false},
-		{managerID: rootID, childID: level2UnderDeletedAgentID, groupID: 22, rateMultiplier: 2.7, canDelegate: true},
+		{managerID: rootID, childID: enterpriseUnderDeletedAgentID, groupID: 22, rateMultiplier: 2.7, canDelegate: true},
 	}, repo.groupDelegations)
 	require.Contains(t, invalidator.userIDs, adminDirectUserID)
 	require.Contains(t, invalidator.userIDs, adminDirectEnterpriseID)
 	require.Contains(t, invalidator.userIDs, adminEnterpriseEmployeeID)
 	require.Contains(t, invalidator.userIDs, level1DirectUserID)
-	require.Contains(t, invalidator.userIDs, level2ID)
 	require.Contains(t, invalidator.userIDs, level1UnderAdminID)
 	require.Contains(t, invalidator.userIDs, userUnderDeletedAgentID)
-	require.Contains(t, invalidator.userIDs, level2UnderDeletedAgentID)
+	require.Contains(t, invalidator.userIDs, enterpriseUnderDeletedAgentID)
 }
 
 func TestAgentManagementDeletingLevel1AgentInvalidatesChildrenPastFirstPage(t *testing.T) {
@@ -1807,50 +1845,30 @@ func TestAgentManagementDeletingLevel1AgentInvalidatesChildrenPastFirstPage(t *t
 	require.Contains(t, invalidator.userIDs, int64(1100))
 }
 
-func TestAgentManagementDeletingLevel2AgentRecalculatesLevel1Quota(t *testing.T) {
+func TestAgentManagementLevel1DeletingDirectUserMovesUserToRoot(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
-	directUserID := int64(4)
-	grandchildID := int64(5)
+	directUserID := int64(3)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Concurrency: 60, RPMLimit: 600, Status: StatusActive},
-		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Concurrency: 25, RPMLimit: 250, Status: StatusActive},
 		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, Concurrency: 10, RPMLimit: 100, Status: StatusActive},
-		&User{ID: grandchildID, Role: RoleUser, ParentUserID: &level2ID, Concurrency: 7, RPMLimit: 70, Status: StatusActive},
 	)
 	repo.agentProfiles = map[int64]AgentProfile{
 		level1ID: {UserID: level1ID, PoolConcurrency: 100, PoolRPM: 1000},
-		level2ID: {UserID: level2ID, PoolConcurrency: 30, PoolRPM: 300},
-	}
-	repo.groupDelegations = []agentGroupDelegationRecord{
-		{managerID: level1ID, childID: level2ID, groupID: 20, rateMultiplier: 1.8, canDelegate: true},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
 	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
 
-	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, level2ID))
+	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, directUserID))
 
-	require.Equal(t, rootID, *repo.users[level2ID].ParentUserID)
-	require.Equal(t, RoleAgentLevel1, repo.users[level2ID].Role)
-	require.Equal(t, level2ID, *repo.users[grandchildID].ParentUserID)
-	require.Equal(t, 30, repo.agentProfiles[level2ID].PoolConcurrency)
-	require.Equal(t, 300, repo.agentProfiles[level2ID].PoolRPM)
-	require.Equal(t, 90, repo.users[level1ID].Concurrency)
-	require.Equal(t, 900, repo.users[level1ID].RPMLimit)
+	require.Equal(t, rootID, *repo.users[directUserID].ParentUserID)
+	require.Equal(t, RoleUser, repo.users[directUserID].Role)
+	require.Equal(t, 60, repo.users[level1ID].Concurrency)
+	require.Equal(t, 600, repo.users[level1ID].RPMLimit)
 	require.Empty(t, userRepo.deletedUserIDs)
-	require.Equal(t, []struct {
-		oldManagerID int64
-		newManagerID int64
-		childID      int64
-	}{{oldManagerID: level1ID, newManagerID: rootID, childID: level2ID}}, repo.rehomeChildGroupDelegationCalls)
-	require.Equal(t, []agentGroupDelegationRecord{
-		{managerID: rootID, childID: level2ID, groupID: 20, rateMultiplier: 1.8, canDelegate: true},
-	}, repo.groupDelegations)
-	require.Contains(t, invalidator.userIDs, level2ID)
-	require.Contains(t, invalidator.userIDs, level1ID)
+	require.Contains(t, invalidator.userIDs, directUserID)
 }
 
 func TestAgentManagementRejectsNonDirectChild(t *testing.T) {
@@ -1872,14 +1890,12 @@ func TestAgentManagementRejectsNonDirectChild(t *testing.T) {
 func TestAgentManagementResolveInvitationParent(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
-	ordinaryUnderLevel2ID := int64(4)
+	ordinaryUnderLevel1ID := int64(4)
 	ordinaryUnderAdminID := int64(5)
 	users := []*User{
 		{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Status: StatusActive},
-		{ID: ordinaryUnderLevel2ID, Role: RoleUser, ParentUserID: &level2ID, Status: StatusActive},
+		{ID: ordinaryUnderLevel1ID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
 		{ID: ordinaryUnderAdminID, Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
 	}
 	repo := newAgentManagementRepoStub(users...)
@@ -1891,10 +1907,10 @@ func TestAgentManagementResolveInvitationParent(t *testing.T) {
 	require.NotNil(t, got)
 	require.Equal(t, level1ID, *got)
 
-	got, err = svc.ResolveInvitationParent(context.Background(), ordinaryUnderLevel2ID)
+	got, err = svc.ResolveInvitationParent(context.Background(), ordinaryUnderLevel1ID)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, level2ID, *got)
+	require.Equal(t, level1ID, *got)
 
 	got, err = svc.ResolveInvitationParent(context.Background(), ordinaryUnderAdminID)
 	require.NoError(t, err)
@@ -1956,15 +1972,15 @@ func TestAgentGroupsAdminSeesExclusiveGroupsAsDelegable(t *testing.T) {
 func TestChildGroupDelegationOptionsShowsAssignedStateForDirectChild(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
+	childID := int64(3)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Status: StatusActive},
+		&User{ID: childID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
 	)
 	repo.groupDelegations = []agentGroupDelegationRecord{
 		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
-		{managerID: level1ID, childID: level2ID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
+		{managerID: level1ID, childID: childID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	groupRepo := newAgentManagementGroupRepoStub(
@@ -1973,7 +1989,7 @@ func TestChildGroupDelegationOptionsShowsAssignedStateForDirectChild(t *testing.
 	)
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
 
-	options, err := svc.ListChildGroupDelegationOptions(context.Background(), level1ID, level2ID)
+	options, err := svc.ListChildGroupDelegationOptions(context.Background(), level1ID, childID)
 	require.NoError(t, err)
 
 	require.Len(t, options, 1)
@@ -2134,48 +2150,45 @@ func TestApplyAdminInviteGroupDefaultsToRegisteredChild(t *testing.T) {
 func TestDelegateExclusiveGroupRequiresManagerAccess(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
-	ordinaryChildID := int64(4)
+	directUserID := int64(3)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
-		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, Status: StatusActive},
-		&User{ID: ordinaryChildID, Role: RoleUser, ParentUserID: &level2ID, Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
 	)
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: 20, Name: "exclusive", IsExclusive: true, Status: StatusActive})
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
 
-	err := svc.SetChildGroupDelegation(context.Background(), level1ID, level2ID, 20, ChildGroupDelegationInput{RateMultiplier: 1.8, CanDelegate: true})
+	err := svc.SetChildGroupDelegation(context.Background(), level1ID, directUserID, 20, ChildGroupDelegationInput{RateMultiplier: 1.8, CanDelegate: false})
 	require.ErrorIs(t, err, ErrAgentManagementForbidden)
 
 	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), rootID, level1ID, 20, ChildGroupDelegationInput{RateMultiplier: 1.5, CanDelegate: true}))
-	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), level1ID, level2ID, 20, ChildGroupDelegationInput{RateMultiplier: 1.8, CanDelegate: true}))
-	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), level2ID, ordinaryChildID, 20, ChildGroupDelegationInput{RateMultiplier: 2.1, CanDelegate: false}))
+	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), level1ID, directUserID, 20, ChildGroupDelegationInput{RateMultiplier: 1.8, CanDelegate: false}))
 
-	require.Len(t, userRepo.addedAllowedGroups, 3)
-	require.Equal(t, ordinaryChildID, userRepo.addedAllowedGroups[2].userID)
-	require.Equal(t, int64(20), userRepo.addedAllowedGroups[2].groupID)
+	require.Len(t, userRepo.addedAllowedGroups, 2)
+	require.Equal(t, directUserID, userRepo.addedAllowedGroups[1].userID)
+	require.Equal(t, int64(20), userRepo.addedAllowedGroups[1].groupID)
 }
 
 func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
-	ordinaryChildID := int64(4)
+	enterpriseID := int64(3)
+	employeeID := int64(4)
 	directUserID := int64(5)
 	groupID := int64(20)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
-		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
-		&User{ID: ordinaryChildID, Role: RoleUser, ParentUserID: &level2ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, AllowedGroups: []int64{groupID}, Status: StatusActive},
 		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
 	)
 	repo.groupDelegations = []agentGroupDelegationRecord{
 		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
-		{managerID: level1ID, childID: level2ID, groupID: groupID, rateMultiplier: 1.8, canDelegate: true},
-		{managerID: level2ID, childID: ordinaryChildID, groupID: groupID, rateMultiplier: 2.1, canDelegate: false},
+		{managerID: level1ID, childID: enterpriseID, groupID: groupID, rateMultiplier: 1.8, canDelegate: true},
+		{managerID: enterpriseID, childID: employeeID, groupID: groupID, rateMultiplier: 2.1, canDelegate: false},
 		{managerID: level1ID, childID: directUserID, groupID: groupID, rateMultiplier: 1.9, canDelegate: false},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
@@ -2184,10 +2197,10 @@ func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
 	groupRateRepo := &agentManagementUserGroupRateRepoStub{
 		rates: map[int64]map[int64]float64{
-			level1ID:        {groupID: 1.5},
-			level2ID:        {groupID: 1.8},
-			ordinaryChildID: {groupID: 2.1},
-			directUserID:    {groupID: 1.9},
+			level1ID:     {groupID: 1.5},
+			enterpriseID: {groupID: 1.8},
+			employeeID:   {groupID: 2.1},
+			directUserID: {groupID: 1.9},
 		},
 	}
 	svc.SetUserGroupRateRepository(groupRateRepo)
@@ -2196,41 +2209,41 @@ func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.
 
 	require.Empty(t, repo.groupDelegations)
 	require.Empty(t, repo.users[level1ID].AllowedGroups)
-	require.Empty(t, repo.users[level2ID].AllowedGroups)
-	require.Empty(t, repo.users[ordinaryChildID].AllowedGroups)
+	require.Empty(t, repo.users[enterpriseID].AllowedGroups)
+	require.Empty(t, repo.users[employeeID].AllowedGroups)
 	require.Empty(t, repo.users[directUserID].AllowedGroups)
-	require.ElementsMatch(t, []int64{level1ID, level2ID, ordinaryChildID, directUserID}, invalidator.userIDs)
+	require.ElementsMatch(t, []int64{level1ID, enterpriseID, employeeID, directUserID}, invalidator.userIDs)
 	require.ElementsMatch(t, []struct {
 		userID  int64
 		groupID int64
 	}{
 		{userID: level1ID, groupID: groupID},
-		{userID: level2ID, groupID: groupID},
-		{userID: ordinaryChildID, groupID: groupID},
+		{userID: enterpriseID, groupID: groupID},
+		{userID: employeeID, groupID: groupID},
 		{userID: directUserID, groupID: groupID},
 	}, userRepo.removedAllowedGroups)
 	require.Empty(t, groupRateRepo.rates[level1ID])
-	require.Empty(t, groupRateRepo.rates[level2ID])
-	require.Empty(t, groupRateRepo.rates[ordinaryChildID])
+	require.Empty(t, groupRateRepo.rates[enterpriseID])
+	require.Empty(t, groupRateRepo.rates[employeeID])
 	require.Empty(t, groupRateRepo.rates[directUserID])
 }
 
 func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
-	ordinaryChildID := int64(4)
+	enterpriseID := int64(3)
+	employeeID := int64(4)
 	groupID := int64(20)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
-		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
-		&User{ID: ordinaryChildID, Role: RoleUser, ParentUserID: &level2ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, AllowedGroups: []int64{groupID}, Status: StatusActive},
 	)
 	repo.groupDelegations = []agentGroupDelegationRecord{
 		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
-		{managerID: level1ID, childID: level2ID, groupID: groupID, rateMultiplier: 1.8, canDelegate: true},
-		{managerID: level2ID, childID: ordinaryChildID, groupID: groupID, rateMultiplier: 2.1, canDelegate: false},
+		{managerID: level1ID, childID: enterpriseID, groupID: groupID, rateMultiplier: 1.8, canDelegate: true},
+		{managerID: enterpriseID, childID: employeeID, groupID: groupID, rateMultiplier: 2.1, canDelegate: false},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
@@ -2238,9 +2251,9 @@ func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T)
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
 	groupRateRepo := &agentManagementUserGroupRateRepoStub{
 		rates: map[int64]map[int64]float64{
-			level1ID:        {groupID: 1.5},
-			level2ID:        {groupID: 1.8},
-			ordinaryChildID: {groupID: 2.1},
+			level1ID:     {groupID: 1.5},
+			enterpriseID: {groupID: 1.8},
+			employeeID:   {groupID: 2.1},
 		},
 	}
 	svc.SetUserGroupRateRepository(groupRateRepo)
@@ -2252,38 +2265,34 @@ func TestDisablingChildGroupDelegationCascadesFromChildDescendants(t *testing.T)
 	require.Equal(t, level1ID, repo.groupDelegations[0].childID)
 	require.False(t, repo.groupDelegations[0].canDelegate)
 	require.Equal(t, []int64{groupID}, repo.users[level1ID].AllowedGroups)
-	require.Empty(t, repo.users[level2ID].AllowedGroups)
-	require.Empty(t, repo.users[ordinaryChildID].AllowedGroups)
-	require.ElementsMatch(t, []int64{level1ID, level2ID, ordinaryChildID}, invalidator.userIDs)
+	require.Empty(t, repo.users[enterpriseID].AllowedGroups)
+	require.Empty(t, repo.users[employeeID].AllowedGroups)
+	require.ElementsMatch(t, []int64{level1ID, enterpriseID, employeeID}, invalidator.userIDs)
 	require.ElementsMatch(t, []struct {
 		userID  int64
 		groupID int64
 	}{
-		{userID: level2ID, groupID: groupID},
-		{userID: ordinaryChildID, groupID: groupID},
+		{userID: enterpriseID, groupID: groupID},
+		{userID: employeeID, groupID: groupID},
 	}, userRepo.removedAllowedGroups)
 	require.Equal(t, 1.5, groupRateRepo.rates[level1ID][groupID])
-	require.Empty(t, groupRateRepo.rates[level2ID])
-	require.Empty(t, groupRateRepo.rates[ordinaryChildID])
+	require.Empty(t, groupRateRepo.rates[enterpriseID])
+	require.Empty(t, groupRateRepo.rates[employeeID])
 }
 
 func TestDisablingChildGroupDelegationRemovesInviteDefaultForChildAgent(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
-	level2ID := int64(3)
 	groupID := int64(20)
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
-		&User{ID: level2ID, Role: RoleAgentLevel2, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
 	)
 	repo.groupDelegations = []agentGroupDelegationRecord{
 		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
-		{managerID: level1ID, childID: level2ID, groupID: groupID, rateMultiplier: 1.8, canDelegate: false},
 	}
 	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
 		{managerID: level1ID, groupID: groupID, rateMultiplier: 1.7},
-		{managerID: level2ID, groupID: groupID, rateMultiplier: 2.1},
 	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
@@ -2294,7 +2303,6 @@ func TestDisablingChildGroupDelegationRemovesInviteDefaultForChildAgent(t *testi
 	require.Empty(t, repo.inviteGroupDefaults)
 	require.ElementsMatch(t, []agentGroupDelegationRecord{
 		{managerID: level1ID, groupID: groupID},
-		{managerID: level2ID, groupID: groupID},
 	}, repo.deletedInviteDefaults)
 }
 

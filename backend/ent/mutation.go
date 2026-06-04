@@ -35464,78 +35464,86 @@ func (m *UsageCleanupTaskMutation) ResetEdge(name string) error {
 // UsageLogMutation represents an operation that mutates the UsageLog nodes in the graph.
 type UsageLogMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	request_id                  *string
-	model                       *string
-	requested_model             *string
-	upstream_model              *string
-	channel_id                  *int64
-	addchannel_id               *int64
-	model_mapping_chain         *string
-	billing_tier                *string
-	billing_mode                *string
-	input_tokens                *int
-	addinput_tokens             *int
-	output_tokens               *int
-	addoutput_tokens            *int
-	cache_creation_tokens       *int
-	addcache_creation_tokens    *int
-	cache_read_tokens           *int
-	addcache_read_tokens        *int
-	cache_creation_5m_tokens    *int
-	addcache_creation_5m_tokens *int
-	cache_creation_1h_tokens    *int
-	addcache_creation_1h_tokens *int
-	input_cost                  *float64
-	addinput_cost               *float64
-	output_cost                 *float64
-	addoutput_cost              *float64
-	cache_creation_cost         *float64
-	addcache_creation_cost      *float64
-	cache_read_cost             *float64
-	addcache_read_cost          *float64
-	total_cost                  *float64
-	addtotal_cost               *float64
-	actual_cost                 *float64
-	addactual_cost              *float64
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	account_rate_multiplier     *float64
-	addaccount_rate_multiplier  *float64
-	billing_type                *int8
-	addbilling_type             *int8
-	stream                      *bool
-	duration_ms                 *int
-	addduration_ms              *int
-	first_token_ms              *int
-	addfirst_token_ms           *int
-	user_agent                  *string
-	ip_address                  *string
-	image_count                 *int
-	addimage_count              *int
-	image_size                  *string
-	image_input_size            *string
-	image_output_size           *string
-	image_size_source           *string
-	image_size_breakdown        *map[string]int
-	cache_ttl_overridden        *bool
-	created_at                  *time.Time
-	clearedFields               map[string]struct{}
-	user                        *int64
-	cleareduser                 bool
-	api_key                     *int64
-	clearedapi_key              bool
-	account                     *int64
-	clearedaccount              bool
-	group                       *int64
-	clearedgroup                bool
-	subscription                *int64
-	clearedsubscription         bool
-	done                        bool
-	oldValue                    func(context.Context) (*UsageLog, error)
-	predicates                  []predicate.UsageLog
+	op                            Op
+	typ                           string
+	id                            *int64
+	request_id                    *string
+	model                         *string
+	requested_model               *string
+	upstream_model                *string
+	channel_id                    *int64
+	addchannel_id                 *int64
+	model_mapping_chain           *string
+	billing_tier                  *string
+	billing_mode                  *string
+	input_tokens                  *int
+	addinput_tokens               *int
+	output_tokens                 *int
+	addoutput_tokens              *int
+	cache_creation_tokens         *int
+	addcache_creation_tokens      *int
+	cache_read_tokens             *int
+	addcache_read_tokens          *int
+	cache_creation_5m_tokens      *int
+	addcache_creation_5m_tokens   *int
+	cache_creation_1h_tokens      *int
+	addcache_creation_1h_tokens   *int
+	input_cost                    *float64
+	addinput_cost                 *float64
+	output_cost                   *float64
+	addoutput_cost                *float64
+	cache_creation_cost           *float64
+	addcache_creation_cost        *float64
+	cache_read_cost               *float64
+	addcache_read_cost            *float64
+	total_cost                    *float64
+	addtotal_cost                 *float64
+	actual_cost                   *float64
+	addactual_cost                *float64
+	rate_multiplier               *float64
+	addrate_multiplier            *float64
+	agent_user_rate_multiplier    *float64
+	addagent_user_rate_multiplier *float64
+	agent_cost_rate_multiplier    *float64
+	addagent_cost_rate_multiplier *float64
+	agent_income                  *float64
+	addagent_income               *float64
+	account_rate_multiplier       *float64
+	addaccount_rate_multiplier    *float64
+	billing_type                  *int8
+	addbilling_type               *int8
+	stream                        *bool
+	duration_ms                   *int
+	addduration_ms                *int
+	first_token_ms                *int
+	addfirst_token_ms             *int
+	user_agent                    *string
+	ip_address                    *string
+	image_count                   *int
+	addimage_count                *int
+	image_size                    *string
+	image_input_size              *string
+	image_output_size             *string
+	image_size_source             *string
+	image_size_breakdown          *map[string]int
+	cache_ttl_overridden          *bool
+	created_at                    *time.Time
+	clearedFields                 map[string]struct{}
+	user                          *int64
+	cleareduser                   bool
+	api_key                       *int64
+	clearedapi_key                bool
+	account                       *int64
+	clearedaccount                bool
+	group                         *int64
+	clearedgroup                  bool
+	subscription                  *int64
+	clearedsubscription           bool
+	agent_owner                   *int64
+	clearedagent_owner            bool
+	done                          bool
+	oldValue                      func(context.Context) (*UsageLog, error)
+	predicates                    []predicate.UsageLog
 }
 
 var _ ent.Mutation = (*UsageLogMutation)(nil)
@@ -36957,6 +36965,223 @@ func (m *UsageLogMutation) ResetRateMultiplier() {
 	m.addrate_multiplier = nil
 }
 
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (m *UsageLogMutation) SetAgentOwnerUserID(i int64) {
+	m.agent_owner = &i
+}
+
+// AgentOwnerUserID returns the value of the "agent_owner_user_id" field in the mutation.
+func (m *UsageLogMutation) AgentOwnerUserID() (r int64, exists bool) {
+	v := m.agent_owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentOwnerUserID returns the old "agent_owner_user_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAgentOwnerUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentOwnerUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentOwnerUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentOwnerUserID: %w", err)
+	}
+	return oldValue.AgentOwnerUserID, nil
+}
+
+// ClearAgentOwnerUserID clears the value of the "agent_owner_user_id" field.
+func (m *UsageLogMutation) ClearAgentOwnerUserID() {
+	m.agent_owner = nil
+	m.clearedFields[usagelog.FieldAgentOwnerUserID] = struct{}{}
+}
+
+// AgentOwnerUserIDCleared returns if the "agent_owner_user_id" field was cleared in this mutation.
+func (m *UsageLogMutation) AgentOwnerUserIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAgentOwnerUserID]
+	return ok
+}
+
+// ResetAgentOwnerUserID resets all changes to the "agent_owner_user_id" field.
+func (m *UsageLogMutation) ResetAgentOwnerUserID() {
+	m.agent_owner = nil
+	delete(m.clearedFields, usagelog.FieldAgentOwnerUserID)
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (m *UsageLogMutation) SetAgentUserRateMultiplier(f float64) {
+	m.agent_user_rate_multiplier = &f
+	m.addagent_user_rate_multiplier = nil
+}
+
+// AgentUserRateMultiplier returns the value of the "agent_user_rate_multiplier" field in the mutation.
+func (m *UsageLogMutation) AgentUserRateMultiplier() (r float64, exists bool) {
+	v := m.agent_user_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentUserRateMultiplier returns the old "agent_user_rate_multiplier" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAgentUserRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentUserRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentUserRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentUserRateMultiplier: %w", err)
+	}
+	return oldValue.AgentUserRateMultiplier, nil
+}
+
+// AddAgentUserRateMultiplier adds f to the "agent_user_rate_multiplier" field.
+func (m *UsageLogMutation) AddAgentUserRateMultiplier(f float64) {
+	if m.addagent_user_rate_multiplier != nil {
+		*m.addagent_user_rate_multiplier += f
+	} else {
+		m.addagent_user_rate_multiplier = &f
+	}
+}
+
+// AddedAgentUserRateMultiplier returns the value that was added to the "agent_user_rate_multiplier" field in this mutation.
+func (m *UsageLogMutation) AddedAgentUserRateMultiplier() (r float64, exists bool) {
+	v := m.addagent_user_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAgentUserRateMultiplier resets all changes to the "agent_user_rate_multiplier" field.
+func (m *UsageLogMutation) ResetAgentUserRateMultiplier() {
+	m.agent_user_rate_multiplier = nil
+	m.addagent_user_rate_multiplier = nil
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (m *UsageLogMutation) SetAgentCostRateMultiplier(f float64) {
+	m.agent_cost_rate_multiplier = &f
+	m.addagent_cost_rate_multiplier = nil
+}
+
+// AgentCostRateMultiplier returns the value of the "agent_cost_rate_multiplier" field in the mutation.
+func (m *UsageLogMutation) AgentCostRateMultiplier() (r float64, exists bool) {
+	v := m.agent_cost_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentCostRateMultiplier returns the old "agent_cost_rate_multiplier" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAgentCostRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentCostRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentCostRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentCostRateMultiplier: %w", err)
+	}
+	return oldValue.AgentCostRateMultiplier, nil
+}
+
+// AddAgentCostRateMultiplier adds f to the "agent_cost_rate_multiplier" field.
+func (m *UsageLogMutation) AddAgentCostRateMultiplier(f float64) {
+	if m.addagent_cost_rate_multiplier != nil {
+		*m.addagent_cost_rate_multiplier += f
+	} else {
+		m.addagent_cost_rate_multiplier = &f
+	}
+}
+
+// AddedAgentCostRateMultiplier returns the value that was added to the "agent_cost_rate_multiplier" field in this mutation.
+func (m *UsageLogMutation) AddedAgentCostRateMultiplier() (r float64, exists bool) {
+	v := m.addagent_cost_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAgentCostRateMultiplier resets all changes to the "agent_cost_rate_multiplier" field.
+func (m *UsageLogMutation) ResetAgentCostRateMultiplier() {
+	m.agent_cost_rate_multiplier = nil
+	m.addagent_cost_rate_multiplier = nil
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (m *UsageLogMutation) SetAgentIncome(f float64) {
+	m.agent_income = &f
+	m.addagent_income = nil
+}
+
+// AgentIncome returns the value of the "agent_income" field in the mutation.
+func (m *UsageLogMutation) AgentIncome() (r float64, exists bool) {
+	v := m.agent_income
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentIncome returns the old "agent_income" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAgentIncome(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentIncome is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentIncome requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentIncome: %w", err)
+	}
+	return oldValue.AgentIncome, nil
+}
+
+// AddAgentIncome adds f to the "agent_income" field.
+func (m *UsageLogMutation) AddAgentIncome(f float64) {
+	if m.addagent_income != nil {
+		*m.addagent_income += f
+	} else {
+		m.addagent_income = &f
+	}
+}
+
+// AddedAgentIncome returns the value that was added to the "agent_income" field in this mutation.
+func (m *UsageLogMutation) AddedAgentIncome() (r float64, exists bool) {
+	v := m.addagent_income
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAgentIncome resets all changes to the "agent_income" field.
+func (m *UsageLogMutation) ResetAgentIncome() {
+	m.agent_income = nil
+	m.addagent_income = nil
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (m *UsageLogMutation) SetAccountRateMultiplier(f float64) {
 	m.account_rate_multiplier = &f
@@ -37865,6 +38090,46 @@ func (m *UsageLogMutation) ResetSubscription() {
 	m.clearedsubscription = false
 }
 
+// SetAgentOwnerID sets the "agent_owner" edge to the User entity by id.
+func (m *UsageLogMutation) SetAgentOwnerID(id int64) {
+	m.agent_owner = &id
+}
+
+// ClearAgentOwner clears the "agent_owner" edge to the User entity.
+func (m *UsageLogMutation) ClearAgentOwner() {
+	m.clearedagent_owner = true
+	m.clearedFields[usagelog.FieldAgentOwnerUserID] = struct{}{}
+}
+
+// AgentOwnerCleared reports if the "agent_owner" edge to the User entity was cleared.
+func (m *UsageLogMutation) AgentOwnerCleared() bool {
+	return m.AgentOwnerUserIDCleared() || m.clearedagent_owner
+}
+
+// AgentOwnerID returns the "agent_owner" edge ID in the mutation.
+func (m *UsageLogMutation) AgentOwnerID() (id int64, exists bool) {
+	if m.agent_owner != nil {
+		return *m.agent_owner, true
+	}
+	return
+}
+
+// AgentOwnerIDs returns the "agent_owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AgentOwnerID instead. It exists only for internal usage by the builders.
+func (m *UsageLogMutation) AgentOwnerIDs() (ids []int64) {
+	if id := m.agent_owner; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAgentOwner resets all changes to the "agent_owner" edge.
+func (m *UsageLogMutation) ResetAgentOwner() {
+	m.agent_owner = nil
+	m.clearedagent_owner = false
+}
+
 // Where appends a list predicates to the UsageLogMutation builder.
 func (m *UsageLogMutation) Where(ps ...predicate.UsageLog) {
 	m.predicates = append(m.predicates, ps...)
@@ -37899,7 +38164,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 45)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -37977,6 +38242,18 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
+	}
+	if m.agent_owner != nil {
+		fields = append(fields, usagelog.FieldAgentOwnerUserID)
+	}
+	if m.agent_user_rate_multiplier != nil {
+		fields = append(fields, usagelog.FieldAgentUserRateMultiplier)
+	}
+	if m.agent_cost_rate_multiplier != nil {
+		fields = append(fields, usagelog.FieldAgentCostRateMultiplier)
+	}
+	if m.agent_income != nil {
+		fields = append(fields, usagelog.FieldAgentIncome)
 	}
 	if m.account_rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
@@ -38083,6 +38360,14 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ActualCost()
 	case usagelog.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case usagelog.FieldAgentOwnerUserID:
+		return m.AgentOwnerUserID()
+	case usagelog.FieldAgentUserRateMultiplier:
+		return m.AgentUserRateMultiplier()
+	case usagelog.FieldAgentCostRateMultiplier:
+		return m.AgentCostRateMultiplier()
+	case usagelog.FieldAgentIncome:
+		return m.AgentIncome()
 	case usagelog.FieldAccountRateMultiplier:
 		return m.AccountRateMultiplier()
 	case usagelog.FieldBillingType:
@@ -38174,6 +38459,14 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldActualCost(ctx)
 	case usagelog.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case usagelog.FieldAgentOwnerUserID:
+		return m.OldAgentOwnerUserID(ctx)
+	case usagelog.FieldAgentUserRateMultiplier:
+		return m.OldAgentUserRateMultiplier(ctx)
+	case usagelog.FieldAgentCostRateMultiplier:
+		return m.OldAgentCostRateMultiplier(ctx)
+	case usagelog.FieldAgentIncome:
+		return m.OldAgentIncome(ctx)
 	case usagelog.FieldAccountRateMultiplier:
 		return m.OldAccountRateMultiplier(ctx)
 	case usagelog.FieldBillingType:
@@ -38395,6 +38688,34 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRateMultiplier(v)
 		return nil
+	case usagelog.FieldAgentOwnerUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentOwnerUserID(v)
+		return nil
+	case usagelog.FieldAgentUserRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentUserRateMultiplier(v)
+		return nil
+	case usagelog.FieldAgentCostRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentCostRateMultiplier(v)
+		return nil
+	case usagelog.FieldAgentIncome:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentIncome(v)
+		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -38550,6 +38871,15 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
 	}
+	if m.addagent_user_rate_multiplier != nil {
+		fields = append(fields, usagelog.FieldAgentUserRateMultiplier)
+	}
+	if m.addagent_cost_rate_multiplier != nil {
+		fields = append(fields, usagelog.FieldAgentCostRateMultiplier)
+	}
+	if m.addagent_income != nil {
+		fields = append(fields, usagelog.FieldAgentIncome)
+	}
 	if m.addaccount_rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -38601,6 +38931,12 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedActualCost()
 	case usagelog.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case usagelog.FieldAgentUserRateMultiplier:
+		return m.AddedAgentUserRateMultiplier()
+	case usagelog.FieldAgentCostRateMultiplier:
+		return m.AddedAgentCostRateMultiplier()
+	case usagelog.FieldAgentIncome:
+		return m.AddedAgentIncome()
 	case usagelog.FieldAccountRateMultiplier:
 		return m.AddedAccountRateMultiplier()
 	case usagelog.FieldBillingType:
@@ -38718,6 +39054,27 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRateMultiplier(v)
 		return nil
+	case usagelog.FieldAgentUserRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAgentUserRateMultiplier(v)
+		return nil
+	case usagelog.FieldAgentCostRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAgentCostRateMultiplier(v)
+		return nil
+	case usagelog.FieldAgentIncome:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAgentIncome(v)
+		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -38784,6 +39141,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
+	}
+	if m.FieldCleared(usagelog.FieldAgentOwnerUserID) {
+		fields = append(fields, usagelog.FieldAgentOwnerUserID)
 	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
@@ -38852,6 +39212,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldAgentOwnerUserID:
+		m.ClearAgentOwnerUserID()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -38969,6 +39332,18 @@ func (m *UsageLogMutation) ResetField(name string) error {
 	case usagelog.FieldRateMultiplier:
 		m.ResetRateMultiplier()
 		return nil
+	case usagelog.FieldAgentOwnerUserID:
+		m.ResetAgentOwnerUserID()
+		return nil
+	case usagelog.FieldAgentUserRateMultiplier:
+		m.ResetAgentUserRateMultiplier()
+		return nil
+	case usagelog.FieldAgentCostRateMultiplier:
+		m.ResetAgentCostRateMultiplier()
+		return nil
+	case usagelog.FieldAgentIncome:
+		m.ResetAgentIncome()
+		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ResetAccountRateMultiplier()
 		return nil
@@ -39020,7 +39395,7 @@ func (m *UsageLogMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UsageLogMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.user != nil {
 		edges = append(edges, usagelog.EdgeUser)
 	}
@@ -39035,6 +39410,9 @@ func (m *UsageLogMutation) AddedEdges() []string {
 	}
 	if m.subscription != nil {
 		edges = append(edges, usagelog.EdgeSubscription)
+	}
+	if m.agent_owner != nil {
+		edges = append(edges, usagelog.EdgeAgentOwner)
 	}
 	return edges
 }
@@ -39063,13 +39441,17 @@ func (m *UsageLogMutation) AddedIDs(name string) []ent.Value {
 		if id := m.subscription; id != nil {
 			return []ent.Value{*id}
 		}
+	case usagelog.EdgeAgentOwner:
+		if id := m.agent_owner; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UsageLogMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	return edges
 }
 
@@ -39081,7 +39463,7 @@ func (m *UsageLogMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UsageLogMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.cleareduser {
 		edges = append(edges, usagelog.EdgeUser)
 	}
@@ -39096,6 +39478,9 @@ func (m *UsageLogMutation) ClearedEdges() []string {
 	}
 	if m.clearedsubscription {
 		edges = append(edges, usagelog.EdgeSubscription)
+	}
+	if m.clearedagent_owner {
+		edges = append(edges, usagelog.EdgeAgentOwner)
 	}
 	return edges
 }
@@ -39114,6 +39499,8 @@ func (m *UsageLogMutation) EdgeCleared(name string) bool {
 		return m.clearedgroup
 	case usagelog.EdgeSubscription:
 		return m.clearedsubscription
+	case usagelog.EdgeAgentOwner:
+		return m.clearedagent_owner
 	}
 	return false
 }
@@ -39137,6 +39524,9 @@ func (m *UsageLogMutation) ClearEdge(name string) error {
 	case usagelog.EdgeSubscription:
 		m.ClearSubscription()
 		return nil
+	case usagelog.EdgeAgentOwner:
+		m.ClearAgentOwner()
+		return nil
 	}
 	return fmt.Errorf("unknown UsageLog unique edge %s", name)
 }
@@ -39159,6 +39549,9 @@ func (m *UsageLogMutation) ResetEdge(name string) error {
 		return nil
 	case usagelog.EdgeSubscription:
 		m.ResetSubscription()
+		return nil
+	case usagelog.EdgeAgentOwner:
+		m.ResetAgentOwner()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog edge %s", name)
@@ -39226,6 +39619,9 @@ type UserMutation struct {
 	usage_logs                        map[int64]struct{}
 	removedusage_logs                 map[int64]struct{}
 	clearedusage_logs                 bool
+	agent_income_usage_logs           map[int64]struct{}
+	removedagent_income_usage_logs    map[int64]struct{}
+	clearedagent_income_usage_logs    bool
 	attribute_values                  map[int64]struct{}
 	removedattribute_values           map[int64]struct{}
 	clearedattribute_values           bool
@@ -40920,6 +41316,60 @@ func (m *UserMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by ids.
+func (m *UserMutation) AddAgentIncomeUsageLogIDs(ids ...int64) {
+	if m.agent_income_usage_logs == nil {
+		m.agent_income_usage_logs = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.agent_income_usage_logs[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAgentIncomeUsageLogs clears the "agent_income_usage_logs" edge to the UsageLog entity.
+func (m *UserMutation) ClearAgentIncomeUsageLogs() {
+	m.clearedagent_income_usage_logs = true
+}
+
+// AgentIncomeUsageLogsCleared reports if the "agent_income_usage_logs" edge to the UsageLog entity was cleared.
+func (m *UserMutation) AgentIncomeUsageLogsCleared() bool {
+	return m.clearedagent_income_usage_logs
+}
+
+// RemoveAgentIncomeUsageLogIDs removes the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (m *UserMutation) RemoveAgentIncomeUsageLogIDs(ids ...int64) {
+	if m.removedagent_income_usage_logs == nil {
+		m.removedagent_income_usage_logs = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.agent_income_usage_logs, ids[i])
+		m.removedagent_income_usage_logs[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAgentIncomeUsageLogs returns the removed IDs of the "agent_income_usage_logs" edge to the UsageLog entity.
+func (m *UserMutation) RemovedAgentIncomeUsageLogsIDs() (ids []int64) {
+	for id := range m.removedagent_income_usage_logs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AgentIncomeUsageLogsIDs returns the "agent_income_usage_logs" edge IDs in the mutation.
+func (m *UserMutation) AgentIncomeUsageLogsIDs() (ids []int64) {
+	for id := range m.agent_income_usage_logs {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAgentIncomeUsageLogs resets all changes to the "agent_income_usage_logs" edge.
+func (m *UserMutation) ResetAgentIncomeUsageLogs() {
+	m.agent_income_usage_logs = nil
+	m.clearedagent_income_usage_logs = false
+	m.removedagent_income_usage_logs = nil
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by ids.
 func (m *UserMutation) AddAttributeValueIDs(ids ...int64) {
 	if m.attribute_values == nil {
@@ -42054,7 +42504,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 15)
+	edges := make([]string, 0, 16)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -42075,6 +42525,9 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, user.EdgeUsageLogs)
+	}
+	if m.agent_income_usage_logs != nil {
+		edges = append(edges, user.EdgeAgentIncomeUsageLogs)
 	}
 	if m.attribute_values != nil {
 		edges = append(edges, user.EdgeAttributeValues)
@@ -42149,6 +42602,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeAgentIncomeUsageLogs:
+		ids := make([]ent.Value, 0, len(m.agent_income_usage_logs))
+		for id := range m.agent_income_usage_logs {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeAttributeValues:
 		ids := make([]ent.Value, 0, len(m.attribute_values))
 		for id := range m.attribute_values {
@@ -42203,7 +42662,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 15)
+	edges := make([]string, 0, 16)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -42224,6 +42683,9 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, user.EdgeUsageLogs)
+	}
+	if m.removedagent_income_usage_logs != nil {
+		edges = append(edges, user.EdgeAgentIncomeUsageLogs)
 	}
 	if m.removedattribute_values != nil {
 		edges = append(edges, user.EdgeAttributeValues)
@@ -42298,6 +42760,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeAgentIncomeUsageLogs:
+		ids := make([]ent.Value, 0, len(m.removedagent_income_usage_logs))
+		for id := range m.removedagent_income_usage_logs {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeAttributeValues:
 		ids := make([]ent.Value, 0, len(m.removedattribute_values))
 		for id := range m.removedattribute_values {
@@ -42352,7 +42820,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 15)
+	edges := make([]string, 0, 16)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -42373,6 +42841,9 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, user.EdgeUsageLogs)
+	}
+	if m.clearedagent_income_usage_logs {
+		edges = append(edges, user.EdgeAgentIncomeUsageLogs)
 	}
 	if m.clearedattribute_values {
 		edges = append(edges, user.EdgeAttributeValues)
@@ -42419,6 +42890,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedallowed_groups
 	case user.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case user.EdgeAgentIncomeUsageLogs:
+		return m.clearedagent_income_usage_logs
 	case user.EdgeAttributeValues:
 		return m.clearedattribute_values
 	case user.EdgePromoCodeUsages:
@@ -42471,6 +42944,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case user.EdgeAgentIncomeUsageLogs:
+		m.ResetAgentIncomeUsageLogs()
 		return nil
 	case user.EdgeAttributeValues:
 		m.ResetAttributeValues()

@@ -350,6 +350,7 @@ type OpenAIGatewayService struct {
 	rateLimitService      *RateLimitService
 	billingCacheService   *BillingCacheService
 	userGroupRateResolver *userGroupRateResolver
+	agentIncomeResolver   *AgentIncomeResolver
 	httpUpstream          HTTPUpstream
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
@@ -427,6 +428,7 @@ func NewOpenAIGatewayService(
 			nil,
 			"service.openai_gateway",
 		),
+		agentIncomeResolver:   NewAgentIncomeResolver(userRepo, userGroupRateRepo),
 		httpUpstream:          httpUpstream,
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
@@ -5759,6 +5761,18 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.RateMultiplier = imageMultiplier
 	} else {
 		usageLog.RateMultiplier = multiplier
+	}
+	userIncomeRate := usageLog.RateMultiplier
+	groupDefaultRate := multiplier
+	if apiKey.Group != nil {
+		groupDefaultRate = apiKey.Group.RateMultiplier
+	}
+	if s.agentIncomeResolver != nil && cost != nil {
+		snapshot := s.agentIncomeResolver.Resolve(ctx, user, apiKey.GroupID, cost.ActualCost, userIncomeRate, groupDefaultRate)
+		usageLog.AgentOwnerUserID = snapshot.AgentOwnerUserID
+		usageLog.AgentUserRateMultiplier = snapshot.UserRateMultiplier
+		usageLog.AgentCostRateMultiplier = snapshot.AgentCostRateMultiplier
+		usageLog.AgentIncome = snapshot.AgentIncome
 	}
 	usageLog.AccountRateMultiplier = &accountRateMultiplier
 	usageLog.BillingType = billingType

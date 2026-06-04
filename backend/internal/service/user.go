@@ -70,6 +70,9 @@ type User struct {
 
 	// EnterpriseProfile is populated only by enterprise-management or direct-enterprise list responses.
 	EnterpriseProfile *EnterpriseProfile
+
+	// AgentIncome is populated only by agent-management list responses.
+	AgentIncome float64
 }
 
 func (u *User) IsAdmin() bool {

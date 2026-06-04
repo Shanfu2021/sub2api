@@ -102,6 +102,21 @@ type DirectChildrenResult struct {
 	Pagination *pagination.PaginationResult `json:"pagination"`
 }
 
+type AdminAgentTreeResult struct {
+	Items []AdminAgentTreeAgent `json:"items"`
+}
+
+type AdminAgentTreeAgent struct {
+	Agent       User                       `json:"agent"`
+	Users       []User                     `json:"users"`
+	Enterprises []AdminAgentTreeEnterprise `json:"enterprises"`
+}
+
+type AdminAgentTreeEnterprise struct {
+	Enterprise User   `json:"enterprise"`
+	Employees  []User `json:"employees"`
+}
+
 type DirectChildrenQuery struct {
 	Pagination pagination.PaginationParams
 	Search     string
@@ -180,6 +195,7 @@ type AgentManagementRepository interface {
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
 	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
 	ListInviteGroupDefaults(ctx context.Context, agentID int64) ([]AgentInviteGroupDefault, error)
+	GetAgentIncomeTotals(ctx context.Context, agentIDs []int64) (map[int64]float64, error)
 	UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error
 	DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error
 	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
@@ -242,10 +258,7 @@ func (s *AgentManagementService) ListDirectAgents(ctx context.Context, actorID i
 	if err != nil {
 		return nil, err
 	}
-	if actor.Role == RoleAgentLevel2 {
-		return &DirectChildrenResult{Users: []User{}, Pagination: &pagination.PaginationResult{Page: 1, PageSize: pagination.DefaultPagination().Limit()}}, nil
-	}
-	return s.listDirectChildrenForActor(ctx, actor, []string{RoleAgentLevel1, RoleAgentLevel2}, pagination.DefaultPagination())
+	return s.listDirectChildrenForActor(ctx, actor, []string{RoleAgentLevel1}, pagination.DefaultPagination())
 }
 
 func (s *AgentManagementService) ListDirectAgentsWithQuery(ctx context.Context, actorID int64, query DirectChildrenQuery) (*DirectChildrenResult, error) {
@@ -256,10 +269,7 @@ func (s *AgentManagementService) ListDirectAgentsWithQuery(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	if actor.Role == RoleAgentLevel2 {
-		return &DirectChildrenResult{Users: []User{}, Pagination: &pagination.PaginationResult{Page: 1, PageSize: query.Pagination.Limit()}}, nil
-	}
-	return s.listDirectChildrenForActorWithQuery(ctx, actor, []string{RoleAgentLevel1, RoleAgentLevel2}, query)
+	return s.listDirectChildrenForActorWithQuery(ctx, actor, []string{RoleAgentLevel1}, query)
 }
 
 func (s *AgentManagementService) ListDirectEnterprises(ctx context.Context, actorID int64) (*DirectChildrenResult, error) {
@@ -295,6 +305,66 @@ func (s *AgentManagementService) GetSummary(ctx context.Context, actorID int64) 
 	}
 	summary.InviteDefaults = &defaults
 	return summary, nil
+}
+
+func (s *AgentManagementService) GetAdminAgentTree(ctx context.Context, actorID int64) (*AdminAgentTreeResult, error) {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role != RoleAdmin {
+		return nil, ErrAgentManagementForbidden
+	}
+	rootAdmin, err := s.repo.GetRootAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+	}
+
+	agents, err := s.listAllDirectChildrenForRoles(ctx, rootAdmin.ID, []string{RoleAgentLevel1})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateProfileBackedUsers(ctx, agents); err != nil {
+		return nil, err
+	}
+	if err := s.populateAgentIncomeTotals(ctx, agents); err != nil {
+		return nil, err
+	}
+
+	items := make([]AdminAgentTreeAgent, 0, len(agents))
+	for i := range agents {
+		directUsers, err := s.listAllDirectChildrenForRoles(ctx, agents[i].ID, []string{RoleUser})
+		if err != nil {
+			return nil, err
+		}
+		enterprises, err := s.listAllDirectChildrenForRoles(ctx, agents[i].ID, []string{RoleEnterprise})
+		if err != nil {
+			return nil, err
+		}
+		if err := s.populateProfileBackedUsers(ctx, enterprises); err != nil {
+			return nil, err
+		}
+
+		enterpriseNodes := make([]AdminAgentTreeEnterprise, 0, len(enterprises))
+		for j := range enterprises {
+			employees, err := s.listAllDirectChildrenForRoles(ctx, enterprises[j].ID, []string{RoleEmployee})
+			if err != nil {
+				return nil, err
+			}
+			enterpriseNodes = append(enterpriseNodes, AdminAgentTreeEnterprise{
+				Enterprise: enterprises[j],
+				Employees:  employees,
+			})
+		}
+
+		items = append(items, AdminAgentTreeAgent{
+			Agent:       agents[i],
+			Users:       directUsers,
+			Enterprises: enterpriseNodes,
+		})
+	}
+
+	return &AdminAgentTreeResult{Items: items}, nil
 }
 
 func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID int64, input CreateDirectUserInput) (*User, error) {
@@ -628,19 +698,6 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 		s.invalidateUser(ctx, child.ID)
 		for i := range directChildren {
 			s.invalidateUser(ctx, directChildren[i].ID)
-		}
-		return nil
-	}
-	if actor.Role == RoleAgentLevel1 && child.Role == RoleAgentLevel2 {
-		if err := s.repo.RehomeChildGroupDelegations(ctx, actor.ID, rootAdmin.ID, child.ID); err != nil {
-			return err
-		}
-		if err := s.repo.SetRoleAndParent(ctx, child.ID, RoleAgentLevel1, &rootAdmin.ID); err != nil {
-			return err
-		}
-		s.invalidateUser(ctx, child.ID)
-		if err := s.recalculateAgentEffectiveQuota(ctx, actor.ID); err != nil {
-			return err
 		}
 		return nil
 	}
@@ -1020,7 +1077,7 @@ func isAgentManagerRoleForInviteDefaults(ctx context.Context, repo UserRepositor
 	if err != nil {
 		return false
 	}
-	return user.Role == RoleAdmin || user.Role == RoleAgentLevel1 || user.Role == RoleAgentLevel2
+	return user.Role == RoleAdmin || user.Role == RoleAgentLevel1
 }
 
 func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context.Context, managerID int64, groupID int64) error {
@@ -1040,10 +1097,14 @@ func (s *AgentManagementService) removeDelegatedGroupFromDescendants(ctx context
 }
 
 func (s *AgentManagementService) listAllDirectChildrenForCascade(ctx context.Context, parentID int64) ([]User, error) {
+	return s.listAllDirectChildrenForRoles(ctx, parentID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleEmployee})
+}
+
+func (s *AgentManagementService) listAllDirectChildrenForRoles(ctx context.Context, parentID int64, roles []string) ([]User, error) {
 	const pageSize = 1000
 	var out []User
 	for page := 1; ; page++ {
-		children, result, err := s.repo.ListDirectChildren(ctx, parentID, []string{RoleUser, RoleEnterprise, RoleAgentLevel1, RoleAgentLevel2, RoleEmployee}, pagination.PaginationParams{Page: page, PageSize: pageSize})
+		children, result, err := s.repo.ListDirectChildren(ctx, parentID, roles, pagination.PaginationParams{Page: page, PageSize: pageSize})
 		if err != nil {
 			return nil, err
 		}
@@ -1118,11 +1179,21 @@ func (s *AgentManagementService) listDirectChildrenForActorWithQuery(ctx context
 	if err != nil {
 		return nil, err
 	}
+	if err := s.populateProfileBackedUsers(ctx, users); err != nil {
+		return nil, err
+	}
+	if err := s.populateAgentIncomeTotals(ctx, users); err != nil {
+		return nil, err
+	}
+	return &DirectChildrenResult{Users: users, Pagination: page}, nil
+}
+
+func (s *AgentManagementService) populateProfileBackedUsers(ctx context.Context, users []User) error {
 	for i := range users {
 		if isAgentManagerRole(users[i].Role) && users[i].Role != RoleAdmin {
 			profile, err := s.repo.GetAgentProfile(ctx, users[i].ID)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			users[i].AgentProfile = profile
 			continue
@@ -1130,12 +1201,34 @@ func (s *AgentManagementService) listDirectChildrenForActorWithQuery(ctx context
 		if users[i].Role == RoleEnterprise {
 			profile, err := s.repo.GetEnterpriseProfile(ctx, users[i].ID)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			users[i].EnterpriseProfile = profile
 		}
 	}
-	return &DirectChildrenResult{Users: users, Pagination: page}, nil
+	return nil
+}
+
+func (s *AgentManagementService) populateAgentIncomeTotals(ctx context.Context, users []User) error {
+	ids := make([]int64, 0, len(users))
+	for i := range users {
+		if users[i].Role == RoleAgentLevel1 {
+			ids = append(ids, users[i].ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	totals, err := s.repo.GetAgentIncomeTotals(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range users {
+		if income, ok := totals[users[i].ID]; ok {
+			users[i].AgentIncome = income
+		}
+	}
+	return nil
 }
 
 func (s *AgentManagementService) requireManager(ctx context.Context, actorID int64) (*User, error) {
@@ -1191,7 +1284,7 @@ func (s *AgentManagementService) invalidateUser(ctx context.Context, userID int6
 }
 
 func isAgentManagerRole(role string) bool {
-	return role == RoleAdmin || role == RoleAgentLevel1 || role == RoleAgentLevel2
+	return role == RoleAdmin || role == RoleAgentLevel1
 }
 
 func isProfileBackedChildRole(role string) bool {
@@ -1404,8 +1497,6 @@ func canUpgradeDirectUser(actorRole string, targetRole string) bool {
 	case RoleAdmin:
 		return targetRole == RoleAgentLevel1 || targetRole == RoleEnterprise
 	case RoleAgentLevel1:
-		return targetRole == RoleAgentLevel2 || targetRole == RoleEnterprise
-	case RoleAgentLevel2:
 		return targetRole == RoleEnterprise
 	default:
 		return false

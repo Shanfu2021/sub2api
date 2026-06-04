@@ -24,6 +24,7 @@ type agentManagementService interface {
 	ListDirectAgentsWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	ListDirectEnterprises(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
 	ListDirectEnterprisesWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
+	GetAdminAgentTree(ctx context.Context, actorID int64) (*service.AdminAgentTreeResult, error)
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
@@ -74,6 +75,23 @@ func (h *AgentManagementHandler) ListDirectAgents(c *gin.Context) {
 
 func (h *AgentManagementHandler) ListDirectEnterprises(c *gin.Context) {
 	h.listDirectChildren(c, h.service.ListDirectEnterprisesWithQuery)
+}
+
+func (h *AgentManagementHandler) AdminAgentTree(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.GetAdminAgentTree(c.Request.Context(), actorID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	items := make([]adminAgentTreeAgentResponse, 0, len(result.Items))
+	for i := range result.Items {
+		items = append(items, adminAgentTreeAgentFromService(result.Items[i]))
+	}
+	response.Success(c, gin.H{"items": items})
 }
 
 func (h *AgentManagementHandler) CreateDirectUser(c *gin.Context) {
@@ -441,6 +459,7 @@ type agentManagedUserResponse struct {
 	PoolRPM                  int     `json:"pool_rpm"`
 	InviteDefaultConcurrency int     `json:"invite_default_concurrency"`
 	InviteDefaultRPM         int     `json:"invite_default_rpm"`
+	AgentIncome              float64 `json:"agent_income"`
 	Status                   string  `json:"status"`
 	CreatedAt                string  `json:"created_at"`
 	UpdatedAt                string  `json:"updated_at"`
@@ -461,6 +480,17 @@ type childGroupDelegationOptionResponse struct {
 	Assigned            bool       `json:"assigned"`
 	ChildRateMultiplier float64    `json:"child_rate_multiplier"`
 	ChildCanDelegate    bool       `json:"child_can_delegate"`
+}
+
+type adminAgentTreeAgentResponse struct {
+	Agent       agentManagedUserResponse           `json:"agent"`
+	Users       []agentManagedUserResponse         `json:"users"`
+	Enterprises []adminAgentTreeEnterpriseResponse `json:"enterprises"`
+}
+
+type adminAgentTreeEnterpriseResponse struct {
+	Enterprise agentManagedUserResponse   `json:"enterprise"`
+	Employees  []agentManagedUserResponse `json:"employees"`
 }
 
 func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
@@ -495,9 +525,37 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		PoolRPM:                  poolRPM,
 		InviteDefaultConcurrency: inviteDefaultConcurrency,
 		InviteDefaultRPM:         inviteDefaultRPM,
+		AgentIncome:              u.AgentIncome,
 		Status:                   u.Status,
 		CreatedAt:                u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:                u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+func adminAgentTreeAgentFromService(in service.AdminAgentTreeAgent) adminAgentTreeAgentResponse {
+	users := make([]agentManagedUserResponse, 0, len(in.Users))
+	for i := range in.Users {
+		users = append(users, agentManagedUserFromService(&in.Users[i]))
+	}
+	enterprises := make([]adminAgentTreeEnterpriseResponse, 0, len(in.Enterprises))
+	for i := range in.Enterprises {
+		enterprises = append(enterprises, adminAgentTreeEnterpriseFromService(in.Enterprises[i]))
+	}
+	return adminAgentTreeAgentResponse{
+		Agent:       agentManagedUserFromService(&in.Agent),
+		Users:       users,
+		Enterprises: enterprises,
+	}
+}
+
+func adminAgentTreeEnterpriseFromService(in service.AdminAgentTreeEnterprise) adminAgentTreeEnterpriseResponse {
+	employees := make([]agentManagedUserResponse, 0, len(in.Employees))
+	for i := range in.Employees {
+		employees = append(employees, agentManagedUserFromService(&in.Employees[i]))
+	}
+	return adminAgentTreeEnterpriseResponse{
+		Enterprise: agentManagedUserFromService(&in.Enterprise),
+		Employees:  employees,
 	}
 }
 

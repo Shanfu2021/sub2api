@@ -19,6 +19,7 @@ const styleSource = readFileSync(stylePath, 'utf8')
 
 const navMessages = {
   agentManagement: 'Agent Management',
+  agentAdminOverview: 'Agent Overview',
   agentDirectUsers: 'Direct Users',
   agentDirectAgents: 'Direct Agents',
   agentDirectEnterprises: 'Direct Enterprises',
@@ -118,6 +119,7 @@ async function mountSidebar(options: {
       { path: '/affiliate', component: { template: '<div />' } },
       { path: '/profile', component: { template: '<div />' } },
       { path: '/agent/direct-users', component: { template: '<div />' } },
+      { path: '/agent/admin-overview', component: { template: '<div />' } },
       { path: '/agent/direct-agents', component: { template: '<div />' } },
       { path: '/agent/direct-enterprises', component: { template: '<div />' } },
       { path: '/agent/groups', component: { template: '<div />' } },
@@ -209,13 +211,15 @@ describe('AppSidebar agent management visibility', () => {
     const wrapper = await mountSidebar({ role: 'admin', runMode: 'simple' })
 
     expect(wrapper.text()).toContain('Agent Management')
-    expect(agentLinkCount(wrapper)).toBe(4)
+    expect(wrapper.text()).toContain('Agent Overview')
+    expect(agentLinkCount(wrapper)).toBe(5)
   })
 
   it('shows agent management links to agents in simple mode', async () => {
     const wrapper = await mountSidebar({ role: 'agent_level1', runMode: 'simple' })
 
     expect(wrapper.text()).toContain('Agent Management')
+    expect(wrapper.text()).not.toContain('Agent Overview')
     expect(agentLinkCount(wrapper)).toBe(4)
   })
 
@@ -223,6 +227,7 @@ describe('AppSidebar agent management visibility', () => {
     const wrapper = await mountSidebar({ role: 'agent_level1', backendModeEnabled: true })
 
     expect(wrapper.text()).toContain('Agent Management')
+    expect(wrapper.text()).not.toContain('Agent Overview')
     expect(agentLinkCount(wrapper)).toBe(4)
     expect(wrapper.text()).not.toContain('Dashboard')
   })
@@ -264,7 +269,7 @@ describe('AppSidebar enterprise management visibility', () => {
     expect(wrapper.text()).not.toContain('Enterprise Management')
     expect(enterpriseLinkCount(wrapper)).toBe(0)
     expect(wrapper.text()).toContain('Agent Management')
-    expect(agentLinkCount(wrapper)).toBe(4)
+    expect(agentLinkCount(wrapper)).toBe(5)
   })
 })
 

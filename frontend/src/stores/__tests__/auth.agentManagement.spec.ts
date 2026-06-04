@@ -58,7 +58,6 @@ describe('auth agent management permissions', () => {
   it.each([
     { role: 'admin', expected: true },
     { role: 'agent_level1', expected: true },
-    { role: 'agent_level2', expected: true },
     { role: 'enterprise', expected: false },
     { role: 'user', expected: false },
   ] as const)('sets canUseAgentManagement=$expected for $role role', async ({ role, expected }) => {

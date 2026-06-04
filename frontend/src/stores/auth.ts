@@ -91,7 +91,7 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   const isAgent = computed(() => {
-    return user.value?.role === 'agent_level1' || user.value?.role === 'agent_level2'
+    return user.value?.role === 'agent_level1'
   })
 
   const isEnterprise = computed(() => {

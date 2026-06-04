@@ -105,6 +105,10 @@
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ formatCurrency(Number(value || 0)) }}</span>
           </template>
 
+          <template #cell-agent_income="{ value }">
+            <span class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{{ formatCurrency(Number(value || 0)) }}</span>
+          </template>
+
           <template #cell-allocation="{ row }">
             <div class="grid min-w-[240px] grid-cols-2 gap-2">
               <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
@@ -384,6 +388,7 @@ const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
   { key: 'role', label: t('agentManagement.direct.role') },
   { key: 'balance', label: t('agentManagement.direct.balance') },
+  ...(props.kind === 'agents' ? [{ key: 'agent_income', label: t('agentManagement.direct.agentIncome') }] : []),
   { key: 'allocation', label: t('agentManagement.direct.allocation') },
   { key: 'status', label: t('common.status') },
   { key: 'actions', label: t('common.actions') },
@@ -393,15 +398,14 @@ const upgradeTargets = computed<AgentUpgradeTargetRole[]>(() => {
   if (props.kind !== 'users') return []
   const role = authStore.user?.role
   if (role === 'admin') return ['agent_level1', 'enterprise']
-  if (role === 'agent_level1') return ['agent_level2', 'enterprise']
-  if (role === 'agent_level2') return ['enterprise']
+  if (role === 'agent_level1') return ['enterprise']
   return []
 })
 
 const canCreateDirectUser = computed(() => props.kind === 'users')
 
 const isAdmin = computed(() => authStore.user?.role === 'admin')
-const isAgent = computed(() => authStore.user?.role === 'agent_level1' || authStore.user?.role === 'agent_level2')
+const isAgent = computed(() => authStore.user?.role === 'agent_level1')
 const showInviteDefaultsForm = computed(() => props.kind === 'users' && (isAdmin.value || isAgent.value))
 const isAdminUnlimitedCapacity = computed(() => isAdmin.value)
 
@@ -682,7 +686,7 @@ async function confirmUpgrade() {
   savingChildId.value = child.id
   try {
     const payload = { target_role: targetRole }
-    if (targetRole === 'agent_level1' || targetRole === 'agent_level2' || targetRole === 'enterprise') {
+    if (targetRole === 'agent_level1' || targetRole === 'enterprise') {
       const quota = draftFor(child)
       if (exceedsRemainingAllocationForExisting(child, quota)) {
         appStore.showError(t('agentManagement.direct.insufficientAllocation'))

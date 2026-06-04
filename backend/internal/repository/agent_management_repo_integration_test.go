@@ -121,9 +121,7 @@ func (s *AgentManagementRepoSuite) TestListDirectChildrenByRole() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	directUser := s.mustCreateAgentUser("direct-user@test.com", service.RoleUser, &level1.ID, 10, 100)
-	directLevel2 := s.mustCreateAgentUser("direct-level2@test.com", service.RoleAgentLevel2, &level1.ID, 20, 200)
 	directEnterprise := s.mustCreateAgentUser("direct-enterprise@test.com", service.RoleEnterprise, &level1.ID, 30, 300)
-	s.mustCreateAgentUser("nested-user@test.com", service.RoleUser, &directLevel2.ID, 5, 50)
 	s.mustCreateAgentUser("root-user@test.com", service.RoleUser, &root.ID, 5, 50)
 
 	users, page, err := s.repo.ListDirectChildren(s.ctx, level1.ID, []string{service.RoleUser}, pagination.PaginationParams{Page: 1, PageSize: 10})
@@ -132,10 +130,10 @@ func (s *AgentManagementRepoSuite) TestListDirectChildrenByRole() {
 	s.Require().Equal(directUser.ID, users[0].ID)
 	s.Require().Equal(int64(1), page.Total)
 
-	agents, _, err := s.repo.ListDirectChildren(s.ctx, level1.ID, []string{service.RoleAgentLevel2}, pagination.PaginationParams{Page: 1, PageSize: 10})
+	agents, _, err := s.repo.ListDirectChildren(s.ctx, root.ID, []string{service.RoleAgentLevel1}, pagination.PaginationParams{Page: 1, PageSize: 10})
 	s.Require().NoError(err)
 	s.Require().Len(agents, 1)
-	s.Require().Equal(directLevel2.ID, agents[0].ID)
+	s.Require().Equal(level1.ID, agents[0].ID)
 
 	enterprises, _, err := s.repo.ListDirectChildren(s.ctx, level1.ID, []string{service.RoleEnterprise}, pagination.PaginationParams{Page: 1, PageSize: 10})
 	s.Require().NoError(err)
@@ -165,10 +163,10 @@ func (s *AgentManagementRepoSuite) TestAgentProfilePoolQuotaUsage() {
 	root := s.mustCreateAgentUser("root-profile@test.com", service.RoleAdmin, nil, 0, 0)
 	manager := s.mustCreateAgentUser("manager-profile@test.com", service.RoleAgentLevel1, &root.ID, 0, 0)
 	ordinary := s.mustCreateAgentUser("ordinary-profile@test.com", service.RoleUser, &manager.ID, 10, 100)
-	childAgent := s.mustCreateAgentUser("child-agent-profile@test.com", service.RoleAgentLevel2, &manager.ID, 0, 0)
+	enterprise := s.mustCreateAgentUser("enterprise-profile@test.com", service.RoleEnterprise, &manager.ID, 0, 0)
 
 	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, manager.ID, 100, 1000))
-	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, childAgent.ID, 30, 300))
+	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 30, 300))
 
 	profile, err := s.repo.GetAgentProfile(s.ctx, manager.ID)
 	s.Require().NoError(err)
@@ -183,7 +181,7 @@ func (s *AgentManagementRepoSuite) TestAgentProfilePoolQuotaUsage() {
 	s.Require().False(usage.UnlimitedConcurrency)
 	s.Require().False(usage.UnlimitedRPM)
 
-	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, childAgent.ID, 0, 0))
+	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 0, 0))
 	usage, err = s.repo.GetDirectChildQuotaUsage(s.ctx, manager.ID, nil)
 	s.Require().NoError(err)
 	s.Require().Equal(10, usage.Concurrency)
@@ -261,20 +259,16 @@ SELECT inviter_id FROM user_affiliates WHERE user_id = $1`,
 	s.Require().Equal(inviter.ID, inviterID)
 }
 
-func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentDeletesAccountMovesChildrenAndPromotesLevel2() {
+func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentDeletesAccountMovesDirectUsersAndEnterprises() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	directUser := s.mustCreateAgentUser("direct-user@test.com", service.RoleUser, &level1.ID, 10, 100)
 	directEnterprise := s.mustCreateAgentUser("direct-enterprise@test.com", service.RoleEnterprise, &level1.ID, 20, 200)
-	directLevel2 := s.mustCreateAgentUser("direct-level2@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
-	nestedUser := s.mustCreateAgentUser("nested-user@test.com", service.RoleUser, &directLevel2.ID, 5, 50)
 	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level1-account", true, 0.3)
 	enterpriseGroup := s.mustCreateAgentGroup("exclusive-delete-level1-enterprise", true, 0.4)
-	level2Group := s.mustCreateAgentGroup("exclusive-delete-level1-agent", true, 0.5)
 
 	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID, 1.8, true))
 	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directEnterprise.ID, enterpriseGroup.ID, 2.4, false))
-	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directLevel2.ID, level2Group.ID, 3.1, true))
 	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
 	_, err := s.client.UserAllowedGroup.Create().
 		SetUserID(directUser.ID).
@@ -286,22 +280,14 @@ func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentDeletesAccountMovesChild
 		SetGroupID(enterpriseGroup.ID).
 		Save(s.ctx)
 	s.Require().NoError(err)
-	_, err = s.client.UserAllowedGroup.Create().
-		SetUserID(directLevel2.ID).
-		SetGroupID(level2Group.ID).
-		Save(s.ctx)
-	s.Require().NoError(err)
 	_, err = integrationDB.ExecContext(s.ctx, `
-INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-       ($3, $4, 2.4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-       ($5, $6, 3.1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+	INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+	VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	       ($3, $4, 2.4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		directUser.ID,
 		exclusiveGroup.ID,
 		directEnterprise.ID,
 		enterpriseGroup.ID,
-		directLevel2.ID,
-		level2Group.ID,
 	)
 	s.Require().NoError(err)
 
@@ -325,18 +311,6 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().Equal(root.ID, *reloadedEnterprise.ParentUserID)
 	s.Require().Equal(service.RoleEnterprise, reloadedEnterprise.Role)
 
-	reloadedAgent, err := s.client.User.Get(s.ctx, directLevel2.ID)
-	s.Require().NoError(err)
-	s.Require().NotNil(reloadedAgent.ParentUserID)
-	s.Require().Equal(root.ID, *reloadedAgent.ParentUserID)
-	s.Require().Equal(service.RoleAgentLevel1, reloadedAgent.Role)
-
-	reloadedNested, err := s.client.User.Get(s.ctx, nestedUser.ID)
-	s.Require().NoError(err)
-	s.Require().NotNil(reloadedNested.ParentUserID)
-	s.Require().Equal(directLevel2.ID, *reloadedNested.ParentUserID)
-	s.Require().Equal(service.RoleUser, reloadedNested.Role)
-
 	delegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID)
 	s.Require().NoError(err)
 	s.Require().Nil(delegation)
@@ -350,12 +324,6 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().NotNil(delegation)
 	s.Require().Equal(2.4, delegation.RateMultiplier)
 	s.Require().False(delegation.CanDelegate)
-	delegation, err = s.repo.GetGroupDelegation(s.ctx, root.ID, directLevel2.ID, level2Group.ID)
-	s.Require().NoError(err)
-	s.Require().NotNil(delegation)
-	s.Require().Equal(3.1, delegation.RateMultiplier)
-	s.Require().True(delegation.CanDelegate)
-
 	allowedCount, err := s.client.UserAllowedGroup.Query().
 		Where(userallowedgroup.UserIDEQ(directUser.ID), userallowedgroup.GroupIDEQ(exclusiveGroup.ID)).
 		Count(s.ctx)
@@ -366,15 +334,8 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 		Count(s.ctx)
 	s.Require().NoError(err)
 	s.Require().Equal(1, allowedCount)
-	allowedCount, err = s.client.UserAllowedGroup.Query().
-		Where(userallowedgroup.UserIDEQ(directLevel2.ID), userallowedgroup.GroupIDEQ(level2Group.ID)).
-		Count(s.ctx)
-	s.Require().NoError(err)
-	s.Require().Equal(1, allowedCount)
-
 	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", directUser.ID, exclusiveGroup.ID, 1.8))
 	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", directEnterprise.ID, enterpriseGroup.ID, 2.4))
-	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", directLevel2.ID, level2Group.ID, 3.1))
 
 	profile, err := s.repo.GetAgentProfile(s.ctx, level1.ID)
 	s.Require().NoError(err)
@@ -481,31 +442,31 @@ func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentForAdminUserDeletionDele
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)
 	directUser := s.mustCreateAgentUser("direct-user-delete@test.com", service.RoleUser, &level1.ID, 10, 100)
-	directLevel2 := s.mustCreateAgentUser("direct-level2-delete@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
+	directEnterprise := s.mustCreateAgentUser("direct-enterprise-delete@test.com", service.RoleEnterprise, &level1.ID, 30, 300)
 	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level1", true, 0.3)
-	level2Group := s.mustCreateAgentGroup("exclusive-delete-level1-admin-agent", true, 0.5)
+	enterpriseGroup := s.mustCreateAgentGroup("exclusive-delete-level1-admin-enterprise", true, 0.5)
 
 	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
 	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directUser.ID, exclusiveGroup.ID, 1.8, true))
-	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directLevel2.ID, level2Group.ID, 2.7, true))
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, directEnterprise.ID, enterpriseGroup.ID, 2.7, true))
 	_, err := s.client.UserAllowedGroup.Create().
 		SetUserID(directUser.ID).
 		SetGroupID(exclusiveGroup.ID).
 		Save(s.ctx)
 	s.Require().NoError(err)
 	_, err = s.client.UserAllowedGroup.Create().
-		SetUserID(directLevel2.ID).
-		SetGroupID(level2Group.ID).
+		SetUserID(directEnterprise.ID).
+		SetGroupID(enterpriseGroup.ID).
 		Save(s.ctx)
 	s.Require().NoError(err)
 	_, err = integrationDB.ExecContext(s.ctx, `
-INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-       ($3, $4, 2.7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+	INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+	VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+	       ($3, $4, 2.7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		directUser.ID,
 		exclusiveGroup.ID,
-		directLevel2.ID,
-		level2Group.ID,
+		directEnterprise.ID,
+		enterpriseGroup.ID,
 	)
 	s.Require().NoError(err)
 
@@ -513,7 +474,7 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().NoError(err)
 	s.Require().Contains(affected, level1.ID)
 	s.Require().Contains(affected, directUser.ID)
-	s.Require().Contains(affected, directLevel2.ID)
+	s.Require().Contains(affected, directEnterprise.ID)
 
 	level1Exists, err := s.client.User.Query().
 		Where(user.IDEQ(level1.ID)).
@@ -526,11 +487,11 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().NotNil(reloadedUser.ParentUserID)
 	s.Require().Equal(root.ID, *reloadedUser.ParentUserID)
 
-	reloadedLevel2, err := s.client.User.Get(s.ctx, directLevel2.ID)
+	reloadedEnterprise, err := s.client.User.Get(s.ctx, directEnterprise.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(service.RoleAgentLevel1, reloadedLevel2.Role)
-	s.Require().NotNil(reloadedLevel2.ParentUserID)
-	s.Require().Equal(root.ID, *reloadedLevel2.ParentUserID)
+	s.Require().Equal(service.RoleEnterprise, reloadedEnterprise.Role)
+	s.Require().NotNil(reloadedEnterprise.ParentUserID)
+	s.Require().Equal(root.ID, *reloadedEnterprise.ParentUserID)
 
 	profile, err := s.repo.GetAgentProfile(s.ctx, level1.ID)
 	s.Require().NoError(err)
@@ -543,7 +504,7 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().NotNil(delegation)
 	s.Require().Equal(1.8, delegation.RateMultiplier)
 	s.Require().True(delegation.CanDelegate)
-	delegation, err = s.repo.GetGroupDelegation(s.ctx, root.ID, directLevel2.ID, level2Group.ID)
+	delegation, err = s.repo.GetGroupDelegation(s.ctx, root.ID, directEnterprise.ID, enterpriseGroup.ID)
 	s.Require().NoError(err)
 	s.Require().NotNil(delegation)
 	s.Require().Equal(2.7, delegation.RateMultiplier)
@@ -555,110 +516,12 @@ VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().NoError(err)
 	s.Require().Equal(1, allowedCount)
 	allowedCount, err = s.client.UserAllowedGroup.Query().
-		Where(userallowedgroup.UserIDEQ(directLevel2.ID), userallowedgroup.GroupIDEQ(level2Group.ID)).
+		Where(userallowedgroup.UserIDEQ(directEnterprise.ID), userallowedgroup.GroupIDEQ(enterpriseGroup.ID)).
 		Count(s.ctx)
 	s.Require().NoError(err)
 	s.Require().Equal(1, allowedCount)
 	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", directUser.ID, exclusiveGroup.ID, 1.8))
-	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", directLevel2.ID, level2Group.ID, 2.7))
-}
-
-func (s *AgentManagementRepoSuite) TestDeleteLevel2AgentForAdminUserDeletionDeletesAccountAndReturnsParentQuota() {
-	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
-	level1 := s.mustCreateAgentUser("level1-parent-delete@test.com", service.RoleAgentLevel1, &root.ID, 70, 700)
-	level2 := s.mustCreateAgentUser("level2-delete@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
-	directUser := s.mustCreateAgentUser("direct-user-under-level2-delete@test.com", service.RoleUser, &level2.ID, 10, 100)
-	siblingUser := s.mustCreateAgentUser("sibling-user-under-level1-delete@test.com", service.RoleUser, &level1.ID, 20, 200)
-	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level2", true, 0.3)
-
-	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level1.ID, 100, 1000))
-	s.Require().NoError(s.repo.UpsertAgentProfile(s.ctx, level2.ID, 30, 300))
-	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID, 1.8, false))
-	_, err := s.client.UserAllowedGroup.Create().
-		SetUserID(level2.ID).
-		SetGroupID(exclusiveGroup.ID).
-		Save(s.ctx)
-	s.Require().NoError(err)
-
-	affected, err := s.repo.DeleteAgentForAdminUserDeletion(s.ctx, level2)
-	s.Require().NoError(err)
-	s.Require().Contains(affected, level1.ID)
-	s.Require().Contains(affected, level2.ID)
-	s.Require().Contains(affected, directUser.ID)
-
-	level2Exists, err := s.client.User.Query().
-		Where(user.IDEQ(level2.ID)).
-		Exist(mixins.SkipSoftDelete(s.ctx))
-	s.Require().NoError(err)
-	s.Require().False(level2Exists)
-
-	profile, err := s.repo.GetAgentProfile(s.ctx, level2.ID)
-	s.Require().NoError(err)
-	s.Require().Nil(profile)
-
-	reloadedDirectUser, err := s.client.User.Get(s.ctx, directUser.ID)
-	s.Require().NoError(err)
-	s.Require().NotNil(reloadedDirectUser.ParentUserID)
-	s.Require().Equal(root.ID, *reloadedDirectUser.ParentUserID)
-
-	reloadedLevel1, err := s.client.User.Get(s.ctx, level1.ID)
-	s.Require().NoError(err)
-	s.Require().Equal(80, reloadedLevel1.Concurrency)
-	s.Require().Equal(800, reloadedLevel1.RpmLimit)
-	reloadedSiblingUser, err := s.client.User.Get(s.ctx, siblingUser.ID)
-	s.Require().NoError(err)
-	s.Require().NotNil(reloadedSiblingUser.ParentUserID)
-	s.Require().Equal(level1.ID, *reloadedSiblingUser.ParentUserID)
-
-	delegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID)
-	s.Require().NoError(err)
-	s.Require().Nil(delegation)
-	allowedCount, err := s.client.UserAllowedGroup.Query().
-		Where(userallowedgroup.UserIDEQ(level2.ID), userallowedgroup.GroupIDEQ(exclusiveGroup.ID)).
-		Count(s.ctx)
-	s.Require().NoError(err)
-	s.Require().Zero(allowedCount)
-}
-
-func (s *AgentManagementRepoSuite) TestRehomeChildGroupDelegationsPreservesLevel2AuthorizationWhenPromoted() {
-	root := s.mustCreateAgentUser("root-admin-rehome-delegation@test.com", service.RoleAdmin, nil, 1000, 10000)
-	level1 := s.mustCreateAgentUser("level1-rehome-delegation@test.com", service.RoleAgentLevel1, &root.ID, 70, 700)
-	level2 := s.mustCreateAgentUser("level2-rehome-delegation@test.com", service.RoleAgentLevel2, &level1.ID, 30, 300)
-	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delete-level2-rehome", true, 0.3)
-
-	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID, 1.8, true))
-	_, err := s.client.UserAllowedGroup.Create().
-		SetUserID(level2.ID).
-		SetGroupID(exclusiveGroup.ID).
-		Save(s.ctx)
-	s.Require().NoError(err)
-	_, err = integrationDB.ExecContext(s.ctx, `
-INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-VALUES ($1, $2, 1.8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-		level2.ID,
-		exclusiveGroup.ID,
-	)
-	s.Require().NoError(err)
-
-	s.Require().NoError(s.repo.RehomeChildGroupDelegations(s.ctx, level1.ID, root.ID, level2.ID))
-	s.Require().NoError(s.repo.SetRoleAndParent(s.ctx, level2.ID, service.RoleAgentLevel1, &root.ID))
-
-	oldDelegation, err := s.repo.GetGroupDelegation(s.ctx, level1.ID, level2.ID, exclusiveGroup.ID)
-	s.Require().NoError(err)
-	s.Require().Nil(oldDelegation)
-	newDelegation, err := s.repo.GetGroupDelegation(s.ctx, root.ID, level2.ID, exclusiveGroup.ID)
-	s.Require().NoError(err)
-	s.Require().NotNil(newDelegation)
-	s.Require().Equal(1.8, newDelegation.RateMultiplier)
-	s.Require().True(newDelegation.CanDelegate)
-
-	reloadedLevel2, err := s.client.User.Get(s.ctx, level2.ID)
-	s.Require().NoError(err)
-	s.Require().Equal(service.RoleAgentLevel1, reloadedLevel2.Role)
-	s.Require().NotNil(reloadedLevel2.ParentUserID)
-	s.Require().Equal(root.ID, *reloadedLevel2.ParentUserID)
-	s.Require().Equal(1, s.countAgentManagementRows("user_allowed_groups", "user_id = $1 AND group_id = $2", level2.ID, exclusiveGroup.ID))
-	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", level2.ID, exclusiveGroup.ID, 1.8))
+	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", directEnterprise.ID, enterpriseGroup.ID, 2.7))
 }
 
 func (s *AgentManagementRepoSuite) TestRehomeChildGroupDelegationsPreservesDirectUserAuthorizationWhenMovedToAdmin() {

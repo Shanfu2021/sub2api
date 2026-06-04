@@ -44,6 +44,15 @@ describe('agent management api', () => {
     expect(get).toHaveBeenCalledWith('/agent-management/direct-users', { params: { search: 'alice' } })
   })
 
+  it('loads the admin agent tree overview', async () => {
+    const response = { items: [{ agent: { id: 12, email: 'agent@example.test' }, users: [], enterprises: [] }] }
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.getAdminAgentTree()).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/admin-agent-tree')
+  })
+
   it('updates a direct child allocation without balance fields', async () => {
     const response = {
       total_concurrency: 100,

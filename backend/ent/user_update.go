@@ -586,6 +586,21 @@ func (_u *UserUpdate) AddUsageLogs(v ...*UsageLog) *UserUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (_u *UserUpdate) AddAgentIncomeUsageLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// AddAgentIncomeUsageLogs adds the "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdate) AddAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAgentIncomeUsageLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_u *UserUpdate) AddAttributeValueIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAttributeValueIDs(ids...)
@@ -856,6 +871,27 @@ func (_u *UserUpdate) RemoveUsageLogs(v ...*UsageLog) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearAgentIncomeUsageLogs clears all "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdate) ClearAgentIncomeUsageLogs() *UserUpdate {
+	_u.mutation.ClearAgentIncomeUsageLogs()
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogIDs removes the "agent_income_usage_logs" edge to UsageLog entities by IDs.
+func (_u *UserUpdate) RemoveAgentIncomeUsageLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogs removes "agent_income_usage_logs" edges to UsageLog entities.
+func (_u *UserUpdate) RemoveAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAgentIncomeUsageLogIDs(ids...)
 }
 
 // ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
@@ -1552,6 +1588,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Inverse: false,
 			Table:   user.UsageLogsTable,
 			Columns: []string{user.UsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAgentIncomeUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentIncomeUsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
@@ -2487,6 +2568,21 @@ func (_u *UserUpdateOne) AddUsageLogs(v ...*UsageLog) *UserUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (_u *UserUpdateOne) AddAgentIncomeUsageLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// AddAgentIncomeUsageLogs adds the "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdateOne) AddAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAgentIncomeUsageLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_u *UserUpdateOne) AddAttributeValueIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAttributeValueIDs(ids...)
@@ -2757,6 +2853,27 @@ func (_u *UserUpdateOne) RemoveUsageLogs(v ...*UsageLog) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearAgentIncomeUsageLogs clears all "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdateOne) ClearAgentIncomeUsageLogs() *UserUpdateOne {
+	_u.mutation.ClearAgentIncomeUsageLogs()
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogIDs removes the "agent_income_usage_logs" edge to UsageLog entities by IDs.
+func (_u *UserUpdateOne) RemoveAgentIncomeUsageLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogs removes "agent_income_usage_logs" edges to UsageLog entities.
+func (_u *UserUpdateOne) RemoveAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAgentIncomeUsageLogIDs(ids...)
 }
 
 // ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
@@ -3483,6 +3600,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Inverse: false,
 			Table:   user.UsageLogsTable,
 			Columns: []string{user.UsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAgentIncomeUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentIncomeUsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),

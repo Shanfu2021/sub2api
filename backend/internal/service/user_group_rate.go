@@ -68,3 +68,7 @@ type UserGroupRateRepository interface {
 type DelegatedGroupRateRepository interface {
 	GetDelegatedRateByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
 }
+
+type AgentIncomeRateRepository interface {
+	GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error)
+}

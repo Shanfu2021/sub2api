@@ -12,6 +12,7 @@ import (
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 type agentManagementRepository struct {
@@ -252,12 +253,12 @@ func (r *agentManagementRepository) GetDirectChildQuotaUsage(ctx context.Context
 WITH direct_children AS (
   SELECT
     CASE
-      WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_concurrency, 0)
+      WHEN u.role = 'agent_level1' THEN COALESCE(ap.pool_concurrency, 0)
       WHEN u.role = 'enterprise' THEN COALESCE(ep.pool_concurrency, 0)
       ELSE u.concurrency
     END AS concurrency,
     CASE
-      WHEN u.role IN ('agent_level1', 'agent_level2') THEN COALESCE(ap.pool_rpm, 0)
+      WHEN u.role = 'agent_level1' THEN COALESCE(ap.pool_rpm, 0)
       WHEN u.role = 'enterprise' THEN COALESCE(ep.pool_rpm, 0)
       ELSE u.rpm_limit
     END AS rpm
@@ -393,17 +394,6 @@ func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context
 		return err
 	}
 
-	if _, err := txClient.User.Update().
-		Where(
-			dbuser.ParentUserIDEQ(agent.ID),
-			dbuser.RoleEQ(service.RoleAgentLevel2),
-		).
-		SetRole(service.RoleAgentLevel1).
-		SetParentUserID(rootAdminID).
-		Save(txCtx); err != nil {
-		return err
-	}
-
 	if err := r.deleteAgentAccountRows(txCtx, exec, agent.ID); err != nil {
 		return err
 	}
@@ -471,7 +461,7 @@ func (r *agentManagementRepository) deleteAgentAccountRows(ctx context.Context, 
 }
 
 func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.Context, user *service.User) ([]int64, error) {
-	if user == nil || (user.Role != service.RoleAgentLevel1 && user.Role != service.RoleAgentLevel2) {
+	if user == nil || user.Role != service.RoleAgentLevel1 {
 		return nil, nil
 	}
 	rootAdmin, err := r.GetRootAdmin(ctx)
@@ -515,16 +505,6 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 	if _, err := client.User.Update().
 		Where(
 			dbuser.ParentUserIDEQ(user.ID),
-			dbuser.RoleEQ(service.RoleAgentLevel2),
-		).
-		SetRole(service.RoleAgentLevel1).
-		SetParentUserID(rootAdmin.ID).
-		Save(ctx); err != nil {
-		return nil, err
-	}
-	if _, err := client.User.Update().
-		Where(
-			dbuser.ParentUserIDEQ(user.ID),
 			dbuser.RoleEQ(service.RoleAgentLevel1),
 		).
 		SetParentUserID(rootAdmin.ID).
@@ -541,7 +521,7 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 	deleted, err := client.User.Delete().
 		Where(
 			dbuser.IDEQ(user.ID),
-			dbuser.RoleIn(service.RoleAgentLevel1, service.RoleAgentLevel2),
+			dbuser.RoleEQ(service.RoleAgentLevel1),
 		).
 		Exec(mixins.SkipSoftDelete(ctx))
 	if err != nil {
@@ -791,6 +771,40 @@ ORDER BY group_id`,
 	return out, rows.Err()
 }
 
+func (r *agentManagementRepository) GetAgentIncomeTotals(ctx context.Context, agentIDs []int64) (map[int64]float64, error) {
+	out := make(map[int64]float64, len(agentIDs))
+	if len(agentIDs) == 0 {
+		return out, nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT agent_owner_user_id, COALESCE(SUM(agent_income), 0)
+FROM usage_logs
+WHERE agent_owner_user_id = ANY($1)
+GROUP BY agent_owner_user_id
+`, pq.Array(agentIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var agentID int64
+		var income float64
+		if err := rows.Scan(&agentID, &income); err != nil {
+			return nil, err
+		}
+		out[agentID] = income
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *agentManagementRepository) UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error {
 	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
 	if exec == nil {
@@ -857,7 +871,7 @@ func agentGroupDelegationEntityToService(m *dbent.AgentGroupDelegation) *service
 }
 
 func isAgentRole(role string) bool {
-	return role == service.RoleAgentLevel1 || role == service.RoleAgentLevel2
+	return role == service.RoleAgentLevel1
 }
 
 func repoQuotaRemaining(total int, allocated int, allocatedUnlimited bool) int {

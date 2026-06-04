@@ -401,6 +401,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/agent/admin-overview',
+    name: 'AgentAdminOverview',
+    component: () => import('@/views/agent/AdminOverviewView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      requiresAgentManagement: true,
+      title: 'Agent Overview',
+      titleKey: 'nav.agentAdminOverview'
+    }
+  },
+  {
     path: '/agent/direct-agents',
     name: 'AgentDirectAgents',
     component: () => import('@/views/agent/DirectAgentsView.vue'),

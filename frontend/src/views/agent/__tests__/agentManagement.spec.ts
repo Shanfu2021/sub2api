@@ -4,8 +4,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import DirectUsersView from '@/views/agent/DirectUsersView.vue'
 import DirectAgentsView from '@/views/agent/DirectAgentsView.vue'
 import DirectEnterprisesView from '@/views/agent/DirectEnterprisesView.vue'
+import AdminOverviewView from '@/views/agent/AdminOverviewView.vue'
 import MyGroupsView from '@/views/agent/MyGroupsView.vue'
-import type { AgentChildGroupDelegationOption, AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, Group, User, UserRole } from '@/types'
+import type { AgentAdminTreeResponse, AgentChildGroupDelegationOption, AgentDirectChildrenResponse, AgentGroupRate, AgentManagedUser, Group, User, UserRole } from '@/types'
 
 const {
   getCurrentUser,
@@ -13,6 +14,7 @@ const {
   listDirectUsers,
   listDirectAgents,
   listDirectEnterprises,
+  getAdminAgentTree,
   updateAllocation,
   createDirectUser,
   updateInviteDefaults,
@@ -33,6 +35,7 @@ const {
   listDirectUsers: vi.fn(),
   listDirectAgents: vi.fn(),
   listDirectEnterprises: vi.fn(),
+  getAdminAgentTree: vi.fn(),
   updateAllocation: vi.fn(),
   createDirectUser: vi.fn(),
   updateInviteDefaults: vi.fn(),
@@ -55,6 +58,7 @@ vi.mock('@/api/agentManagement', () => ({
     listDirectUsers,
     listDirectAgents,
     listDirectEnterprises,
+    getAdminAgentTree,
     updateAllocation,
     createDirectUser,
     updateInviteDefaults,
@@ -110,6 +114,7 @@ const DataTableStub = {
         <slot name="cell-email" :row="row" :value="row.email" />
         <slot name="cell-role" :row="row" :value="row.role" />
         <slot name="cell-balance" :row="row" :value="row.balance" />
+        <slot name="cell-agent_income" :row="row" :value="row.agent_income" />
         <slot name="cell-allocation" :row="row" />
         <slot name="cell-name" :row="row" :value="row.name" />
         <slot name="cell-source" :row="row" :value="row.source" />
@@ -233,6 +238,51 @@ function makeChildrenResponse(items: AgentManagedUser[]): AgentDirectChildrenRes
   }
 }
 
+function makeAdminTreeResponse(): AgentAdminTreeResponse {
+  return {
+    items: [
+      {
+        agent: makeChild({
+          id: 21,
+          role: 'agent_level1',
+          email: 'agent@example.com',
+          username: 'agent',
+          pool_concurrency: 100,
+          pool_rpm: 1000,
+          agent_income: 8.75,
+        }),
+        users: [
+          makeChild({ id: 22, email: 'agent-user@example.com', username: 'agent-user', concurrency: 5, rpm_limit: 50, balance: 3.25 }),
+        ],
+        enterprises: [
+          {
+            enterprise: makeChild({
+              id: 23,
+              role: 'enterprise',
+              email: 'enterprise@example.com',
+              username: 'enterprise',
+              pool_concurrency: 20,
+              pool_rpm: 200,
+            }),
+            employees: [
+              makeChild({
+                id: 24,
+                role: 'employee',
+                parent_user_id: 23,
+                email: 'employee@example.com',
+                username: 'employee',
+                concurrency: 2,
+                rpm_limit: 20,
+                balance: 1.5,
+              }),
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
 function mountAgentView(component: unknown, role: UserRole = 'admin') {
   localStorage.setItem('auth_token', `${role}-token`)
   localStorage.setItem('auth_user', JSON.stringify(makeUser(role)))
@@ -279,8 +329,9 @@ describe('agent management pages', () => {
       },
     })
     listDirectUsers.mockResolvedValue(makeChildrenResponse([makeChild()]))
-    listDirectAgents.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'agent_level2' })]))
+    listDirectAgents.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'agent_level1', agent_income: 8.75 })]))
     listDirectEnterprises.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'enterprise' })]))
+    getAdminAgentTree.mockResolvedValue(makeAdminTreeResponse())
     updateAllocation.mockResolvedValue({
       total_concurrency: 20,
       allocated_concurrency: 5,
@@ -318,6 +369,21 @@ describe('agent management pages', () => {
     expect(wrapper.text()).not.toContain('Recharge')
     expect(wrapper.text()).not.toContain('Disable')
     expect(wrapper.text()).not.toContain('Official Delete')
+  })
+
+  it('renders the admin agent tree as a read-only overview', async () => {
+    const wrapper = mountAgentView(AdminOverviewView, 'admin')
+    await flushPromises()
+
+    expect(getAdminAgentTree).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('agent@example.com')
+    expect(wrapper.text()).toContain('agent-user@example.com')
+    expect(wrapper.text()).toContain('enterprise@example.com')
+    expect(wrapper.text()).toContain('employee@example.com')
+    expect(wrapper.text()).toContain('$8.75')
+    expect(wrapper.text()).not.toContain('agentManagement.direct.saveAllocation')
+    expect(wrapper.text()).not.toContain('agentManagement.direct.deleteAgent')
+    expect(wrapper.find('[data-test="save-allocation-21"]').exists()).toBe(false)
   })
 
   it('renders direct child balance as read-only context', async () => {
@@ -396,13 +462,15 @@ describe('agent management pages', () => {
     expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('120')
   })
 
-  it('uses pool fields for direct agents', async () => {
+  it('uses pool fields and shows income for direct agents', async () => {
     listDirectAgents.mockResolvedValue(makeChildrenResponse([
-      makeChild({ role: 'agent_level2', concurrency: 5, rpm_limit: 50, pool_concurrency: 30, pool_rpm: 300 }),
+      makeChild({ role: 'agent_level1', concurrency: 5, rpm_limit: 50, pool_concurrency: 30, pool_rpm: 300, agent_income: 8.75 }),
     ]))
     const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
     await flushPromises()
 
+    expect(wrapper.get('[data-test="columns"]').text()).toContain('agent_income')
+    expect(wrapper.text()).toContain('$8.75')
     expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('30')
     expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('300')
   })
@@ -571,9 +639,8 @@ describe('agent management pages', () => {
   })
 
   it.each([
-    { role: 'admin' as const, allowed: ['agent_level1', 'enterprise'], denied: ['agent_level2'] },
-    { role: 'agent_level1' as const, allowed: ['agent_level2', 'enterprise'], denied: ['agent_level1'] },
-    { role: 'agent_level2' as const, allowed: ['enterprise'], denied: ['agent_level1', 'agent_level2'] },
+    { role: 'admin' as const, allowed: ['agent_level1', 'enterprise'], denied: [] },
+    { role: 'agent_level1' as const, allowed: ['enterprise'], denied: ['agent_level1'] },
   ])('renders upgrade choices for $role permissions', async ({ role, allowed, denied }) => {
     const wrapper = mountAgentView(DirectUsersView, role)
     await flushPromises()

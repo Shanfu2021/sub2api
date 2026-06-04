@@ -185,6 +185,26 @@ func RateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRateMultiplier, v))
 }
 
+// AgentOwnerUserID applies equality check predicate on the "agent_owner_user_id" field. It's identical to AgentOwnerUserIDEQ.
+func AgentOwnerUserID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentOwnerUserID, v))
+}
+
+// AgentUserRateMultiplier applies equality check predicate on the "agent_user_rate_multiplier" field. It's identical to AgentUserRateMultiplierEQ.
+func AgentUserRateMultiplier(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentCostRateMultiplier applies equality check predicate on the "agent_cost_rate_multiplier" field. It's identical to AgentCostRateMultiplierEQ.
+func AgentCostRateMultiplier(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentIncome applies equality check predicate on the "agent_income" field. It's identical to AgentIncomeEQ.
+func AgentIncome(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentIncome, v))
+}
+
 // AccountRateMultiplier applies equality check predicate on the "account_rate_multiplier" field. It's identical to AccountRateMultiplierEQ.
 func AccountRateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAccountRateMultiplier, v))
@@ -1450,6 +1470,156 @@ func RateMultiplierLTE(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldRateMultiplier, v))
 }
 
+// AgentOwnerUserIDEQ applies the EQ predicate on the "agent_owner_user_id" field.
+func AgentOwnerUserIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentOwnerUserID, v))
+}
+
+// AgentOwnerUserIDNEQ applies the NEQ predicate on the "agent_owner_user_id" field.
+func AgentOwnerUserIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldAgentOwnerUserID, v))
+}
+
+// AgentOwnerUserIDIn applies the In predicate on the "agent_owner_user_id" field.
+func AgentOwnerUserIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldAgentOwnerUserID, vs...))
+}
+
+// AgentOwnerUserIDNotIn applies the NotIn predicate on the "agent_owner_user_id" field.
+func AgentOwnerUserIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldAgentOwnerUserID, vs...))
+}
+
+// AgentOwnerUserIDIsNil applies the IsNil predicate on the "agent_owner_user_id" field.
+func AgentOwnerUserIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldAgentOwnerUserID))
+}
+
+// AgentOwnerUserIDNotNil applies the NotNil predicate on the "agent_owner_user_id" field.
+func AgentOwnerUserIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldAgentOwnerUserID))
+}
+
+// AgentUserRateMultiplierEQ applies the EQ predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentUserRateMultiplierNEQ applies the NEQ predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentUserRateMultiplierIn applies the In predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldAgentUserRateMultiplier, vs...))
+}
+
+// AgentUserRateMultiplierNotIn applies the NotIn predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldAgentUserRateMultiplier, vs...))
+}
+
+// AgentUserRateMultiplierGT applies the GT predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentUserRateMultiplierGTE applies the GTE predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentUserRateMultiplierLT applies the LT predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentUserRateMultiplierLTE applies the LTE predicate on the "agent_user_rate_multiplier" field.
+func AgentUserRateMultiplierLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldAgentUserRateMultiplier, v))
+}
+
+// AgentCostRateMultiplierEQ applies the EQ predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentCostRateMultiplierNEQ applies the NEQ predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentCostRateMultiplierIn applies the In predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldAgentCostRateMultiplier, vs...))
+}
+
+// AgentCostRateMultiplierNotIn applies the NotIn predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldAgentCostRateMultiplier, vs...))
+}
+
+// AgentCostRateMultiplierGT applies the GT predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentCostRateMultiplierGTE applies the GTE predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentCostRateMultiplierLT applies the LT predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentCostRateMultiplierLTE applies the LTE predicate on the "agent_cost_rate_multiplier" field.
+func AgentCostRateMultiplierLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldAgentCostRateMultiplier, v))
+}
+
+// AgentIncomeEQ applies the EQ predicate on the "agent_income" field.
+func AgentIncomeEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAgentIncome, v))
+}
+
+// AgentIncomeNEQ applies the NEQ predicate on the "agent_income" field.
+func AgentIncomeNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldAgentIncome, v))
+}
+
+// AgentIncomeIn applies the In predicate on the "agent_income" field.
+func AgentIncomeIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldAgentIncome, vs...))
+}
+
+// AgentIncomeNotIn applies the NotIn predicate on the "agent_income" field.
+func AgentIncomeNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldAgentIncome, vs...))
+}
+
+// AgentIncomeGT applies the GT predicate on the "agent_income" field.
+func AgentIncomeGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldAgentIncome, v))
+}
+
+// AgentIncomeGTE applies the GTE predicate on the "agent_income" field.
+func AgentIncomeGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldAgentIncome, v))
+}
+
+// AgentIncomeLT applies the LT predicate on the "agent_income" field.
+func AgentIncomeLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldAgentIncome, v))
+}
+
+// AgentIncomeLTE applies the LTE predicate on the "agent_income" field.
+func AgentIncomeLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldAgentIncome, v))
+}
+
 // AccountRateMultiplierEQ applies the EQ predicate on the "account_rate_multiplier" field.
 func AccountRateMultiplierEQ(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldAccountRateMultiplier, v))
@@ -2307,6 +2477,29 @@ func HasSubscription() predicate.UsageLog {
 func HasSubscriptionWith(preds ...predicate.UserSubscription) predicate.UsageLog {
 	return predicate.UsageLog(func(s *sql.Selector) {
 		step := newSubscriptionStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasAgentOwner applies the HasEdge predicate on the "agent_owner" edge.
+func HasAgentOwner() predicate.UsageLog {
+	return predicate.UsageLog(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, AgentOwnerTable, AgentOwnerColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAgentOwnerWith applies the HasEdge predicate on the "agent_owner" edge with a given conditions (other predicates).
+func HasAgentOwnerWith(preds ...predicate.User) predicate.UsageLog {
+	return predicate.UsageLog(func(s *sql.Selector) {
+		step := newAgentOwnerStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

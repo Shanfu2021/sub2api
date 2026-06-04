@@ -351,6 +351,62 @@ func (_c *UsageLogCreate) SetNillableRateMultiplier(v *float64) *UsageLogCreate 
 	return _c
 }
 
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (_c *UsageLogCreate) SetAgentOwnerUserID(v int64) *UsageLogCreate {
+	_c.mutation.SetAgentOwnerUserID(v)
+	return _c
+}
+
+// SetNillableAgentOwnerUserID sets the "agent_owner_user_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAgentOwnerUserID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAgentOwnerUserID(*v)
+	}
+	return _c
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (_c *UsageLogCreate) SetAgentUserRateMultiplier(v float64) *UsageLogCreate {
+	_c.mutation.SetAgentUserRateMultiplier(v)
+	return _c
+}
+
+// SetNillableAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAgentUserRateMultiplier(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAgentUserRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (_c *UsageLogCreate) SetAgentCostRateMultiplier(v float64) *UsageLogCreate {
+	_c.mutation.SetAgentCostRateMultiplier(v)
+	return _c
+}
+
+// SetNillableAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAgentCostRateMultiplier(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAgentCostRateMultiplier(*v)
+	}
+	return _c
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (_c *UsageLogCreate) SetAgentIncome(v float64) *UsageLogCreate {
+	_c.mutation.SetAgentIncome(v)
+	return _c
+}
+
+// SetNillableAgentIncome sets the "agent_income" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAgentIncome(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAgentIncome(*v)
+	}
+	return _c
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_c *UsageLogCreate) SetAccountRateMultiplier(v float64) *UsageLogCreate {
 	_c.mutation.SetAccountRateMultiplier(v)
@@ -578,6 +634,25 @@ func (_c *UsageLogCreate) SetSubscription(v *UserSubscription) *UsageLogCreate {
 	return _c.SetSubscriptionID(v.ID)
 }
 
+// SetAgentOwnerID sets the "agent_owner" edge to the User entity by ID.
+func (_c *UsageLogCreate) SetAgentOwnerID(id int64) *UsageLogCreate {
+	_c.mutation.SetAgentOwnerID(id)
+	return _c
+}
+
+// SetNillableAgentOwnerID sets the "agent_owner" edge to the User entity by ID if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAgentOwnerID(id *int64) *UsageLogCreate {
+	if id != nil {
+		_c = _c.SetAgentOwnerID(*id)
+	}
+	return _c
+}
+
+// SetAgentOwner sets the "agent_owner" edge to the User entity.
+func (_c *UsageLogCreate) SetAgentOwner(v *User) *UsageLogCreate {
+	return _c.SetAgentOwnerID(v.ID)
+}
+
 // Mutation returns the UsageLogMutation object of the builder.
 func (_c *UsageLogCreate) Mutation() *UsageLogMutation {
 	return _c.mutation
@@ -664,6 +739,18 @@ func (_c *UsageLogCreate) defaults() {
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := usagelog.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
+	}
+	if _, ok := _c.mutation.AgentUserRateMultiplier(); !ok {
+		v := usagelog.DefaultAgentUserRateMultiplier
+		_c.mutation.SetAgentUserRateMultiplier(v)
+	}
+	if _, ok := _c.mutation.AgentCostRateMultiplier(); !ok {
+		v := usagelog.DefaultAgentCostRateMultiplier
+		_c.mutation.SetAgentCostRateMultiplier(v)
+	}
+	if _, ok := _c.mutation.AgentIncome(); !ok {
+		v := usagelog.DefaultAgentIncome
+		_c.mutation.SetAgentIncome(v)
 	}
 	if _, ok := _c.mutation.BillingType(); !ok {
 		v := usagelog.DefaultBillingType
@@ -777,6 +864,15 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.AgentUserRateMultiplier(); !ok {
+		return &ValidationError{Name: "agent_user_rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.agent_user_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.AgentCostRateMultiplier(); !ok {
+		return &ValidationError{Name: "agent_cost_rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.agent_cost_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.AgentIncome(); !ok {
+		return &ValidationError{Name: "agent_income", err: errors.New(`ent: missing required field "UsageLog.agent_income"`)}
 	}
 	if _, ok := _c.mutation.BillingType(); !ok {
 		return &ValidationError{Name: "billing_type", err: errors.New(`ent: missing required field "UsageLog.billing_type"`)}
@@ -943,6 +1039,18 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
 	}
+	if value, ok := _c.mutation.AgentUserRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAgentUserRateMultiplier, field.TypeFloat64, value)
+		_node.AgentUserRateMultiplier = value
+	}
+	if value, ok := _c.mutation.AgentCostRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAgentCostRateMultiplier, field.TypeFloat64, value)
+		_node.AgentCostRateMultiplier = value
+	}
+	if value, ok := _c.mutation.AgentIncome(); ok {
+		_spec.SetField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+		_node.AgentIncome = value
+	}
 	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 		_node.AccountRateMultiplier = &value
@@ -1086,6 +1194,23 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.SubscriptionID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AgentOwnerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   usagelog.AgentOwnerTable,
+			Columns: []string{usagelog.AgentOwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.AgentOwnerUserID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -1581,6 +1706,78 @@ func (u *UsageLogUpsert) UpdateRateMultiplier() *UsageLogUpsert {
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *UsageLogUpsert) AddRateMultiplier(v float64) *UsageLogUpsert {
 	u.Add(usagelog.FieldRateMultiplier, v)
+	return u
+}
+
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (u *UsageLogUpsert) SetAgentOwnerUserID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAgentOwnerUserID, v)
+	return u
+}
+
+// UpdateAgentOwnerUserID sets the "agent_owner_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAgentOwnerUserID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAgentOwnerUserID)
+	return u
+}
+
+// ClearAgentOwnerUserID clears the value of the "agent_owner_user_id" field.
+func (u *UsageLogUpsert) ClearAgentOwnerUserID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAgentOwnerUserID)
+	return u
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (u *UsageLogUpsert) SetAgentUserRateMultiplier(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAgentUserRateMultiplier, v)
+	return u
+}
+
+// UpdateAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAgentUserRateMultiplier() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAgentUserRateMultiplier)
+	return u
+}
+
+// AddAgentUserRateMultiplier adds v to the "agent_user_rate_multiplier" field.
+func (u *UsageLogUpsert) AddAgentUserRateMultiplier(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAgentUserRateMultiplier, v)
+	return u
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (u *UsageLogUpsert) SetAgentCostRateMultiplier(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAgentCostRateMultiplier, v)
+	return u
+}
+
+// UpdateAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAgentCostRateMultiplier() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAgentCostRateMultiplier)
+	return u
+}
+
+// AddAgentCostRateMultiplier adds v to the "agent_cost_rate_multiplier" field.
+func (u *UsageLogUpsert) AddAgentCostRateMultiplier(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAgentCostRateMultiplier, v)
+	return u
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (u *UsageLogUpsert) SetAgentIncome(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAgentIncome, v)
+	return u
+}
+
+// UpdateAgentIncome sets the "agent_income" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAgentIncome() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAgentIncome)
+	return u
+}
+
+// AddAgentIncome adds v to the "agent_income" field.
+func (u *UsageLogUpsert) AddAgentIncome(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAgentIncome, v)
 	return u
 }
 
@@ -2402,6 +2599,90 @@ func (u *UsageLogUpsertOne) AddRateMultiplier(v float64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateRateMultiplier() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (u *UsageLogUpsertOne) SetAgentOwnerUserID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentOwnerUserID(v)
+	})
+}
+
+// UpdateAgentOwnerUserID sets the "agent_owner_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAgentOwnerUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentOwnerUserID()
+	})
+}
+
+// ClearAgentOwnerUserID clears the value of the "agent_owner_user_id" field.
+func (u *UsageLogUpsertOne) ClearAgentOwnerUserID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAgentOwnerUserID()
+	})
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (u *UsageLogUpsertOne) SetAgentUserRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentUserRateMultiplier(v)
+	})
+}
+
+// AddAgentUserRateMultiplier adds v to the "agent_user_rate_multiplier" field.
+func (u *UsageLogUpsertOne) AddAgentUserRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAgentUserRateMultiplier(v)
+	})
+}
+
+// UpdateAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAgentUserRateMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentUserRateMultiplier()
+	})
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (u *UsageLogUpsertOne) SetAgentCostRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentCostRateMultiplier(v)
+	})
+}
+
+// AddAgentCostRateMultiplier adds v to the "agent_cost_rate_multiplier" field.
+func (u *UsageLogUpsertOne) AddAgentCostRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAgentCostRateMultiplier(v)
+	})
+}
+
+// UpdateAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAgentCostRateMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentCostRateMultiplier()
+	})
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (u *UsageLogUpsertOne) SetAgentIncome(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentIncome(v)
+	})
+}
+
+// AddAgentIncome adds v to the "agent_income" field.
+func (u *UsageLogUpsertOne) AddAgentIncome(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAgentIncome(v)
+	})
+}
+
+// UpdateAgentIncome sets the "agent_income" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAgentIncome() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentIncome()
 	})
 }
 
@@ -3432,6 +3713,90 @@ func (u *UsageLogUpsertBulk) AddRateMultiplier(v float64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateRateMultiplier() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+	})
+}
+
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (u *UsageLogUpsertBulk) SetAgentOwnerUserID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentOwnerUserID(v)
+	})
+}
+
+// UpdateAgentOwnerUserID sets the "agent_owner_user_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAgentOwnerUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentOwnerUserID()
+	})
+}
+
+// ClearAgentOwnerUserID clears the value of the "agent_owner_user_id" field.
+func (u *UsageLogUpsertBulk) ClearAgentOwnerUserID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAgentOwnerUserID()
+	})
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) SetAgentUserRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentUserRateMultiplier(v)
+	})
+}
+
+// AddAgentUserRateMultiplier adds v to the "agent_user_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) AddAgentUserRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAgentUserRateMultiplier(v)
+	})
+}
+
+// UpdateAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAgentUserRateMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentUserRateMultiplier()
+	})
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) SetAgentCostRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentCostRateMultiplier(v)
+	})
+}
+
+// AddAgentCostRateMultiplier adds v to the "agent_cost_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) AddAgentCostRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAgentCostRateMultiplier(v)
+	})
+}
+
+// UpdateAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAgentCostRateMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentCostRateMultiplier()
+	})
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (u *UsageLogUpsertBulk) SetAgentIncome(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAgentIncome(v)
+	})
+}
+
+// AddAgentIncome adds v to the "agent_income" field.
+func (u *UsageLogUpsertBulk) AddAgentIncome(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAgentIncome(v)
+	})
+}
+
+// UpdateAgentIncome sets the "agent_income" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAgentIncome() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAgentIncome()
 	})
 }
 

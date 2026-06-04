@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type {
   AgentAllocationSummary,
+  AgentAdminTreeResponse,
   AgentChildGroupDelegationOption,
   AgentDirectChildrenResponse,
   AgentDirectUserCreateRequest,
@@ -42,6 +43,11 @@ export async function listDirectAgents(query: AgentDirectChildrenQuery = {}): Pr
 
 export async function listDirectEnterprises(query: AgentDirectChildrenQuery = {}): Promise<AgentDirectChildrenResponse> {
   const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-enterprises`, { params: query })
+  return data
+}
+
+export async function getAdminAgentTree(): Promise<AgentAdminTreeResponse> {
+  const { data } = await apiClient.get<AgentAdminTreeResponse>(`${BASE_PATH}/admin-agent-tree`)
   return data
 }
 
@@ -127,6 +133,7 @@ export const agentManagementAPI = {
   listDirectUsers,
   listDirectAgents,
   listDirectEnterprises,
+  getAdminAgentTree,
   createDirectUser,
   updateAllocation,
   updateInviteDefaults,

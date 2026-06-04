@@ -488,6 +488,21 @@ func (_c *UserCreate) AddUsageLogs(v ...*UsageLog) *UserCreate {
 	return _c.AddUsageLogIDs(ids...)
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (_c *UserCreate) AddAgentIncomeUsageLogIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddAgentIncomeUsageLogIDs(ids...)
+	return _c
+}
+
+// AddAgentIncomeUsageLogs adds the "agent_income_usage_logs" edges to the UsageLog entity.
+func (_c *UserCreate) AddAgentIncomeUsageLogs(v ...*UsageLog) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAgentIncomeUsageLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_c *UserCreate) AddAttributeValueIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAttributeValueIDs(ids...)
@@ -1048,6 +1063,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Inverse: false,
 			Table:   user.UsageLogsTable,
 			Columns: []string{user.UsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AgentIncomeUsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),

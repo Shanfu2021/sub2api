@@ -1049,14 +1049,14 @@ func TestRegisterWithAgentInvitationRejectsWhenInviteWouldExhaustAgentQuota(t *t
 
 func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
 	rootID := int64(1)
-	level2ID := int64(3)
+	agentID := int64(3)
 	ordinaryID := int64(4)
 	repo := &userRepoStub{
 		nextID: 102,
 		usersByEmail: map[string]*User{
 			"admin@test.com":    {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
-			"agent2@test.com":   {ID: level2ID, Email: "agent2@test.com", Role: RoleAgentLevel2, ParentUserID: &rootID, Status: StatusActive},
-			"ordinary@test.com": {ID: ordinaryID, Email: "ordinary@test.com", Role: RoleUser, ParentUserID: &level2ID, Concurrency: 1, RPMLimit: 1, Status: StatusActive},
+			"agent@test.com":    {ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+			"ordinary@test.com": {ID: ordinaryID, Email: "ordinary@test.com", Role: RoleUser, ParentUserID: &agentID, Concurrency: 1, RPMLimit: 1, Status: StatusActive},
 		},
 	}
 	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": ordinaryID}}
@@ -1067,13 +1067,13 @@ func TestRegisterAssignsParentToNearestAgentForOrdinaryInviter(t *testing.T) {
 	}, nil, nil)
 	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
 	attachAgentManagementForRegistrationTest(service, repo, map[int64]AgentProfile{
-		level2ID: finiteAgentInviteProfile(level2ID),
+		agentID: finiteAgentInviteProfile(agentID),
 	})
 
 	_, user, err := service.RegisterWithVerification(context.Background(), "ordinary-child@test.com", "password", "", "", "", "USERAFF")
 	require.NoError(t, err)
 	require.NotNil(t, user.ParentUserID)
-	require.Equal(t, level2ID, *user.ParentUserID)
+	require.Equal(t, agentID, *user.ParentUserID)
 	require.Equal(t, []struct {
 		userID    int64
 		inviterID int64
