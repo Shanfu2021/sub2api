@@ -11,6 +11,8 @@ func RegisterEnterpriseManagementRoutes(authenticated *gin.RouterGroup, h *handl
 		enterpriseManagement.GET("/summary", h.EnterpriseManagement.Summary)
 		enterpriseManagement.GET("/employees", h.EnterpriseManagement.ListEmployees)
 		enterpriseManagement.POST("/employees", h.EnterpriseManagement.CreateEmployee)
+		enterpriseManagement.POST("/employees/import", h.EnterpriseManagement.ImportEmployees)
+		enterpriseManagement.PUT("/employees/balances/initialize", h.EnterpriseManagement.InitializeEmployeeBalances)
 		enterpriseManagement.PUT("/employees/:id/allocation", h.EnterpriseManagement.UpdateEmployeeAllocation)
 		enterpriseManagement.DELETE("/employees/:id", h.EnterpriseManagement.DeleteEmployee)
 		enterpriseManagement.GET("/groups", h.EnterpriseManagement.ListMyGroups)

@@ -3,10 +3,14 @@ import type {
   EnterpriseAllocationSummary,
   EnterpriseEmployee,
   EnterpriseEmployeeAllocationUpdate,
+  EnterpriseEmployeeBalanceInitializationRequest,
+  EnterpriseEmployeeBalanceInitializationResult,
   EnterpriseEmployeeCreateRequest,
   EnterpriseEmployeeGroupOption,
   EnterpriseEmployeeGroupRequest,
   EnterpriseEmployeeGroupResponse,
+  EnterpriseEmployeeImportRequest,
+  EnterpriseEmployeeImportResult,
   EnterpriseEmployeesResponse,
   EnterpriseGroupRate,
   EnterpriseManagementSummary,
@@ -37,12 +41,27 @@ export async function createEmployee(payload: EnterpriseEmployeeCreateRequest): 
   return data
 }
 
+export async function importEmployees(payload: EnterpriseEmployeeImportRequest): Promise<EnterpriseEmployeeImportResult> {
+  const { data } = await apiClient.post<EnterpriseEmployeeImportResult>(`${BASE_PATH}/employees/import`, payload)
+  return data
+}
+
 export async function updateEmployeeAllocation(
   employeeId: number,
   payload: EnterpriseEmployeeAllocationUpdate
 ): Promise<EnterpriseAllocationSummary> {
   const { data } = await apiClient.put<EnterpriseAllocationSummary>(
     `${BASE_PATH}/employees/${employeeId}/allocation`,
+    payload
+  )
+  return data
+}
+
+export async function initializeEmployeeBalances(
+  payload: EnterpriseEmployeeBalanceInitializationRequest
+): Promise<EnterpriseEmployeeBalanceInitializationResult> {
+  const { data } = await apiClient.put<EnterpriseEmployeeBalanceInitializationResult>(
+    `${BASE_PATH}/employees/balances/initialize`,
     payload
   )
   return data
@@ -92,7 +111,9 @@ export const enterpriseManagementAPI = {
   getSummary,
   listEmployees,
   createEmployee,
+  importEmployees,
   updateEmployeeAllocation,
+  initializeEmployeeBalances,
   deleteEmployee,
   listGroups,
   listEmployeeGroupOptions,

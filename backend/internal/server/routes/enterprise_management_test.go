@@ -40,6 +40,8 @@ func TestEnterpriseManagementRoutesAreRegisteredUnderAuthenticatedUserRoutes(t *
 		{http.MethodGet, "/api/v1/enterprise-management/summary"},
 		{http.MethodGet, "/api/v1/enterprise-management/employees"},
 		{http.MethodPost, "/api/v1/enterprise-management/employees"},
+		{http.MethodPost, "/api/v1/enterprise-management/employees/import"},
+		{http.MethodPut, "/api/v1/enterprise-management/employees/balances/initialize"},
 		{http.MethodPut, "/api/v1/enterprise-management/employees/:id/allocation"},
 		{http.MethodDelete, "/api/v1/enterprise-management/employees/:id"},
 		{http.MethodGet, "/api/v1/enterprise-management/groups"},

@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	enterpriseBalanceLogReasonCreate = "create_employee"
-	enterpriseBalanceLogReasonUpdate = "update_employee_allocation"
-	enterpriseBalanceLogReasonDelete = "delete_employee"
+	enterpriseBalanceLogReasonCreate     = "create_employee"
+	enterpriseBalanceLogReasonUpdate     = "update_employee_allocation"
+	enterpriseBalanceLogReasonDelete     = "delete_employee"
+	enterpriseBalanceLogReasonInitialize = "initialize_employee_balances"
 )
 
 type enterpriseManagementRepository struct {
@@ -233,6 +234,82 @@ func (r *enterpriseManagementRepository) CreateEmployee(ctx context.Context, ent
 	return tx.Commit()
 }
 
+func (r *enterpriseManagementRepository) CreateEmployees(ctx context.Context, enterpriseID int64, operatorID int64, users []*service.User) error {
+	users = compactEmployeeUsers(users)
+	if len(users) == 0 {
+		return nil
+	}
+	requestedConcurrency, requestedRPM, requestedUnlimitedRPM, err := validateEnterpriseEmployeeBatch(users)
+	if err != nil {
+		return err
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	exec := txAwareSQLExecutor(txCtx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+
+	enterprise, err := r.lockEnterpriseForUpdate(txCtx, exec, enterpriseID)
+	if err != nil {
+		return err
+	}
+	effectiveRequestedRPM := requestedRPM
+	if requestedUnlimitedRPM {
+		effectiveRequestedRPM = 0
+	}
+	if err := r.ensureEnterpriseAllocationAvailable(txCtx, enterpriseID, nil, requestedConcurrency, effectiveRequestedRPM); err != nil {
+		return err
+	}
+
+	userRepo := newUserRepositoryWithSQL(clientFromContext(txCtx, r.client), r.sql)
+	for _, userIn := range users {
+		target := service.EmployeeAllocationUpdate{
+			Balance:     0,
+			Concurrency: userIn.Concurrency,
+			RPM:         userIn.RPMLimit,
+		}
+		if err := validateEnterpriseAllocationTarget(target); err != nil {
+			return err
+		}
+		userIn.Role = service.RoleEmployee
+		userIn.ParentUserID = &enterpriseID
+		userIn.Balance = 0
+		userIn.AllocatedConcurrency = target.Concurrency
+		userIn.AllocatedRPM = target.RPM
+		if userIn.Status == "" {
+			userIn.Status = service.StatusActive
+		}
+		if err := userRepo.Create(txCtx, userIn); err != nil {
+			return err
+		}
+		if err := r.insertBalanceLog(txCtx, exec, balanceLogInput{
+			EnterpriseID:     enterpriseID,
+			EmployeeID:       userIn.ID,
+			OperatorID:       operatorID,
+			Delta:            0,
+			EnterpriseBefore: enterprise.Balance,
+			EnterpriseAfter:  enterprise.Balance,
+			EmployeeBefore:   0,
+			EmployeeAfter:    0,
+			Reason:           enterpriseBalanceLogReasonCreate,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := r.recalculateEnterpriseQuota(txCtx, enterpriseID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (r *enterpriseManagementRepository) UpdateEmployeeAllocation(ctx context.Context, enterpriseID int64, employeeID int64, operatorID int64, target service.EmployeeAllocationUpdate) (*service.EmployeeAllocationResult, error) {
 	if err := validateEnterpriseAllocationTarget(target); err != nil {
 		return nil, err
@@ -339,6 +416,101 @@ WHERE id = $1
 	}
 	result.Allocation = enterpriseAllocationSummary(profile, usage)
 	return result, nil
+}
+
+func (r *enterpriseManagementRepository) InitializeEmployeeBalances(ctx context.Context, enterpriseID int64, operatorID int64, targetBalance float64) (*service.EmployeeBalanceInitializationResult, error) {
+	if targetBalance < 0 {
+		return nil, service.ErrEnterpriseManagementInvalidAllocation
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	exec := txAwareSQLExecutor(txCtx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+
+	enterprise, err := r.lockEnterpriseForUpdate(txCtx, exec, enterpriseID)
+	if err != nil {
+		return nil, err
+	}
+	employees, err := r.lockEmployeesForBalanceInitialization(txCtx, exec, enterpriseID)
+	if err != nil {
+		return nil, err
+	}
+
+	var currentBalance float64
+	for _, employee := range employees {
+		currentBalance += employee.Balance
+	}
+	targetTotal := targetBalance * float64(len(employees))
+	requiredBalance := targetTotal - currentBalance
+	if requiredBalance > enterprise.Balance {
+		return nil, service.ErrEnterpriseEmployeeBalanceInitExceeded.WithMetadata(map[string]string{
+			"current_balance":  fmt.Sprintf("%.6f", enterprise.Balance),
+			"required_balance": fmt.Sprintf("%.6f", requiredBalance),
+		})
+	}
+
+	enterpriseAfter := enterprise.Balance - requiredBalance
+	if requiredBalance != 0 {
+		if err := r.setUserBalance(txCtx, exec, enterpriseID, enterpriseAfter); err != nil {
+			return nil, err
+		}
+	}
+	affected := []int64{enterpriseID}
+	runningEnterpriseBalance := enterprise.Balance
+	for _, employee := range employees {
+		delta := targetBalance - employee.Balance
+		nextEnterpriseBalance := runningEnterpriseBalance - delta
+		if _, err := exec.ExecContext(txCtx, `
+UPDATE users
+SET balance = $2,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+  AND role = $3
+  AND parent_user_id = $4
+  AND deleted_at IS NULL`,
+			employee.ID,
+			targetBalance,
+			service.RoleEmployee,
+			enterpriseID,
+		); err != nil {
+			return nil, err
+		}
+		if err := r.insertBalanceLog(txCtx, exec, balanceLogInput{
+			EnterpriseID:     enterpriseID,
+			EmployeeID:       employee.ID,
+			OperatorID:       operatorID,
+			Delta:            delta,
+			EnterpriseBefore: runningEnterpriseBalance,
+			EnterpriseAfter:  nextEnterpriseBalance,
+			EmployeeBefore:   employee.Balance,
+			EmployeeAfter:    targetBalance,
+			Reason:           enterpriseBalanceLogReasonInitialize,
+		}); err != nil {
+			return nil, err
+		}
+		runningEnterpriseBalance = nextEnterpriseBalance
+		affected = append(affected, employee.ID)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &service.EmployeeBalanceInitializationResult{
+		EmployeeCount:           len(employees),
+		TargetBalance:           targetBalance,
+		CurrentBalance:          currentBalance,
+		RequiredBalance:         requiredBalance,
+		EnterpriseBalanceBefore: enterprise.Balance,
+		EnterpriseBalanceAfter:  enterpriseAfter,
+		AffectedUserIDs:         uniqueInt64s(affected),
+	}, nil
 }
 
 func (r *enterpriseManagementRepository) DeleteEmployeeAndReturnAllocation(ctx context.Context, enterpriseID int64, employeeID int64, operatorID int64) ([]int64, error) {
@@ -569,6 +741,11 @@ type enterpriseUserLock struct {
 	Balance float64
 }
 
+type enterpriseEmployeeBalanceLock struct {
+	ID      int64
+	Balance float64
+}
+
 func (r *enterpriseManagementRepository) lockEnterpriseForUpdate(ctx context.Context, exec sqlQueryExecutor, enterpriseID int64) (enterpriseUserLock, error) {
 	var out enterpriseUserLock
 	err := scanSingleRow(ctx, exec, `
@@ -611,6 +788,34 @@ FOR UPDATE`,
 		return enterpriseUserLock{}, err
 	}
 	return out, nil
+}
+
+func (r *enterpriseManagementRepository) lockEmployeesForBalanceInitialization(ctx context.Context, exec sqlQueryExecutor, enterpriseID int64) ([]enterpriseEmployeeBalanceLock, error) {
+	rows, err := exec.QueryContext(ctx, `
+SELECT id, balance::double precision
+FROM users
+WHERE parent_user_id = $1
+  AND role = $2
+  AND deleted_at IS NULL
+ORDER BY id
+FOR UPDATE`,
+		enterpriseID,
+		service.RoleEmployee,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]enterpriseEmployeeBalanceLock, 0)
+	for rows.Next() {
+		var employee enterpriseEmployeeBalanceLock
+		if err := rows.Scan(&employee.ID, &employee.Balance); err != nil {
+			return nil, err
+		}
+		out = append(out, employee)
+	}
+	return out, rows.Err()
 }
 
 func (r *enterpriseManagementRepository) ensureEnterpriseAllocationAvailable(ctx context.Context, enterpriseID int64, excludeEmployeeID *int64, targetConcurrency int, targetRPM int) error {
@@ -919,6 +1124,48 @@ func validateEnterpriseAllocationTarget(target service.EmployeeAllocationUpdate)
 		return service.ErrEnterpriseManagementInvalidAllocation
 	}
 	return nil
+}
+
+func compactEmployeeUsers(users []*service.User) []*service.User {
+	if len(users) == 0 {
+		return nil
+	}
+	out := make([]*service.User, 0, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		out = append(out, user)
+	}
+	return out
+}
+
+func validateEnterpriseEmployeeBatch(users []*service.User) (int, int, bool, error) {
+	var concurrency int
+	var rpm int
+	var unlimitedRPM bool
+	for _, user := range users {
+		target := service.EmployeeAllocationUpdate{
+			Balance:     0,
+			Concurrency: user.Concurrency,
+			RPM:         user.RPMLimit,
+		}
+		if err := validateEnterpriseAllocationTarget(target); err != nil {
+			return 0, 0, false, err
+		}
+		concurrency += user.Concurrency
+		if user.RPMLimit == 0 {
+			unlimitedRPM = true
+			continue
+		}
+		if !unlimitedRPM {
+			rpm += user.RPMLimit
+		}
+	}
+	if unlimitedRPM {
+		return concurrency, 0, true, nil
+	}
+	return concurrency, rpm, false, nil
 }
 
 func enterpriseAllocationSummary(profile *service.EnterpriseProfile, usage service.QuotaUsageSummary) service.AllocationSummary {

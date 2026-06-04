@@ -623,6 +623,16 @@ func (r *agentManagementUserRepoStub) GetByID(_ context.Context, id int64) (*Use
 	return &clone, nil
 }
 
+func (r *agentManagementUserRepoStub) ExistsByEmail(_ context.Context, email string) (bool, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	for _, user := range r.users {
+		if strings.TrimSpace(strings.ToLower(user.Email)) == email {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *agentManagementUserRepoStub) Delete(_ context.Context, id int64) error {
 	if _, ok := r.users[id]; !ok {
 		return ErrUserNotFound

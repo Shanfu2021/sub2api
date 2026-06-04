@@ -41,10 +41,32 @@
               <Icon name="userPlus" size="sm" />
               <span>{{ t('enterpriseManagement.employees.create') }}</span>
             </button>
+            <button
+              data-test="import-enterprise-employees"
+              class="btn btn-secondary px-3"
+              :disabled="loading"
+              @click="openImportDialog"
+            >
+              <Icon name="upload" size="sm" />
+              <span>{{ t('enterpriseManagement.employees.import.title') }}</span>
+            </button>
+            <button
+              data-test="initialize-employee-balances"
+              class="btn btn-secondary px-3"
+              :disabled="loading"
+              @click="openBalanceInitDialog"
+            >
+              <Icon name="dollar" size="sm" />
+              <span>{{ t('enterpriseManagement.employees.balanceInit.title') }}</span>
+            </button>
             <button class="btn btn-secondary px-3" :disabled="loading" @click="loadData">
               <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
             </button>
           </div>
+        </div>
+        <div class="mt-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+          <div class="font-medium">{{ t('enterpriseManagement.employees.import.formatTitle') }}</div>
+          <pre class="mt-2 overflow-x-auto whitespace-pre rounded bg-white/70 p-3 font-mono text-[11px] leading-5 text-blue-900 dark:bg-dark-900/70 dark:text-blue-100">{{ importFormatExample }}</pre>
         </div>
       </template>
 
@@ -209,6 +231,126 @@
     </BaseDialog>
 
     <BaseDialog
+      :show="importDialog.show"
+      :title="t('enterpriseManagement.employees.import.title')"
+      width="wide"
+      @close="closeImportDialog"
+    >
+      <div class="space-y-4" data-test="enterprise-employee-import-dialog">
+        <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300">
+          <div class="font-medium text-gray-900 dark:text-white">{{ t('enterpriseManagement.employees.import.formatTitle') }}</div>
+          <pre class="mt-2 overflow-x-auto whitespace-pre rounded bg-white p-3 font-mono text-[11px] leading-5 dark:bg-dark-900">{{ importFormatExample }}</pre>
+          <p class="mt-2">{{ t('enterpriseManagement.employees.import.skipHint') }}</p>
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('enterpriseManagement.employees.import.file') }}</label>
+          <input
+            ref="importFileInput"
+            data-test="employee-import-file"
+            type="file"
+            accept="application/json,.json"
+            class="input"
+            @change="handleImportFileChange"
+          />
+        </div>
+
+        <div v-if="importDialog.fileName" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="rounded-md border border-gray-200 p-3 dark:border-dark-700">
+            <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('enterpriseManagement.employees.import.file') }}</div>
+            <div class="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">{{ importDialog.fileName }}</div>
+          </div>
+          <div class="rounded-md border border-gray-200 p-3 dark:border-dark-700">
+            <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('enterpriseManagement.employees.import.validRows') }}</div>
+            <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{{ importDialog.records.length }}</div>
+          </div>
+          <div class="rounded-md border border-gray-200 p-3 dark:border-dark-700">
+            <div class="text-xs text-gray-500 dark:text-dark-400">{{ t('enterpriseManagement.employees.import.requiredQuota') }}</div>
+            <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+              {{ t('agentManagement.direct.allocatedConcurrency') }} {{ importRequiredConcurrency }} / RPM {{ importRequiredRpm }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="importDialog.parseError" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          {{ importDialog.parseError }}
+        </div>
+
+        <div v-if="importDialog.result" class="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-300">
+          {{ t('enterpriseManagement.employees.import.result', {
+            created: importDialog.result.created_count,
+            skipped: importDialog.result.skipped_count
+          }) }}
+        </div>
+
+        <div v-if="importDialog.result?.skipped?.length" class="max-h-48 overflow-auto rounded-md border border-gray-200 dark:border-dark-700">
+          <table class="min-w-full text-left text-xs">
+            <thead class="bg-gray-50 text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+              <tr>
+                <th class="px-3 py-2">{{ t('enterpriseManagement.employees.import.row') }}</th>
+                <th class="px-3 py-2">{{ t('common.email') }}</th>
+                <th class="px-3 py-2">{{ t('enterpriseManagement.employees.import.reason') }}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="item in importDialog.result.skipped" :key="`${item.row}-${item.email || ''}-${item.reason}`">
+                <td class="px-3 py-2">{{ item.row }}</td>
+                <td class="px-3 py-2">{{ item.email || '-' }}</td>
+                <td class="px-3 py-2">{{ item.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" :disabled="importingEmployees" @click="closeImportDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="button" class="btn btn-primary" :disabled="importingEmployees || importDialog.records.length === 0" @click="importEmployees">
+            {{ importingEmployees ? t('enterpriseManagement.employees.import.importing') : t('enterpriseManagement.employees.import.submit') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="balanceInitDialog.show"
+      :title="t('enterpriseManagement.employees.balanceInit.title')"
+      width="normal"
+      @close="closeBalanceInitDialog"
+    >
+      <form id="employee-balance-init-form" class="space-y-4" data-test="employee-balance-init-form" @submit.prevent="initializeEmployeeBalances">
+        <div>
+          <label class="input-label">{{ t('enterpriseManagement.employees.balanceInit.target') }}</label>
+          <input
+            v-model.number="balanceInitDialog.balance"
+            data-test="employee-balance-init-input"
+            type="number"
+            min="0"
+            step="0.000001"
+            class="input"
+          />
+        </div>
+        <div class="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300">
+          {{ t('enterpriseManagement.employees.balanceInit.hint') }}
+        </div>
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" :disabled="initializingBalances" @click="closeBalanceInitDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" form="employee-balance-init-form" class="btn btn-primary" :disabled="initializingBalances">
+            {{ initializingBalances ? t('common.saving') : t('enterpriseManagement.employees.balanceInit.submit') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
       :show="groupDialog.show"
       :title="groupDialogTitle"
       width="wide"
@@ -281,13 +423,17 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { enterpriseManagementAPI } from '@/api/enterpriseManagement'
 import { useAppStore } from '@/stores'
+import { extractApiErrorCode, extractApiErrorMetadata, extractApiErrorMessage } from '@/utils/apiError'
 import { formatCurrency } from '@/utils/format'
 import type {
   EnterpriseAllocationSummary,
   EnterpriseEmployee,
   EnterpriseEmployeeAllocationUpdate,
+  EnterpriseEmployeeBalanceInitializationResult,
   EnterpriseEmployeeCreateRequest,
   EnterpriseEmployeeGroupOption,
+  EnterpriseEmployeeImportRecord,
+  EnterpriseEmployeeImportResult,
   EnterpriseEmployeesResponse,
 } from '@/types'
 import type { Column } from '@/components/common/types'
@@ -304,7 +450,10 @@ const appStore = useAppStore()
 
 const loading = ref(false)
 const creatingEmployee = ref(false)
+const importingEmployees = ref(false)
+const initializingBalances = ref(false)
 const savingEmployeeId = ref<number | null>(null)
+const importFileInput = ref<HTMLInputElement | null>(null)
 const searchDraft = ref('')
 const activeSearch = ref('')
 const employees = ref<EnterpriseEmployee[]>([])
@@ -312,6 +461,23 @@ const allocation = ref<EnterpriseAllocationSummary | null>(null)
 const drafts = reactive<Record<number, EnterpriseEmployeeAllocationUpdate>>({})
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const createDialog = reactive({ show: false })
+const importDialog = reactive<{
+  show: boolean
+  fileName: string
+  records: EnterpriseEmployeeImportRecord[]
+  parseError: string
+  result: EnterpriseEmployeeImportResult | null
+}>({
+  show: false,
+  fileName: '',
+  records: [],
+  parseError: '',
+  result: null,
+})
+const balanceInitDialog = reactive({
+  show: false,
+  balance: 0,
+})
 const createForm = reactive<EnterpriseEmployeeCreateRequest>({
   email: '',
   password: '',
@@ -350,6 +516,19 @@ const columns = computed<Column[]>(() => [
 const remainingConcurrencyText = computed(() => allocation.value?.unlimited_concurrency ? t('common.unlimited') : String(allocation.value?.remaining_concurrency ?? '-'))
 const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
 const groupDialogTitle = computed(() => t('enterpriseManagement.employees.groupsTitle', { email: groupDialog.employee?.email || '' }))
+const importRequiredConcurrency = computed(() => importDialog.records.reduce((sum, item) => sum + (typeof item.concurrency === 'number' && Number.isFinite(item.concurrency) && item.concurrency > 0 ? item.concurrency : 0), 0))
+const importRequiredRpm = computed(() => importDialog.records.some((item) => typeof item.rpm === 'number' && item.rpm === 0)
+  ? t('common.unlimited')
+  : String(importDialog.records.reduce((sum, item) => sum + (typeof item.rpm === 'number' && Number.isFinite(item.rpm) && item.rpm > 0 ? item.rpm : 0), 0)))
+const importFormatExample = `[
+  {
+    "email": "employee@example.com",
+    "username": "employee",
+    "password": "123456",
+    "concurrency": 2,
+    "rpm": 30
+  }
+]`
 
 function extractPagination(result: EnterpriseEmployeesResponse) {
   const source = result.pagination || {}
@@ -510,6 +689,34 @@ function closeCreateDialog() {
   }
 }
 
+function openImportDialog() {
+  importDialog.show = true
+  importDialog.fileName = ''
+  importDialog.records = []
+  importDialog.parseError = ''
+  importDialog.result = null
+  if (importFileInput.value) {
+    importFileInput.value.value = ''
+  }
+}
+
+function closeImportDialog() {
+  if (!importingEmployees.value) {
+    importDialog.show = false
+  }
+}
+
+function openBalanceInitDialog() {
+  balanceInitDialog.balance = 0
+  balanceInitDialog.show = true
+}
+
+function closeBalanceInitDialog() {
+  if (!initializingBalances.value) {
+    balanceInitDialog.show = false
+  }
+}
+
 async function createEmployee() {
   const payload: EnterpriseEmployeeCreateRequest = {
     email: createForm.email.trim(),
@@ -533,6 +740,108 @@ async function createEmployee() {
     appStore.showError((error as { message?: string }).message || t('enterpriseManagement.employees.createFailed'))
   } finally {
     creatingEmployee.value = false
+  }
+}
+
+function normalizeImportPayload(raw: unknown): EnterpriseEmployeeImportRecord[] {
+  const source = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { employees?: unknown }).employees)
+      ? (raw as { employees: unknown[] }).employees
+      : null
+  if (!source) {
+    throw new Error(t('enterpriseManagement.employees.import.invalidJsonShape'))
+  }
+  return source.map((item) => item !== null && typeof item === 'object' && !Array.isArray(item)
+    ? item as EnterpriseEmployeeImportRecord
+    : {})
+}
+
+async function handleImportFileChange(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  importDialog.records = []
+  importDialog.result = null
+  importDialog.parseError = ''
+  importDialog.fileName = file?.name || ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    const parsed = JSON.parse(text)
+    importDialog.records = normalizeImportPayload(parsed)
+    if (importDialog.records.length === 0) {
+      importDialog.parseError = t('enterpriseManagement.employees.import.emptyFile')
+    }
+  } catch (error) {
+    importDialog.parseError = (error as { message?: string }).message || t('enterpriseManagement.employees.import.invalidJson')
+  }
+}
+
+function importQuotaErrorMessage(error: unknown): string {
+  if (extractApiErrorCode(error) !== 'ENTERPRISE_EMPLOYEE_IMPORT_QUOTA_EXCEEDED') {
+    return extractApiErrorMessage(error, t('enterpriseManagement.employees.import.failed'))
+  }
+  const md = extractApiErrorMetadata(error) || {}
+  return t('enterpriseManagement.employees.import.quotaExceeded', {
+    currentConcurrency: String(md.available_concurrency ?? '-'),
+    requiredConcurrency: String(md.required_concurrency ?? '-'),
+    currentRpm: String(md.available_rpm ?? '-'),
+    requiredRpm: String(md.required_rpm ?? '-'),
+  })
+}
+
+async function importEmployees() {
+  if (importDialog.records.length === 0) {
+    appStore.showError(t('enterpriseManagement.employees.import.emptyFile'))
+    return
+  }
+  importingEmployees.value = true
+  try {
+    const result = await enterpriseManagementAPI.importEmployees({ employees: importDialog.records })
+    importDialog.result = result
+    allocation.value = result.allocation
+    appStore.showSuccess(t('enterpriseManagement.employees.import.result', {
+      created: result.created_count,
+      skipped: result.skipped_count,
+    }))
+    await loadData()
+  } catch (error) {
+    appStore.showError(importQuotaErrorMessage(error))
+  } finally {
+    importingEmployees.value = false
+  }
+}
+
+function balanceInitErrorMessage(error: unknown): string {
+  if (extractApiErrorCode(error) !== 'ENTERPRISE_EMPLOYEE_BALANCE_INIT_EXCEEDED') {
+    return extractApiErrorMessage(error, t('enterpriseManagement.employees.balanceInit.failed'))
+  }
+  const md = extractApiErrorMetadata(error) || {}
+  return t('enterpriseManagement.employees.balanceInit.exceeded', {
+    current: formatCurrency(Number(md.current_balance ?? 0)),
+    required: formatCurrency(Number(md.required_balance ?? 0)),
+  })
+}
+
+function balanceInitSuccessMessage(result: EnterpriseEmployeeBalanceInitializationResult): string {
+  return t('enterpriseManagement.employees.balanceInit.success', {
+    count: result.employee_count,
+    balance: formatCurrency(result.target_balance),
+    required: formatCurrency(result.required_balance),
+  })
+}
+
+async function initializeEmployeeBalances() {
+  const balance = normalizedNonNegativeNumber(balanceInitDialog.balance)
+  initializingBalances.value = true
+  try {
+    const result = await enterpriseManagementAPI.initializeEmployeeBalances({ balance })
+    appStore.showSuccess(balanceInitSuccessMessage(result))
+    balanceInitDialog.show = false
+    await loadData()
+  } catch (error) {
+    appStore.showError(balanceInitErrorMessage(error))
+  } finally {
+    initializingBalances.value = false
   }
 }
 

@@ -387,10 +387,49 @@ export interface EnterpriseEmployeeCreateRequest {
   rpm: number
 }
 
+export interface EnterpriseEmployeeImportRecord {
+  email?: unknown
+  username?: unknown
+  password?: unknown
+  concurrency?: unknown
+  rpm?: unknown
+}
+
+export interface EnterpriseEmployeeImportRequest {
+  employees: EnterpriseEmployeeImportRecord[]
+}
+
+export interface EnterpriseEmployeeImportSkip {
+  row: number
+  email?: string
+  reason: string
+}
+
+export interface EnterpriseEmployeeImportResult {
+  created: EnterpriseEmployee[]
+  created_count: number
+  skipped: EnterpriseEmployeeImportSkip[]
+  skipped_count: number
+  allocation: EnterpriseAllocationSummary
+}
+
 export interface EnterpriseEmployeeAllocationUpdate {
   balance: number
   concurrency: number
   rpm: number
+}
+
+export interface EnterpriseEmployeeBalanceInitializationRequest {
+  balance: number
+}
+
+export interface EnterpriseEmployeeBalanceInitializationResult {
+  employee_count: number
+  target_balance: number
+  current_balance: number
+  required_balance: number
+  enterprise_balance_before: number
+  enterprise_balance_after: number
 }
 
 export type EnterpriseAllocationSummary = AgentAllocationSummary

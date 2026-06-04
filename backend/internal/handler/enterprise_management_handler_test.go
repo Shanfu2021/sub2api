@@ -15,24 +15,30 @@ import (
 )
 
 type fakeEnterpriseManagementService struct {
-	createCalls int
-	updateCalls int
-	setCalls    int
-	removeCalls int
+	createCalls            int
+	importCalls            int
+	updateCalls            int
+	initializeBalanceCalls int
+	setCalls               int
+	removeCalls            int
 
-	listActorID   int64
-	listQuery     service.DirectChildrenQuery
-	createActorID int64
-	createInput   service.EmployeeCreateInput
-	updateActorID int64
-	updateChildID int64
-	updateInput   service.EmployeeAllocationUpdate
-	setActorID    int64
-	setChildID    int64
-	setGroupID    int64
-	removeActorID int64
-	removeChildID int64
-	removeGroupID int64
+	listActorID              int64
+	listQuery                service.DirectChildrenQuery
+	createActorID            int64
+	createInput              service.EmployeeCreateInput
+	importActorID            int64
+	importInput              service.EmployeeImportInput
+	updateActorID            int64
+	updateChildID            int64
+	updateInput              service.EmployeeAllocationUpdate
+	initializeBalanceActorID int64
+	initializeBalanceInput   service.EmployeeBalanceInitializationInput
+	setActorID               int64
+	setChildID               int64
+	setGroupID               int64
+	removeActorID            int64
+	removeChildID            int64
+	removeGroupID            int64
 }
 
 func (s *fakeEnterpriseManagementService) ListEmployeesWithQuery(_ context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
@@ -66,6 +72,26 @@ func (s *fakeEnterpriseManagementService) CreateEmployee(_ context.Context, acto
 	}, nil
 }
 
+func (s *fakeEnterpriseManagementService) ImportEmployees(_ context.Context, actorID int64, input service.EmployeeImportInput) (*service.EmployeeImportResult, error) {
+	s.importCalls++
+	s.importActorID = actorID
+	s.importInput = input
+	return &service.EmployeeImportResult{
+		Created: []service.User{{
+			ID:           100,
+			Email:        "created@example.com",
+			Username:     "created",
+			PasswordHash: "must-not-leak",
+			Role:         service.RoleEmployee,
+			ParentUserID: &actorID,
+			Concurrency:  2,
+			RPMLimit:     30,
+			Status:       service.StatusActive,
+		}},
+		CreatedCount: len(input.Employees),
+	}, nil
+}
+
 func (s *fakeEnterpriseManagementService) UpdateEmployeeAllocation(_ context.Context, actorID int64, employeeID int64, input service.EmployeeAllocationUpdate) (*service.AllocationSummary, error) {
 	s.updateCalls++
 	s.updateActorID = actorID
@@ -79,6 +105,13 @@ func (s *fakeEnterpriseManagementService) UpdateEmployeeAllocation(_ context.Con
 		AllocatedRPM:         input.RPM,
 		RemainingRPM:         200 - input.RPM,
 	}, nil
+}
+
+func (s *fakeEnterpriseManagementService) InitializeEmployeeBalances(_ context.Context, actorID int64, input service.EmployeeBalanceInitializationInput) (*service.EmployeeBalanceInitializationResult, error) {
+	s.initializeBalanceCalls++
+	s.initializeBalanceActorID = actorID
+	s.initializeBalanceInput = input
+	return &service.EmployeeBalanceInitializationResult{EmployeeCount: 2, TargetBalance: input.Balance}, nil
 }
 
 func (s *fakeEnterpriseManagementService) DeleteEmployee(context.Context, int64, int64) error {
@@ -122,6 +155,8 @@ func newEnterpriseManagementHandlerTestRouter(svc *fakeEnterpriseManagementServi
 	})
 	r.GET("/employees", h.ListEmployees)
 	r.POST("/employees", h.CreateEmployee)
+	r.POST("/employees/import", h.ImportEmployees)
+	r.PUT("/employees/balances/initialize", h.InitializeEmployeeBalances)
 	r.PUT("/employees/:id/allocation", h.UpdateEmployeeAllocation)
 	r.PUT("/employees/:id/groups/:group_id", h.SetEmployeeGroup)
 	r.DELETE("/employees/:id/groups/:group_id", h.RemoveEmployeeGroup)
@@ -175,6 +210,43 @@ func TestEnterpriseManagementHandlerCreatesEmployeeWithBalance(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"balance":12.5`)
 }
 
+func TestEnterpriseManagementHandlerImportsEmployeesFromArrayPayload(t *testing.T) {
+	svc := &fakeEnterpriseManagementService{}
+	router := newEnterpriseManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/employees/import", strings.NewReader(`[
+		{
+			"email": "a@example.com",
+			"username": "employee-a",
+			"password": "secret123",
+			"concurrency": 2,
+			"rpm": 30
+		},
+		{
+			"email": "b@example.com",
+			"password": "secret123",
+			"concurrency": "bad",
+			"rpm": 10
+		}
+	]`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.importCalls)
+	require.Equal(t, int64(42), svc.importActorID)
+	require.Len(t, svc.importInput.Employees, 2)
+	require.Equal(t, "a@example.com", *svc.importInput.Employees[0].Email)
+	require.Equal(t, "employee-a", *svc.importInput.Employees[0].Username)
+	require.Equal(t, 2, *svc.importInput.Employees[0].Concurrency)
+	require.Equal(t, []string{"concurrency"}, svc.importInput.Employees[1].InvalidFields)
+	require.Contains(t, rec.Body.String(), `"created_count":2`)
+	require.Contains(t, rec.Body.String(), `"email":"created@example.com"`)
+	require.NotContains(t, rec.Body.String(), "must-not-leak")
+	require.NotContains(t, rec.Body.String(), "PasswordHash")
+}
+
 func TestEnterpriseManagementHandlerUpdatesEmployeeAllocationWithBalance(t *testing.T) {
 	svc := &fakeEnterpriseManagementService{}
 	router := newEnterpriseManagementHandlerTestRouter(svc)
@@ -193,6 +265,21 @@ func TestEnterpriseManagementHandlerUpdatesEmployeeAllocationWithBalance(t *test
 	require.Equal(t, int64(42), svc.updateActorID)
 	require.Equal(t, int64(7), svc.updateChildID)
 	require.Equal(t, service.EmployeeAllocationUpdate{Balance: 9.5, Concurrency: 3, RPM: 30}, svc.updateInput)
+}
+
+func TestEnterpriseManagementHandlerInitializesEmployeeBalances(t *testing.T) {
+	svc := &fakeEnterpriseManagementService{}
+	router := newEnterpriseManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/employees/balances/initialize", strings.NewReader(`{"balance": 12.5}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.initializeBalanceCalls)
+	require.Equal(t, int64(42), svc.initializeBalanceActorID)
+	require.Equal(t, service.EmployeeBalanceInitializationInput{Balance: 12.5}, svc.initializeBalanceInput)
 }
 
 func TestEnterpriseManagementHandlerRejectsGroupRatePayload(t *testing.T) {

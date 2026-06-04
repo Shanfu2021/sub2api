@@ -16,7 +16,9 @@ import (
 type enterpriseManagementService interface {
 	ListEmployeesWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	CreateEmployee(ctx context.Context, actorID int64, input service.EmployeeCreateInput) (*service.User, error)
+	ImportEmployees(ctx context.Context, actorID int64, input service.EmployeeImportInput) (*service.EmployeeImportResult, error)
 	UpdateEmployeeAllocation(ctx context.Context, actorID int64, employeeID int64, input service.EmployeeAllocationUpdate) (*service.AllocationSummary, error)
+	InitializeEmployeeBalances(ctx context.Context, actorID int64, input service.EmployeeBalanceInitializationInput) (*service.EmployeeBalanceInitializationResult, error)
 	DeleteEmployee(ctx context.Context, actorID int64, employeeID int64) error
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	ListMyGroups(ctx context.Context, actorID int64) ([]service.AgentGroupRate, error)
@@ -96,6 +98,23 @@ func (h *EnterpriseManagementHandler) CreateEmployee(c *gin.Context) {
 	response.Success(c, agentManagedUserFromService(user))
 }
 
+func (h *EnterpriseManagementHandler) ImportEmployees(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	req, ok := bindEmployeeImport(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.ImportEmployees(c.Request.Context(), actorID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, enterpriseEmployeeImportResultFromService(result))
+}
+
 func (h *EnterpriseManagementHandler) UpdateEmployeeAllocation(c *gin.Context) {
 	actorID, ok := currentActorID(c)
 	if !ok {
@@ -115,6 +134,24 @@ func (h *EnterpriseManagementHandler) UpdateEmployeeAllocation(c *gin.Context) {
 		return
 	}
 	response.Success(c, summary)
+}
+
+func (h *EnterpriseManagementHandler) InitializeEmployeeBalances(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var req service.EmployeeBalanceInitializationInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.service.InitializeEmployeeBalances(c.Request.Context(), actorID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 func (h *EnterpriseManagementHandler) DeleteEmployee(c *gin.Context) {
@@ -228,6 +265,104 @@ func bindEmployeeCreate(c *gin.Context) (service.EmployeeCreateInput, bool) {
 		return service.EmployeeCreateInput{}, false
 	}
 	return req, true
+}
+
+func bindEmployeeImport(c *gin.Context) (service.EmployeeImportInput, bool) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return service.EmployeeImportInput{}, false
+	}
+	var records []json.RawMessage
+	if err := json.Unmarshal(body, &records); err != nil {
+		var wrapper struct {
+			Employees []json.RawMessage `json:"employees"`
+		}
+		if err := json.Unmarshal(body, &wrapper); err != nil {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return service.EmployeeImportInput{}, false
+		}
+		records = wrapper.Employees
+	}
+	input := service.EmployeeImportInput{Employees: make([]service.EmployeeImportRecord, 0, len(records))}
+	for _, raw := range records {
+		input.Employees = append(input.Employees, decodeEmployeeImportRecord(raw))
+	}
+	return input, true
+}
+
+func decodeEmployeeImportRecord(raw json.RawMessage) service.EmployeeImportRecord {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return service.EmployeeImportRecord{InvalidFields: []string{"record"}}
+	}
+	record := service.EmployeeImportRecord{}
+	if rawEmail, ok := fields["email"]; ok {
+		var value string
+		if err := json.Unmarshal(rawEmail, &value); err != nil {
+			record.InvalidFields = append(record.InvalidFields, "email")
+		} else {
+			record.Email = &value
+		}
+	}
+	if rawUsername, ok := fields["username"]; ok {
+		var value string
+		if err := json.Unmarshal(rawUsername, &value); err != nil {
+			record.InvalidFields = append(record.InvalidFields, "username")
+		} else {
+			record.Username = &value
+		}
+	}
+	if rawPassword, ok := fields["password"]; ok {
+		var value string
+		if err := json.Unmarshal(rawPassword, &value); err != nil {
+			record.InvalidFields = append(record.InvalidFields, "password")
+		} else {
+			record.Password = &value
+		}
+	}
+	if rawConcurrency, ok := fields["concurrency"]; ok {
+		var value int
+		if err := json.Unmarshal(rawConcurrency, &value); err != nil {
+			record.InvalidFields = append(record.InvalidFields, "concurrency")
+		} else {
+			record.Concurrency = &value
+		}
+	}
+	if rawRPM, ok := fields["rpm"]; ok {
+		var value int
+		if err := json.Unmarshal(rawRPM, &value); err != nil {
+			record.InvalidFields = append(record.InvalidFields, "rpm")
+		} else {
+			record.RPM = &value
+		}
+	}
+	return record
+}
+
+type enterpriseEmployeeImportResultResponse struct {
+	Created      []agentManagedUserResponse   `json:"created"`
+	CreatedCount int                          `json:"created_count"`
+	Skipped      []service.EmployeeImportSkip `json:"skipped"`
+	SkippedCount int                          `json:"skipped_count"`
+	Allocation   service.AllocationSummary    `json:"allocation"`
+}
+
+func enterpriseEmployeeImportResultFromService(result *service.EmployeeImportResult) enterpriseEmployeeImportResultResponse {
+	if result == nil {
+		return enterpriseEmployeeImportResultResponse{}
+	}
+	created := make([]agentManagedUserResponse, 0, len(result.Created))
+	for i := range result.Created {
+		created = append(created, agentManagedUserFromService(&result.Created[i]))
+	}
+	return enterpriseEmployeeImportResultResponse{
+		Created:      created,
+		CreatedCount: result.CreatedCount,
+		Skipped:      result.Skipped,
+		SkippedCount: result.SkippedCount,
+		Allocation:   result.Allocation,
+	}
 }
 
 func bindEmployeeAllocationUpdate(c *gin.Context) (service.EmployeeAllocationUpdate, bool) {

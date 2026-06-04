@@ -723,7 +723,34 @@ export default {
       groupRemoved: 'Employee group removed',
       groupFailed: 'Failed to save employee group',
       insufficientAllocation: 'Remaining concurrency or RPM is not enough to allocate',
-      loadFailed: 'Failed to load employees'
+      loadFailed: 'Failed to load employees',
+      import: {
+        title: 'Import employees',
+        file: 'JSON file',
+        formatTitle: 'Import format: each employee record must include exactly these required fields: email, username, password, concurrency, rpm',
+        skipHint: 'Import does not allocate balance. Imported employees start with balance 0. Records missing any required field or containing invalid fields are skipped.',
+        validRows: 'File records',
+        requiredQuota: 'Estimated quota',
+        row: 'Row',
+        reason: 'Reason',
+        submit: 'Import',
+        importing: 'Importing...',
+        result: 'Import complete: created {created}, skipped {skipped}',
+        failed: 'Failed to import employees',
+        invalidJson: 'Failed to parse JSON file',
+        invalidJsonShape: 'JSON must be an employee array or an object with an employees array',
+        emptyFile: 'No employee records were found in the file',
+        quotaExceeded: 'Enterprise quota is not enough: current concurrency {currentConcurrency}, required {requiredConcurrency}; current RPM {currentRpm}, required {requiredRpm}'
+      },
+      balanceInit: {
+        title: 'Initialize balances',
+        target: 'Set every employee balance to',
+        hint: 'This sets all direct employee balances to the same value. Increases are deducted from the enterprise balance; decreases are returned to the enterprise.',
+        submit: 'Initialize',
+        success: 'Initialized {count} employee balances to {balance}. Net required balance: {required}',
+        failed: 'Failed to initialize employee balances',
+        exceeded: 'Enterprise balance is not enough: current {current}, required {required}'
+      }
     },
     groups: {
       subtitle: 'View public and exclusive groups assigned to this enterprise. Only effective enterprise rates are shown.',

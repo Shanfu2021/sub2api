@@ -15,13 +15,16 @@ type enterpriseManagementRepoStub struct {
 	users  map[int64]*User
 	nextID int64
 
-	profiles              map[int64]EnterpriseProfile
-	quotaUsage            QuotaUsageSummary
-	createEmployeeCalls   []User
-	updateAllocationCalls []EmployeeAllocationUpdate
-	deleteEmployeeCalls   []int64
-	releaseEmployeeCalls  []int64
-	groupDelegations      []agentGroupDelegationRecord
+	profiles                map[int64]EnterpriseProfile
+	quotaUsage              QuotaUsageSummary
+	createEmployeeCalls     []User
+	createEmployeesCalls    [][]User
+	updateAllocationCalls   []EmployeeAllocationUpdate
+	initializeBalanceCalls  []float64
+	initializeBalanceResult *EmployeeBalanceInitializationResult
+	deleteEmployeeCalls     []int64
+	releaseEmployeeCalls    []int64
+	groupDelegations        []agentGroupDelegationRecord
 }
 
 func newEnterpriseManagementRepoStub(users ...*User) *enterpriseManagementRepoStub {
@@ -76,6 +79,27 @@ func (r *enterpriseManagementRepoStub) CreateEmployee(_ context.Context, enterpr
 	return nil
 }
 
+func (r *enterpriseManagementRepoStub) CreateEmployees(_ context.Context, enterpriseID int64, _ int64, users []*User) error {
+	call := make([]User, 0, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		r.nextID++
+		user.ID = r.nextID
+		user.Role = RoleEmployee
+		user.ParentUserID = &enterpriseID
+		user.Status = StatusActive
+		user.AllocatedConcurrency = user.Concurrency
+		user.AllocatedRPM = user.RPMLimit
+		clone := *user
+		r.users[user.ID] = &clone
+		call = append(call, clone)
+	}
+	r.createEmployeesCalls = append(r.createEmployeesCalls, call)
+	return nil
+}
+
 func (r *enterpriseManagementRepoStub) UpdateEmployeeAllocation(_ context.Context, enterpriseID int64, employeeID int64, _ int64, target EmployeeAllocationUpdate) (*EmployeeAllocationResult, error) {
 	user, ok := r.users[employeeID]
 	if !ok || user.ParentUserID == nil || *user.ParentUserID != enterpriseID || user.Role != RoleEmployee {
@@ -89,6 +113,33 @@ func (r *enterpriseManagementRepoStub) UpdateEmployeeAllocation(_ context.Contex
 	r.updateAllocationCalls = append(r.updateAllocationCalls, target)
 	clone := *user
 	return &EmployeeAllocationResult{User: &clone, Allocation: AllocationSummary{TotalConcurrency: 0, TotalRPM: 0, UnlimitedCapacity: false, UnlimitedConcurrency: false, UnlimitedRPM: true}}, nil
+}
+
+func (r *enterpriseManagementRepoStub) InitializeEmployeeBalances(_ context.Context, enterpriseID int64, _ int64, targetBalance float64) (*EmployeeBalanceInitializationResult, error) {
+	r.initializeBalanceCalls = append(r.initializeBalanceCalls, targetBalance)
+	if r.initializeBalanceResult != nil {
+		clone := *r.initializeBalanceResult
+		return &clone, nil
+	}
+	employeeCount := 0
+	var current float64
+	for _, user := range r.users {
+		if user.ParentUserID == nil || *user.ParentUserID != enterpriseID || user.Role != RoleEmployee {
+			continue
+		}
+		employeeCount++
+		current += user.Balance
+		user.Balance = targetBalance
+	}
+	return &EmployeeBalanceInitializationResult{
+		EmployeeCount:           employeeCount,
+		TargetBalance:           targetBalance,
+		CurrentBalance:          current,
+		RequiredBalance:         targetBalance*float64(employeeCount) - current,
+		EnterpriseBalanceBefore: 100,
+		EnterpriseBalanceAfter:  100 - (targetBalance*float64(employeeCount) - current),
+		AffectedUserIDs:         []int64{enterpriseID},
+	}, nil
 }
 
 func (r *enterpriseManagementRepoStub) DeleteEmployeeAndReturnAllocation(_ context.Context, _ int64, employeeID int64, _ int64) ([]int64, error) {
@@ -255,6 +306,82 @@ func TestEnterpriseManagementCreateEmployeeSetsEmployeeRoleAndParent(t *testing.
 	require.Len(t, repo.createEmployeeCalls, 1)
 }
 
+func TestEnterpriseManagementImportEmployeesSkipsIncompleteRowsAndCreatesValidRows(t *testing.T) {
+	enterpriseID := int64(1)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive},
+		&User{ID: 2, Email: "exists@test.local", Role: RoleEmployee, ParentUserID: &enterpriseID, Balance: 0, Status: StatusActive},
+	)
+	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 20, PoolRPM: 200}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, &agentManagementAuthInvalidatorStub{})
+
+	emailA := "new-a@test.local"
+	usernameA := "new-a"
+	passwordA := "password-123"
+	concurrencyA := 2
+	rpmA := 20
+	emailMissingUsername := "missing-username@test.local"
+	passwordMissingUsername := "password-123"
+	concurrencyMissingUsername := 1
+	rpmMissingUsername := 10
+	emailExisting := "exists@test.local"
+	usernameExisting := "exists"
+	passwordExisting := "password-123"
+	concurrencyExisting := 1
+	rpmExisting := 10
+
+	result, err := svc.ImportEmployees(context.Background(), enterpriseID, EmployeeImportInput{Employees: []EmployeeImportRecord{
+		{Email: &emailA, Username: &usernameA, Password: &passwordA, Concurrency: &concurrencyA, RPM: &rpmA},
+		{Email: &emailMissingUsername, Password: &passwordMissingUsername, Concurrency: &concurrencyMissingUsername, RPM: &rpmMissingUsername},
+		{Email: &emailExisting, Username: &usernameExisting, Password: &passwordExisting, Concurrency: &concurrencyExisting, RPM: &rpmExisting},
+	}})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.CreatedCount)
+	require.Equal(t, 2, result.SkippedCount)
+	require.Len(t, repo.createEmployeesCalls, 1)
+	require.Len(t, repo.createEmployeesCalls[0], 1)
+	created := repo.createEmployeesCalls[0][0]
+	require.Equal(t, "new-a@test.local", created.Email)
+	require.Equal(t, "new-a", created.Username)
+	require.Equal(t, 0.0, created.Balance)
+	require.Equal(t, 2, created.Concurrency)
+	require.Equal(t, 20, created.RPMLimit)
+	require.Equal(t, []EmployeeImportSkip{
+		{Row: 2, Email: "missing-username@test.local", Reason: "missing required fields: username"},
+		{Row: 3, Email: "exists@test.local", Reason: "email already exists"},
+	}, result.Skipped)
+}
+
+func TestEnterpriseManagementImportEmployeesRejectsWhenValidRowsExceedQuota(t *testing.T) {
+	enterpriseID := int64(1)
+	repo := newEnterpriseManagementRepoStub(&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive})
+	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 5, PoolRPM: 50}
+	repo.quotaUsage = QuotaUsageSummary{Concurrency: 2, RPM: 10}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, nil)
+
+	emailA := "new-a@test.local"
+	usernameA := "new-a"
+	passwordA := "password-123"
+	concurrencyA := 2
+	rpmA := 20
+	emailB := "new-b@test.local"
+	usernameB := "new-b"
+	passwordB := "password-123"
+	concurrencyB := 2
+	rpmB := 20
+
+	_, err := svc.ImportEmployees(context.Background(), enterpriseID, EmployeeImportInput{Employees: []EmployeeImportRecord{
+		{Email: &emailA, Username: &usernameA, Password: &passwordA, Concurrency: &concurrencyA, RPM: &rpmA},
+		{Email: &emailB, Username: &usernameB, Password: &passwordB, Concurrency: &concurrencyB, RPM: &rpmB},
+	}})
+
+	require.ErrorIs(t, err, ErrEnterpriseEmployeeImportQuotaExceeded)
+	require.Empty(t, repo.createEmployeesCalls)
+}
+
 func TestEnterpriseManagementUpdateEmployeeAllocationRejectsZeroConcurrency(t *testing.T) {
 	enterpriseID := int64(1)
 	employeeID := int64(2)
@@ -317,6 +444,35 @@ func TestEnterpriseManagementFiniteEnterpriseCannotAllocateUnlimitedRPMToEmploye
 
 	require.ErrorIs(t, err, ErrEnterpriseManagementAllocationExceeded)
 	require.Empty(t, repo.updateAllocationCalls)
+}
+
+func TestEnterpriseManagementInitializeEmployeeBalancesDelegatesAndInvalidatesAffectedUsers(t *testing.T) {
+	enterpriseID := int64(1)
+	employeeID := int64(2)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Balance: 1, Status: StatusActive},
+	)
+	repo.initializeBalanceResult = &EmployeeBalanceInitializationResult{
+		EmployeeCount:           1,
+		TargetBalance:           10,
+		CurrentBalance:          1,
+		RequiredBalance:         9,
+		EnterpriseBalanceBefore: 100,
+		EnterpriseBalanceAfter:  91,
+		AffectedUserIDs:         []int64{enterpriseID, employeeID},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, cache)
+
+	result, err := svc.InitializeEmployeeBalances(context.Background(), enterpriseID, EmployeeBalanceInitializationInput{Balance: 10})
+
+	require.NoError(t, err)
+	require.Equal(t, []float64{10}, repo.initializeBalanceCalls)
+	require.Equal(t, 1, result.EmployeeCount)
+	require.Equal(t, 9.0, result.RequiredBalance)
+	require.ElementsMatch(t, []int64{enterpriseID, employeeID}, cache.userIDs)
 }
 
 func TestEnterpriseManagementDeleteEmployeeHardDeletesAndReturnsAllocation(t *testing.T) {
