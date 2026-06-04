@@ -287,6 +287,10 @@ func (s *fakeAgentManagementService) SetChildGroupDelegation(context.Context, in
 	return nil
 }
 
+func (s *fakeAgentManagementService) SetChildGroupDelegationsBatch(context.Context, int64, int64, service.ChildGroupDelegationBatchInput) error {
+	return nil
+}
+
 func (s *fakeAgentManagementService) RemoveChildGroupDelegation(context.Context, int64, int64, int64) error {
 	return nil
 }
@@ -312,6 +316,10 @@ func (s *fakeAgentManagementService) SetInviteGroupDefault(_ context.Context, ac
 	s.setInviteDefaultGroupActor = actorID
 	s.setInviteDefaultGroupID = groupID
 	s.setInviteDefaultGroupInput = input
+	return nil
+}
+
+func (s *fakeAgentManagementService) SetInviteGroupDefaultsBatch(context.Context, int64, service.AgentInviteGroupDefaultBatchInput) error {
 	return nil
 }
 

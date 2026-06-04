@@ -41,9 +41,11 @@ type agentManagementService interface {
 	ListMyGroups(ctx context.Context, actorID int64) ([]service.AgentGroupRate, error)
 	ListChildGroupDelegationOptions(ctx context.Context, actorID int64, childID int64) ([]service.ChildGroupDelegationOption, error)
 	SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input service.ChildGroupDelegationInput) error
+	SetChildGroupDelegationsBatch(ctx context.Context, actorID int64, childID int64, input service.ChildGroupDelegationBatchInput) error
 	RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error
 	ListInviteGroupDefaultOptions(ctx context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error)
 	SetInviteGroupDefault(ctx context.Context, actorID int64, groupID int64, input service.AgentInviteGroupDefaultInput) error
+	SetInviteGroupDefaultsBatch(ctx context.Context, actorID int64, input service.AgentInviteGroupDefaultBatchInput) error
 	RemoveInviteGroupDefault(ctx context.Context, actorID int64, groupID int64) error
 }
 
@@ -359,6 +361,27 @@ func (h *AgentManagementHandler) SetChildGroupDelegation(c *gin.Context) {
 	response.Success(c, gin.H{"child_id": childID, "group_id": groupID})
 }
 
+func (h *AgentManagementHandler) SetChildGroupDelegationsBatch(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	childID, ok := parsePositiveID(c, "id", "Invalid child ID")
+	if !ok {
+		return
+	}
+	var req service.ChildGroupDelegationBatchInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.service.SetChildGroupDelegationsBatch(c.Request.Context(), actorID, childID, req); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"child_id": childID, "group_ids": req.GroupIDs, "all": req.All})
+}
+
 func (h *AgentManagementHandler) RemoveChildGroupDelegation(c *gin.Context) {
 	actorID, ok := currentActorID(c)
 	if !ok {
@@ -415,6 +438,23 @@ func (h *AgentManagementHandler) SetInviteGroupDefault(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"group_id": groupID})
+}
+
+func (h *AgentManagementHandler) SetInviteGroupDefaultsBatch(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var req service.AgentInviteGroupDefaultBatchInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.service.SetInviteGroupDefaultsBatch(c.Request.Context(), actorID, req); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"group_ids": req.GroupIDs, "all": req.All})
 }
 
 func (h *AgentManagementHandler) RemoveInviteGroupDefault(c *gin.Context) {

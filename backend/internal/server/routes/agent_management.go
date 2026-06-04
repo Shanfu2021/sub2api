@@ -25,9 +25,11 @@ func RegisterAgentManagementRoutes(authenticated *gin.RouterGroup, h *handler.Ha
 		agentManagement.DELETE("/children/:id", h.AgentManagement.DeleteDirectChild)
 		agentManagement.GET("/groups", h.AgentManagement.ListMyGroups)
 		agentManagement.GET("/invite-default-groups", h.AgentManagement.ListInviteGroupDefaultOptions)
+		agentManagement.PUT("/invite-default-groups/batch", h.AgentManagement.SetInviteGroupDefaultsBatch)
 		agentManagement.PUT("/invite-default-groups/:group_id", h.AgentManagement.SetInviteGroupDefault)
 		agentManagement.DELETE("/invite-default-groups/:group_id", h.AgentManagement.RemoveInviteGroupDefault)
 		agentManagement.GET("/children/:id/groups", h.AgentManagement.ListChildGroupDelegationOptions)
+		agentManagement.PUT("/children/:id/groups/batch", h.AgentManagement.SetChildGroupDelegationsBatch)
 		agentManagement.PUT("/children/:id/groups/:group_id", h.AgentManagement.SetChildGroupDelegation)
 		agentManagement.DELETE("/children/:id/groups/:group_id", h.AgentManagement.RemoveChildGroupDelegation)
 	}

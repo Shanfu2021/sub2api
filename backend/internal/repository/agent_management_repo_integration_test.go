@@ -499,6 +499,34 @@ VALUES ($1, $7, 1.5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", outsideUser.ID, exclusiveGroup.ID, 1.2))
 }
 
+func (s *AgentManagementRepoSuite) TestRaiseManagedGroupRateFloorUpdatesDirectEnterpriseEmployees() {
+	root := s.mustCreateAgentUser("root-admin-enterprise-rate-floor@test.com", service.RoleAdmin, nil, 1000, 10000)
+	enterprise := s.mustCreateAgentUser("enterprise-rate-floor@test.com", service.RoleEnterprise, &root.ID, 100, 1000)
+	employee := s.mustCreateAgentUser("employee-direct-enterprise-rate-floor@test.com", service.RoleEmployee, &enterprise.ID, 10, 100)
+	outsideEmployee := s.mustCreateAgentUser("outside-employee-rate-floor@test.com", service.RoleEmployee, &root.ID, 10, 100)
+	exclusiveGroup := s.mustCreateAgentGroup("exclusive-delegated-enterprise-rate-floor", true, 0.3)
+
+	s.Require().NoError(s.repo.UpsertGroupDelegation(s.ctx, enterprise.ID, employee.ID, exclusiveGroup.ID, 1.4, false))
+	_, err := integrationDB.ExecContext(s.ctx, `
+INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+VALUES ($1, $3, 1.4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+       ($2, $3, 1.2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		employee.ID,
+		outsideEmployee.ID,
+		exclusiveGroup.ID,
+	)
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.RaiseManagedGroupRateFloor(s.ctx, enterprise.ID, exclusiveGroup.ID, 2.0))
+
+	delegation, err := s.repo.GetGroupDelegation(s.ctx, enterprise.ID, employee.ID, exclusiveGroup.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(delegation)
+	s.Require().Equal(2.0, delegation.RateMultiplier)
+	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", employee.ID, exclusiveGroup.ID, 2.0))
+	s.Require().Equal(1, s.countAgentManagementRows("user_group_rate_multipliers", "user_id = $1 AND group_id = $2 AND rate_multiplier = $3", outsideEmployee.ID, exclusiveGroup.ID, 1.2))
+}
+
 func (s *AgentManagementRepoSuite) TestDeleteLevel1AgentForAdminUserDeletionDeletesAccountMovesChildrenAndPreservesDelegatedGroups() {
 	root := s.mustCreateAgentUser("root-admin@test.com", service.RoleAdmin, nil, 1000, 10000)
 	level1 := s.mustCreateAgentUser("level1-delete@test.com", service.RoleAgentLevel1, &root.ID, 100, 1000)

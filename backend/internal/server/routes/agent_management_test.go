@@ -50,9 +50,11 @@ func TestAgentManagementRoutesAreRegisteredUnderAuthenticatedUserRoutes(t *testi
 		{http.MethodDelete, "/api/v1/agent-management/children/:id"},
 		{http.MethodGet, "/api/v1/agent-management/groups"},
 		{http.MethodGet, "/api/v1/agent-management/invite-default-groups"},
+		{http.MethodPut, "/api/v1/agent-management/invite-default-groups/batch"},
 		{http.MethodPut, "/api/v1/agent-management/invite-default-groups/:group_id"},
 		{http.MethodDelete, "/api/v1/agent-management/invite-default-groups/:group_id"},
 		{http.MethodGet, "/api/v1/agent-management/children/:id/groups"},
+		{http.MethodPut, "/api/v1/agent-management/children/:id/groups/batch"},
 		{http.MethodPut, "/api/v1/agent-management/children/:id/groups/:group_id"},
 		{http.MethodDelete, "/api/v1/agent-management/children/:id/groups/:group_id"},
 	} {
