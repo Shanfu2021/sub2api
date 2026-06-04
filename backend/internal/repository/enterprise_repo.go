@@ -668,6 +668,80 @@ WHERE tenant_id = $1 AND user_id = $2
 	return nil
 }
 
+func (r *enterpriseRepository) GetMemberBalanceSettlement(ctx context.Context, tenantID, userID int64, since time.Time) (*service.EnterpriseMemberBalanceSettlement, error) {
+	exec := r.exec(ctx)
+	out := &service.EnterpriseMemberBalanceSettlement{}
+	err := scanSingleRow(ctx, exec, `
+SELECT
+	COALESCE((
+		SELECT SUM(amount)::double precision
+		FROM enterprise_wallet_ledger
+		WHERE tenant_id = $1
+			AND target_user_id = $2
+			AND direction = $4
+			AND created_at >= $3
+	), 0),
+	COALESCE((
+		SELECT SUM(amount)::double precision
+		FROM enterprise_wallet_ledger
+		WHERE tenant_id = $1
+			AND target_user_id = $2
+			AND direction = $5
+			AND created_at >= $3
+	), 0),
+	COALESCE((
+		SELECT SUM(actual_cost)::double precision
+		FROM usage_logs
+		WHERE user_id = $2
+			AND billing_type = $6
+			AND actual_cost > 0
+			AND created_at >= $3
+	), 0)
+`, []any{
+		tenantID,
+		userID,
+		since,
+		service.EnterpriseLedgerDirectionManagerGrant,
+		service.EnterpriseLedgerDirectionManagerReclaim,
+		service.BillingTypeBalance,
+	}, &out.ManagerGranted, &out.ManagerReclaimed, &out.BalanceSpent)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *enterpriseRepository) ReclaimMemberPositiveBalance(ctx context.Context, userID int64, maxAmount float64) (float64, error) {
+	if maxAmount <= 0 {
+		return 0, nil
+	}
+	exec := r.exec(ctx)
+	var reclaimed float64
+	err := scanSingleRow(ctx, exec, `
+WITH target AS (
+	SELECT id, LEAST(balance, $2::numeric) AS reclaim_amount
+	FROM users
+	WHERE id = $1
+		AND deleted_at IS NULL
+		AND balance > 0
+	FOR UPDATE
+)
+UPDATE users u
+SET balance = u.balance - target.reclaim_amount,
+	updated_at = NOW()
+FROM target
+WHERE u.id = target.id
+RETURNING target.reclaim_amount::double precision
+`, []any{userID, maxAmount}, &reclaimed)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return reclaimed, nil
+}
+
 func (r *enterpriseRepository) ListInviteCodes(ctx context.Context, tenantID int64, params pagination.PaginationParams, filters service.EnterpriseInviteCodeListFilters) ([]service.EnterpriseInviteCode, int64, error) {
 	exec := r.exec(ctx)
 	where, args := buildEnterpriseInviteWhere(tenantID, filters)

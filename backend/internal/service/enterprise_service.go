@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -177,6 +178,12 @@ type EnterpriseWalletLedgerEntry struct {
 	TenantCode      string    `json:"tenant_code,omitempty"`
 }
 
+type EnterpriseMemberBalanceSettlement struct {
+	ManagerGranted   float64
+	ManagerReclaimed float64
+	BalanceSpent     float64
+}
+
 type EnterpriseContext struct {
 	TenantID              int64   `json:"tenant_id"`
 	TenantName            string  `json:"tenant_name"`
@@ -256,6 +263,8 @@ type EnterpriseTenantRepository interface {
 	CreateMembership(ctx context.Context, membership *EnterpriseMembership) error
 	UpdateMembership(ctx context.Context, membership *EnterpriseMembership) error
 	DeleteMembership(ctx context.Context, tenantID, userID int64) error
+	GetMemberBalanceSettlement(ctx context.Context, tenantID, userID int64, since time.Time) (*EnterpriseMemberBalanceSettlement, error)
+	ReclaimMemberPositiveBalance(ctx context.Context, userID int64, maxAmount float64) (float64, error)
 	ListInviteCodes(ctx context.Context, tenantID int64, params pagination.PaginationParams, filters EnterpriseInviteCodeListFilters) ([]EnterpriseInviteCode, int64, error)
 	GetInviteCodeByID(ctx context.Context, inviteID int64) (*EnterpriseInviteCode, error)
 	GetInviteCodeByCode(ctx context.Context, code string) (*EnterpriseInviteCode, error)
@@ -876,6 +885,9 @@ func (s *EnterpriseService) RemoveTenantMember(ctx context.Context, tenantID, us
 	if membership.MemberRole == EnterpriseMemberRoleManager && tenant.ManagerCount <= 1 {
 		return ErrEnterpriseLastManagerRequired
 	}
+	if err := s.reclaimMemberVirtualBalanceOnRemove(txCtx, tenant, membership); err != nil {
+		return err
+	}
 	if err := s.repo.DeleteMembership(txCtx, tenantID, userID); err != nil {
 		return err
 	}
@@ -884,6 +896,53 @@ func (s *EnterpriseService) RemoveTenantMember(ctx context.Context, tenantID, us
 	}
 	s.invalidateEnterpriseUserCaches(ctx, userID)
 	return nil
+}
+
+func (s *EnterpriseService) reclaimMemberVirtualBalanceOnRemove(ctx context.Context, tenant *EnterpriseTenant, membership *EnterpriseMembership) error {
+	if s == nil || tenant == nil || membership == nil {
+		return nil
+	}
+	settlement, err := s.repo.GetMemberBalanceSettlement(ctx, membership.TenantID, membership.UserID, membership.CreatedAt)
+	if err != nil {
+		return err
+	}
+	if settlement == nil {
+		return nil
+	}
+	netGranted := settlement.ManagerGranted - settlement.ManagerReclaimed
+	if netGranted <= 0 {
+		return nil
+	}
+	remainingVirtual := math.Max(netGranted-settlement.BalanceSpent, 0)
+	reclaimAmount := remainingVirtual
+	if tenant.BalanceQuotaUsed < reclaimAmount {
+		reclaimAmount = tenant.BalanceQuotaUsed
+	}
+	if reclaimAmount <= 0 {
+		return nil
+	}
+	reclaimed, err := s.repo.ReclaimMemberPositiveBalance(ctx, membership.UserID, reclaimAmount)
+	if err != nil {
+		return err
+	}
+	if reclaimed <= 0 {
+		return nil
+	}
+	beforeQuota := tenant.BalanceQuotaUsed
+	tenant.BalanceQuotaUsed -= reclaimed
+	if err := s.repo.UpdateTenant(ctx, tenant); err != nil {
+		return err
+	}
+	target := membership.UserID
+	return s.repo.CreateLedgerEntry(ctx, &EnterpriseWalletLedgerEntry{
+		TenantID:      tenant.ID,
+		TargetUserID:  &target,
+		Direction:     EnterpriseLedgerDirectionManagerReclaim,
+		Amount:        reclaimed,
+		BalanceBefore: beforeQuota,
+		BalanceAfter:  tenant.BalanceQuotaUsed,
+		Notes:         "auto reclaim virtual balance on member removal",
+	})
 }
 
 func (s *EnterpriseService) ListTenantInviteCodes(ctx context.Context, tenantID int64, page, pageSize int, filters EnterpriseInviteCodeListFilters, sortBy, sortOrder string) ([]EnterpriseInviteCode, int64, error) {
