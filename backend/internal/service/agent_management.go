@@ -13,19 +13,19 @@ import (
 )
 
 var (
-	ErrAgentManagementForbidden           = infraerrors.Forbidden("AGENT_MANAGEMENT_FORBIDDEN", "agent management operation is not allowed")
-	ErrAgentManagementNotDirectChild      = infraerrors.Forbidden("AGENT_MANAGEMENT_NOT_DIRECT_CHILD", "target user is not a direct child")
-	ErrAgentManagementAllocationExceeded  = infraerrors.BadRequest("AGENT_MANAGEMENT_ALLOCATION_EXCEEDED", "allocation exceeds remaining capacity")
-	ErrAgentManagementUnsupportedRole     = infraerrors.BadRequest("AGENT_MANAGEMENT_UNSUPPORTED_ROLE", "unsupported agent management role")
-	ErrAgentManagementInvalidTarget       = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_TARGET", "invalid target user")
-	ErrAgentManagementInvalidAllocation   = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_ALLOCATION", "concurrency must be positive and RPM must be non-negative")
-	ErrAgentManagementInvalidGroupRate    = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_RATE", "group delegation rate multiplier must be positive")
-	ErrAgentManagementGroupRateBelowCost  = infraerrors.BadRequest("AGENT_MANAGEMENT_GROUP_RATE_BELOW_COST", "group delegation rate multiplier cannot be lower than manager cost rate")
-	ErrAgentManagementInvalidGroup        = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP", "only active exclusive groups can be delegated")
+	ErrAgentManagementForbidden             = infraerrors.Forbidden("AGENT_MANAGEMENT_FORBIDDEN", "agent management operation is not allowed")
+	ErrAgentManagementNotDirectChild        = infraerrors.Forbidden("AGENT_MANAGEMENT_NOT_DIRECT_CHILD", "target user is not a direct child")
+	ErrAgentManagementAllocationExceeded    = infraerrors.BadRequest("AGENT_MANAGEMENT_ALLOCATION_EXCEEDED", "allocation exceeds remaining capacity")
+	ErrAgentManagementUnsupportedRole       = infraerrors.BadRequest("AGENT_MANAGEMENT_UNSUPPORTED_ROLE", "unsupported agent management role")
+	ErrAgentManagementInvalidTarget         = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_TARGET", "invalid target user")
+	ErrAgentManagementInvalidAllocation     = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_ALLOCATION", "concurrency must be positive and RPM must be non-negative")
+	ErrAgentManagementInvalidGroupRate      = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_RATE", "group delegation rate multiplier must be positive")
+	ErrAgentManagementGroupRateBelowCost    = infraerrors.BadRequest("AGENT_MANAGEMENT_GROUP_RATE_BELOW_COST", "group delegation rate multiplier cannot be lower than manager cost rate")
+	ErrAgentManagementInvalidGroup          = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP", "only active exclusive groups can be delegated")
 	ErrAgentManagementInvalidGroupSelection = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_SELECTION", "at least one group must be selected")
-	ErrAgentManagementRootAdminNotPresent = infraerrors.NotFound("AGENT_MANAGEMENT_ROOT_ADMIN_NOT_PRESENT", "root admin not found")
-	ErrAgentManagementPoolReclaimExceeded = infraerrors.BadRequest("AGENT_MANAGEMENT_POOL_RECLAIM_EXCEEDED", "agent pool cannot be lower than child allocations")
-	ErrAgentManagementNotImplemented      = infraerrors.New(http.StatusNotImplemented, "AGENT_MANAGEMENT_NOT_IMPLEMENTED", "agent management feature is not implemented yet")
+	ErrAgentManagementRootAdminNotPresent   = infraerrors.NotFound("AGENT_MANAGEMENT_ROOT_ADMIN_NOT_PRESENT", "root admin not found")
+	ErrAgentManagementPoolReclaimExceeded   = infraerrors.BadRequest("AGENT_MANAGEMENT_POOL_RECLAIM_EXCEEDED", "agent pool cannot be lower than child allocations")
+	ErrAgentManagementNotImplemented        = infraerrors.New(http.StatusNotImplemented, "AGENT_MANAGEMENT_NOT_IMPLEMENTED", "agent management feature is not implemented yet")
 )
 
 const (
@@ -1021,13 +1021,8 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 	if err := s.syncDelegatedUserGroupRate(ctx, child.ID, groupID, &input.RateMultiplier); err != nil {
 		return err
 	}
-	if actor.Role == RoleAdmin && child.Role == RoleAgentLevel1 && input.CanDelegate {
-		if err := s.repo.RaiseManagedGroupRateFloor(ctx, child.ID, groupID, input.RateMultiplier); err != nil {
-			return err
-		}
-		if err := s.invalidateManagedGroupRateFloorUsers(ctx, child.ID); err != nil {
-			return err
-		}
+	if err := s.raiseManagedGroupRateFloorIfNeeded(ctx, actor, child, groupID, input); err != nil {
+		return err
 	}
 	s.invalidateUser(ctx, child.ID)
 	if existing != nil && existing.CanDelegate && !input.CanDelegate {
@@ -1563,14 +1558,90 @@ func (s *AgentManagementService) requireGroupDelegationAccess(ctx context.Contex
 	return agentGroupDelegationAccess{minimumRate: delegation.RateMultiplier}, nil
 }
 
+func (s *AgentManagementService) resolveChildGroupDelegationBatchGroupIDs(ctx context.Context, actorID int64, childID int64, requested []int64, all bool) ([]int64, error) {
+	if all {
+		options, err := s.ListChildGroupDelegationOptions(ctx, actorID, childID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]int64, 0, len(options))
+		for i := range options {
+			if options[i].Group.ID > 0 && options[i].Group.IsExclusive && options[i].CanDelegate {
+				out = append(out, options[i].Group.ID)
+			}
+		}
+		if len(out) == 0 {
+			return nil, ErrAgentManagementInvalidGroupSelection
+		}
+		return out, nil
+	}
+	return normalizeBatchGroupIDs(requested)
+}
+
+func (s *AgentManagementService) resolveInviteGroupDefaultBatchGroupIDs(ctx context.Context, actorID int64, requested []int64, all bool) ([]int64, error) {
+	if all {
+		options, err := s.ListInviteGroupDefaultOptions(ctx, actorID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]int64, 0, len(options))
+		for i := range options {
+			if options[i].Group.ID > 0 && options[i].Group.IsExclusive && options[i].CanDelegate {
+				out = append(out, options[i].Group.ID)
+			}
+		}
+		if len(out) == 0 {
+			return nil, ErrAgentManagementInvalidGroupSelection
+		}
+		return out, nil
+	}
+	return normalizeBatchGroupIDs(requested)
+}
+
+func normalizeBatchGroupIDs(requested []int64) ([]int64, error) {
+	seen := make(map[int64]struct{}, len(requested))
+	out := make([]int64, 0, len(requested))
+	for _, id := range requested {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil, ErrAgentManagementInvalidGroupSelection
+	}
+	return out, nil
+}
+
 func (s *AgentManagementService) invalidateUser(ctx context.Context, userID int64) {
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
 }
 
-func (s *AgentManagementService) invalidateManagedGroupRateFloorUsers(ctx context.Context, agentID int64) error {
-	children, err := s.listAllDirectChildrenForRoles(ctx, agentID, []string{RoleUser, RoleEnterprise})
+func (s *AgentManagementService) raiseManagedGroupRateFloorIfNeeded(ctx context.Context, actor *User, child *User, groupID int64, input ChildGroupDelegationInput) error {
+	if actor == nil || child == nil || actor.Role != RoleAdmin || !input.CanDelegate {
+		return nil
+	}
+	if child.Role != RoleAgentLevel1 && child.Role != RoleEnterprise {
+		return nil
+	}
+	if err := s.repo.RaiseManagedGroupRateFloor(ctx, child.ID, groupID, input.RateMultiplier); err != nil {
+		return err
+	}
+	return s.invalidateManagedGroupRateFloorUsers(ctx, child.ID, child.Role)
+}
+
+func (s *AgentManagementService) invalidateManagedGroupRateFloorUsers(ctx context.Context, ownerID int64, ownerRole string) error {
+	roles := []string{RoleUser, RoleEnterprise}
+	if ownerRole == RoleEnterprise {
+		roles = []string{RoleEmployee}
+	}
+	children, err := s.listAllDirectChildrenForRoles(ctx, ownerID, roles)
 	if err != nil {
 		return err
 	}

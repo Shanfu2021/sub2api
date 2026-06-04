@@ -560,6 +560,17 @@ func (r *agentManagementRepoStub) DeleteGroupDelegation(_ context.Context, manag
 	return nil
 }
 
+func mustFindAgentManagementDelegation(t *testing.T, repo *agentManagementRepoStub, managerID int64, childID int64, groupID int64) agentGroupDelegationRecord {
+	t.Helper()
+	for _, delegation := range repo.groupDelegations {
+		if delegation.managerID == managerID && delegation.childID == childID && delegation.groupID == groupID {
+			return delegation
+		}
+	}
+	t.Fatalf("delegation not found: manager=%d child=%d group=%d", managerID, childID, groupID)
+	return agentGroupDelegationRecord{}
+}
+
 func (r *agentManagementRepoStub) ListInviteGroupDefaults(_ context.Context, agentID int64) ([]AgentInviteGroupDefault, error) {
 	out := make([]AgentInviteGroupDefault, 0)
 	for _, record := range r.inviteGroupDefaults {
@@ -2443,6 +2454,99 @@ func TestAdminRaisingAgentDelegatedRateRaisesManagedRateFloor(t *testing.T) {
 	require.Equal(t, 2.0, repo.inviteGroupDefaults[0].rateMultiplier)
 	require.Equal(t, 2.0, groupRateRepo.rates[level1ID][groupID])
 	require.ElementsMatch(t, []int64{level1ID, directUserID}, invalidator.userIDs)
+}
+
+func TestAdminRaisingEnterpriseDelegatedRateRaisesEmployeeRateFloor(t *testing.T) {
+	rootID := int64(1)
+	enterpriseID := int64(2)
+	employeeID := int64(3)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: enterpriseID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: enterpriseID, childID: employeeID, groupID: groupID, rateMultiplier: 1.6, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
+
+	require.NoError(t, svc.SetChildGroupDelegation(context.Background(), rootID, enterpriseID, groupID, ChildGroupDelegationInput{RateMultiplier: 2.0, CanDelegate: true}))
+
+	require.Equal(t, []struct {
+		agentID     int64
+		groupID     int64
+		minimumRate float64
+	}{{agentID: enterpriseID, groupID: groupID, minimumRate: 2.0}}, repo.raiseGroupRateFloors)
+	require.Equal(t, 2.0, repo.groupDelegations[0].rateMultiplier)
+	require.Equal(t, 2.0, repo.groupDelegations[1].rateMultiplier)
+	require.ElementsMatch(t, []int64{enterpriseID, employeeID}, invalidator.userIDs)
+}
+
+func TestSetChildGroupDelegationsBatchAppliesSelectedGroups(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	directUserID := int64(3)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: rootID, childID: level1ID, groupID: 30, rateMultiplier: 1.6, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(
+		Group{ID: 20, Name: "exclusive-a", IsExclusive: true, Status: StatusActive},
+		Group{ID: 30, Name: "exclusive-b", IsExclusive: true, Status: StatusActive},
+	)
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	require.NoError(t, svc.SetChildGroupDelegationsBatch(context.Background(), level1ID, directUserID, ChildGroupDelegationBatchInput{
+		GroupIDs:       []int64{20, 20, 30},
+		RateMultiplier: 2.0,
+		CanDelegate:    false,
+	}))
+
+	require.NotNil(t, mustFindAgentManagementDelegation(t, repo, level1ID, directUserID, 20))
+	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, level1ID, directUserID, 20).rateMultiplier)
+	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, level1ID, directUserID, 30).rateMultiplier)
+	require.ElementsMatch(t, []int64{20, 30}, repo.users[directUserID].AllowedGroups)
+}
+
+func TestSetInviteGroupDefaultsBatchAppliesAllDelegableGroups(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: rootID, childID: level1ID, groupID: 30, rateMultiplier: 1.6, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(
+		Group{ID: 20, Name: "exclusive-a", IsExclusive: true, Status: StatusActive},
+		Group{ID: 30, Name: "exclusive-b", IsExclusive: true, Status: StatusActive},
+		Group{ID: 40, Name: "public", IsExclusive: false, Status: StatusActive},
+	)
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	require.NoError(t, svc.SetInviteGroupDefaultsBatch(context.Background(), level1ID, AgentInviteGroupDefaultBatchInput{
+		All:            true,
+		RateMultiplier: 2.0,
+	}))
+
+	require.ElementsMatch(t, []agentGroupDelegationRecord{
+		{managerID: level1ID, groupID: 20, rateMultiplier: 2.0},
+		{managerID: level1ID, groupID: 30, rateMultiplier: 2.0},
+	}, repo.upsertInviteDefaults)
 }
 
 func TestRemoveDelegatedExclusiveGroupCascadesToDelegatedDescendants(t *testing.T) {

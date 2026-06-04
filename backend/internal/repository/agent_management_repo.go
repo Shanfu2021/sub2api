@@ -743,6 +743,12 @@ WITH direct_enterprises AS (
   WHERE parent_user_id = $1
     AND role = $4
     AND deleted_at IS NULL
+  UNION
+  SELECT id
+  FROM users
+  WHERE id = $1
+    AND role = $4
+    AND deleted_at IS NULL
 ),
 affected_users AS (
   SELECT $1::bigint AS id
