@@ -112,6 +112,9 @@ type EnterpriseManagementRepository interface {
 	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
 	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
+	ListEmployeeGroupDefaults(ctx context.Context, enterpriseID int64) ([]int64, error)
+	UpsertEmployeeGroupDefault(ctx context.Context, enterpriseID int64, groupID int64) error
+	DeleteEmployeeGroupDefault(ctx context.Context, enterpriseID int64, groupID int64) error
 }
 
 type EnterpriseAdminCleanupRepository interface {
@@ -187,6 +190,9 @@ func (s *EnterpriseManagementService) CreateEmployee(ctx context.Context, actorI
 	if err := s.repo.CreateEmployee(ctx, actor.ID, actor.ID, employee); err != nil {
 		return nil, err
 	}
+	if err := s.ApplyEmployeeGroupDefaults(ctx, actor.ID, []int64{employee.ID}); err != nil {
+		return nil, err
+	}
 	s.invalidateUser(ctx, actor.ID)
 	s.invalidateUser(ctx, employee.ID)
 	if fresh, err := s.userRepo.GetByID(ctx, employee.ID); err == nil {
@@ -229,12 +235,17 @@ func (s *EnterpriseManagementService) ImportEmployees(ctx context.Context, actor
 
 	created := make([]User, 0, len(validUsers))
 	affectedUserIDs := []int64{actor.ID}
+	createdIDs := make([]int64, 0, len(validUsers))
 	for _, user := range validUsers {
 		if user == nil {
 			continue
 		}
 		created = append(created, *user)
+		createdIDs = append(createdIDs, user.ID)
 		affectedUserIDs = append(affectedUserIDs, user.ID)
+	}
+	if err := s.ApplyEmployeeGroupDefaults(ctx, actor.ID, createdIDs); err != nil {
+		return nil, err
 	}
 	s.invalidateUsers(ctx, affectedUserIDs)
 	summary, err := s.GetAllocationSummary(ctx, actor.ID)
@@ -483,6 +494,113 @@ func (s *EnterpriseManagementService) SetEmployeeGroup(ctx context.Context, acto
 		return err
 	}
 	s.invalidateUser(ctx, employee.ID)
+	return nil
+}
+
+func (s *EnterpriseManagementService) ListEmployeeGroupDefaultOptions(ctx context.Context, actorID int64) ([]ChildGroupDelegationOption, error) {
+	actor, err := s.requireEnterpriseActor(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := s.ListMyGroups(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := s.repo.ListEmployeeGroupDefaults(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	defaultSet := make(map[int64]struct{}, len(defaults))
+	for _, groupID := range defaults {
+		defaultSet[groupID] = struct{}{}
+	}
+
+	out := make([]ChildGroupDelegationOption, 0, len(groups))
+	for i := range groups {
+		if !groups[i].Group.IsExclusive || !groups[i].CanDelegate {
+			continue
+		}
+		group := groups[i].Group
+		group.RateMultiplier = groups[i].EffectiveRate
+		option := ChildGroupDelegationOption{
+			Group:               group,
+			EffectiveRate:       groups[i].EffectiveRate,
+			CanDelegate:         false,
+			Source:              groups[i].Source,
+			ChildRateMultiplier: groups[i].EffectiveRate,
+			ChildCanDelegate:    false,
+		}
+		if _, ok := defaultSet[groups[i].Group.ID]; ok {
+			option.Assigned = true
+		}
+		out = append(out, option)
+	}
+	return out, nil
+}
+
+func (s *EnterpriseManagementService) SetEmployeeGroupDefault(ctx context.Context, actorID int64, groupID int64, assigned bool) error {
+	actor, err := s.requireEnterpriseActor(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !assigned {
+		return s.repo.DeleteEmployeeGroupDefault(ctx, actor.ID, groupID)
+	}
+	if _, err := s.enterpriseDelegableGroupRate(ctx, actor.ID, groupID); err != nil {
+		return err
+	}
+	return s.repo.UpsertEmployeeGroupDefault(ctx, actor.ID, groupID)
+}
+
+func (s *EnterpriseManagementService) ApplyEmployeeGroupDefaults(ctx context.Context, enterpriseID int64, employeeIDs []int64) error {
+	if s == nil || s.repo == nil || enterpriseID <= 0 || len(employeeIDs) == 0 {
+		return nil
+	}
+	defaults, err := s.repo.ListEmployeeGroupDefaults(ctx, enterpriseID)
+	if err != nil {
+		return err
+	}
+	if len(defaults) == 0 {
+		return nil
+	}
+	rates := make(map[int64]float64, len(defaults))
+	groups, err := s.ListMyGroups(ctx, enterpriseID)
+	if err != nil {
+		return err
+	}
+	for i := range groups {
+		if !groups[i].Group.IsExclusive || !groups[i].CanDelegate {
+			continue
+		}
+		rates[groups[i].Group.ID] = groups[i].EffectiveRate
+	}
+	for _, employeeID := range employeeIDs {
+		if employeeID <= 0 {
+			continue
+		}
+		employee, err := s.requireEmployee(ctx, enterpriseID, employeeID)
+		if err != nil {
+			return err
+		}
+		for _, groupID := range defaults {
+			rate, ok := rates[groupID]
+			if !ok {
+				continue
+			}
+			if err := s.repo.UpsertGroupDelegation(ctx, enterpriseID, employee.ID, groupID, rate, false); err != nil {
+				return err
+			}
+			if s.userRepo != nil {
+				if err := s.userRepo.AddGroupToAllowedGroups(ctx, employee.ID, groupID); err != nil {
+					return err
+				}
+			}
+			if err := s.syncEmployeeUserGroupRate(ctx, employee.ID, groupID, &rate); err != nil {
+				return err
+			}
+		}
+		s.invalidateUser(ctx, employee.ID)
+	}
 	return nil
 }
 

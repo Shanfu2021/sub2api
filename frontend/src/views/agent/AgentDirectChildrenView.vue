@@ -36,6 +36,15 @@
               <Icon name="userPlus" size="sm" />
               <span>{{ t('agentManagement.direct.createUser') }}</span>
             </button>
+            <button
+              data-test="open-direct-group-batch"
+              class="btn btn-secondary px-3"
+              :disabled="loading"
+              @click="openDirectGroupBatchDialog"
+            >
+              <Icon name="grid" size="sm" />
+              <span>{{ t('agentManagement.groups.directBatchDeploy') }}</span>
+            </button>
             <span
               v-if="isAdminUnlimitedCapacity"
               class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200"
@@ -161,6 +170,17 @@
               </button>
 
               <button
+                v-if="canSetAgentIncome(row)"
+                :data-test="`set-agent-income-${row.id}`"
+                class="btn btn-secondary btn-sm"
+                :disabled="savingChildId === row.id"
+                @click="openAgentIncomeDialog(row)"
+              >
+                <Icon name="dollar" size="sm" />
+                <span>{{ t('agentManagement.direct.setAgentIncome') }}</span>
+              </button>
+
+              <button
                 :data-test="`manage-groups-${row.id}`"
                 class="btn btn-secondary btn-sm"
                 :disabled="savingChildId === row.id"
@@ -218,6 +238,60 @@
       @close="showCreateUserModal = false"
       @submit="createDirectUser"
     />
+
+    <BaseDialog
+      :show="agentIncomeDialog.show"
+      :title="t('agentManagement.direct.setAgentIncomeTitle')"
+      @close="closeAgentIncomeDialog"
+    >
+      <div class="space-y-4" data-test="agent-income-modal">
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="text-sm font-medium text-gray-900 dark:text-white">
+            {{ agentIncomeDialog.child?.email || '-' }}
+          </div>
+          <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('agentManagement.direct.currentAgentIncome') }}: {{ formatCurrency(Number(agentIncomeDialog.child?.agent_income || 0)) }}
+          </div>
+        </div>
+
+        <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+          <span>{{ t('agentManagement.direct.targetAgentIncome') }}</span>
+          <input
+            v-model.number="agentIncomeDraft.agent_income"
+            data-test="agent-income-input"
+            class="input h-10"
+            type="number"
+            step="0.000001"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+          <span>{{ t('agentManagement.direct.agentIncomeReason') }}</span>
+          <input
+            v-model="agentIncomeDraft.reason"
+            data-test="agent-income-reason"
+            class="input h-10"
+            type="text"
+          />
+        </label>
+
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-secondary px-3" type="button" @click="closeAgentIncomeDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            data-test="agent-income-submit"
+            class="btn btn-primary px-3"
+            type="button"
+            :disabled="agentIncomeDialog.saving"
+            @click="saveAgentIncome"
+          >
+            <Icon name="check" size="sm" />
+            <span>{{ t('common.save') }}</span>
+          </button>
+        </div>
+      </div>
+    </BaseDialog>
 
     <BaseDialog
       :show="groupDialog.show"
@@ -367,6 +441,103 @@
         </div>
       </div>
     </BaseDialog>
+
+    <BaseDialog
+      :show="directGroupBatchDialog.show"
+      :title="t('agentManagement.groups.directBatchTitle')"
+      width="wide"
+      @close="closeDirectGroupBatchDialog"
+    >
+      <div class="space-y-4" data-test="direct-group-batch-modal">
+        <div v-if="directGroupBatchDialog.loading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+
+        <div
+          v-else-if="directGroupBatchDialog.groups.length === 0"
+          class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+        >
+          {{ t('agentManagement.groups.emptyDelegable') }}
+        </div>
+
+        <div v-else class="space-y-4">
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div class="flex flex-wrap items-center gap-3">
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                  <input
+                    data-test="direct-group-batch-all"
+                    class="checkbox"
+                    type="checkbox"
+                    :checked="directGroupBatchAll"
+                    @change="setDirectGroupBatchAll(($event.target as HTMLInputElement).checked)"
+                  />
+                  <span>{{ t('agentManagement.groups.batchAll') }}</span>
+                </label>
+                <span class="text-sm text-gray-500 dark:text-dark-400">
+                  {{ t('agentManagement.groups.batchSelected', { count: selectedDirectGroupBatchIDs.length }) }}
+                </span>
+              </div>
+
+              <div class="flex flex-wrap items-end gap-3">
+                <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                  <span>{{ t('agentManagement.groups.batchRate') }}</span>
+                  <input
+                    v-model.number="directGroupBatchRate"
+                    data-test="direct-group-batch-rate"
+                    class="input h-9 w-28"
+                    type="number"
+                    min="0.000001"
+                    step="0.000001"
+                  />
+                </label>
+                <label class="flex min-h-9 items-center gap-2 text-xs text-gray-600 dark:text-dark-300">
+                  <input
+                    v-model="directGroupBatchCanDelegate"
+                    data-test="direct-group-batch-can-delegate"
+                    class="checkbox"
+                    type="checkbox"
+                  />
+                  <span>{{ t('agentManagement.groups.allowChildDelegate') }}</span>
+                </label>
+                <button
+                  data-test="apply-direct-group-batch"
+                  class="btn btn-primary h-9 px-3"
+                  :disabled="directGroupBatchDialog.saving"
+                  @click="applyDirectGroupBatch"
+                >
+                  <Icon name="check" size="sm" />
+                  <span>{{ t('agentManagement.groups.applyBatch') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label
+              v-for="groupRate in directGroupBatchDialog.groups"
+              :key="groupRate.group.id"
+              class="flex items-center gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700"
+            >
+              <input
+                :data-test="`direct-group-batch-select-${groupRate.group.id}`"
+                class="checkbox"
+                type="checkbox"
+                :checked="selectedDirectGroupBatchIDs.includes(groupRate.group.id)"
+                :disabled="directGroupBatchAll"
+                @change="updateDirectGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ groupRate.group.name }}</span>
+                <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('agentManagement.groups.effectiveRate') }}: {{ groupRate.effective_rate }}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -380,8 +551,10 @@ import type {
   AgentAllocationSummary,
   AgentAllocationUpdate,
   AgentChildGroupDelegationOption,
+  AgentDirectChildKind,
   AgentDirectChildrenResponse,
   AgentDirectUserCreateRequest,
+  AgentGroupRate,
   AgentInviteDefaultsUpdate,
   AgentManagedUser,
   AgentUpgradeTargetRole,
@@ -421,6 +594,10 @@ const inviteDefaultsDraft = reactive<AgentInviteDefaultsUpdate>({
   invite_default_concurrency: 1,
   invite_default_rpm: 1,
 })
+const agentIncomeDraft = reactive({
+  agent_income: 0,
+  reason: '',
+})
 const drafts = reactive<Record<number, AgentAllocationUpdate>>({})
 const pagination = reactive({ total: 0, page: 1, page_size: 20, pages: 1 })
 const deleteDialog = reactive<{ show: boolean; child: AgentManagedUser | null }>({ show: false, child: null })
@@ -428,6 +605,15 @@ const upgradeDialog = reactive<{ show: boolean; child: AgentManagedUser | null; 
   show: false,
   child: null,
   targetRole: null,
+})
+const agentIncomeDialog = reactive<{
+  show: boolean
+  child: AgentManagedUser | null
+  saving: boolean
+}>({
+  show: false,
+  child: null,
+  saving: false,
 })
 const groupDialog = reactive<{
   show: boolean
@@ -442,12 +628,27 @@ const groupDialog = reactive<{
   savingGroupId: null,
   groups: [],
 })
+const directGroupBatchDialog = reactive<{
+  show: boolean
+  loading: boolean
+  saving: boolean
+  groups: AgentChildGroupDelegationOption[]
+}>({
+  show: false,
+  loading: false,
+  saving: false,
+  groups: [],
+})
 const groupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number; can_delegate: boolean }>>({})
 const groupBatchAll = ref(false)
 const groupBatchRate = ref(1)
 const groupBatchCanDelegate = ref(false)
 const groupBatchSaving = ref(false)
 const selectedGroupBatchIDs = ref<number[]>([])
+const directGroupBatchAll = ref(false)
+const directGroupBatchRate = ref(1)
+const directGroupBatchCanDelegate = ref(false)
+const selectedDirectGroupBatchIDs = ref<number[]>([])
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
@@ -509,6 +710,7 @@ const upgradeDialogMessage = computed(() => t('agentManagement.direct.upgradeCon
 const remainingConcurrencyText = computed(() => allocation.value?.unlimited_concurrency ? t('common.unlimited') : String(allocation.value?.remaining_concurrency ?? '-'))
 const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
 const groupDialogTitle = computed(() => t('agentManagement.groups.manageTitle', { email: groupDialog.child?.email || '' }))
+const directChildKind = computed<AgentDirectChildKind>(() => props.kind)
 
 function extractPagination(result: AgentDirectChildrenResponse) {
   const source = result.pagination || {}
@@ -731,6 +933,47 @@ async function saveAllocation(child: AgentManagedUser) {
   }
 }
 
+function canSetAgentIncome(child: AgentManagedUser): boolean {
+  return isAdmin.value && props.kind === 'agents' && child.role === 'agent_level1'
+}
+
+function openAgentIncomeDialog(child: AgentManagedUser) {
+  agentIncomeDialog.child = child
+  agentIncomeDialog.show = true
+  agentIncomeDraft.agent_income = Number(child.agent_income || 0)
+  agentIncomeDraft.reason = ''
+}
+
+function closeAgentIncomeDialog() {
+  agentIncomeDialog.show = false
+  agentIncomeDialog.child = null
+  agentIncomeDialog.saving = false
+}
+
+async function saveAgentIncome() {
+  if (!agentIncomeDialog.child) return
+  const targetIncome = Number(agentIncomeDraft.agent_income)
+  if (!Number.isFinite(targetIncome)) {
+    appStore.showError(t('agentManagement.direct.agentIncomeInvalid'))
+    return
+  }
+  const child = agentIncomeDialog.child
+  agentIncomeDialog.saving = true
+  try {
+    await agentManagementAPI.setAgentIncome(child.id, {
+      agent_income: targetIncome,
+      reason: agentIncomeDraft.reason.trim(),
+    })
+    appStore.showSuccess(t('agentManagement.direct.agentIncomeSaved'))
+    closeAgentIncomeDialog()
+    await loadData()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.direct.agentIncomeFailed'))
+  } finally {
+    agentIncomeDialog.saving = false
+  }
+}
+
 function upgrade(child: AgentManagedUser, targetRole: AgentUpgradeTargetRole) {
   upgradeDialog.child = child
   upgradeDialog.targetRole = targetRole
@@ -849,6 +1092,60 @@ function updateGroupBatchSelection(groupID: number, selected: boolean) {
   selectedGroupBatchIDs.value = Array.from(next)
 }
 
+function syncDirectGroupBatchGroups(groups: AgentGroupRate[]) {
+  directGroupBatchDialog.groups = groups
+    .filter((item) => item.can_delegate && item.group.is_exclusive)
+    .map((item) => ({
+      ...item,
+      assigned: false,
+      child_rate_multiplier: item.effective_rate,
+      child_can_delegate: false,
+    }))
+  selectedDirectGroupBatchIDs.value = []
+  directGroupBatchAll.value = false
+  directGroupBatchRate.value = directGroupBatchDialog.groups[0]?.effective_rate ?? 1
+  directGroupBatchCanDelegate.value = false
+}
+
+function setDirectGroupBatchAll(all: boolean) {
+  directGroupBatchAll.value = all
+  if (all) {
+    selectedDirectGroupBatchIDs.value = []
+  }
+}
+
+function updateDirectGroupBatchSelection(groupID: number, selected: boolean) {
+  const next = new Set(selectedDirectGroupBatchIDs.value)
+  if (selected) {
+    next.add(groupID)
+  } else {
+    next.delete(groupID)
+  }
+  selectedDirectGroupBatchIDs.value = Array.from(next)
+}
+
+async function openDirectGroupBatchDialog() {
+  directGroupBatchDialog.show = true
+  directGroupBatchDialog.loading = true
+  directGroupBatchDialog.groups = []
+  try {
+    syncDirectGroupBatchGroups(await agentManagementAPI.listGroups())
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    directGroupBatchDialog.loading = false
+  }
+}
+
+function closeDirectGroupBatchDialog() {
+  directGroupBatchDialog.show = false
+  directGroupBatchDialog.loading = false
+  directGroupBatchDialog.saving = false
+  directGroupBatchDialog.groups = []
+  selectedDirectGroupBatchIDs.value = []
+  directGroupBatchAll.value = false
+}
+
 async function openGroupDialog(child: AgentManagedUser) {
   groupDialog.child = child
   groupDialog.show = true
@@ -941,6 +1238,35 @@ async function applyGroupDelegationBatch() {
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.batchDelegationFailed'))
   } finally {
     groupBatchSaving.value = false
+  }
+}
+
+async function applyDirectGroupBatch() {
+  const rateMultiplier = normalizedPositiveFloat(directGroupBatchRate.value)
+  if (rateMultiplier <= 0) {
+    appStore.showError(t('agentManagement.groups.invalidRate'))
+    return
+  }
+  if (!directGroupBatchAll.value && selectedDirectGroupBatchIDs.value.length === 0) {
+    appStore.showError(t('agentManagement.groups.batchSelectionRequired'))
+    return
+  }
+
+  directGroupBatchDialog.saving = true
+  try {
+    await agentManagementAPI.setDirectChildrenGroupDelegationsBatch(directChildKind.value, {
+      group_ids: directGroupBatchAll.value ? [] : selectedDirectGroupBatchIDs.value,
+      all: directGroupBatchAll.value,
+      rate_multiplier: rateMultiplier,
+      can_delegate: directGroupBatchCanDelegate.value,
+    })
+    appStore.showSuccess(t('agentManagement.groups.directBatchSaved'))
+    closeDirectGroupBatchDialog()
+    await loadData()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.directBatchFailed'))
+  } finally {
+    directGroupBatchDialog.saving = false
   }
 }
 

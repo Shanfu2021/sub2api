@@ -43,6 +43,14 @@ type fakeAgentManagementService struct {
 	setInviteDefaultGroupActor    int64
 	setInviteDefaultGroupID       int64
 	setInviteDefaultGroupInput    service.AgentInviteGroupDefaultInput
+	setDirectBatchCalls           int
+	setDirectBatchActor           int64
+	setDirectBatchKind            service.DirectChildKind
+	setDirectBatchInput           service.ChildGroupDelegationBatchInput
+	setAgentIncomeCalls           int
+	setAgentIncomeActor           int64
+	setAgentIncomeChildID         int64
+	setAgentIncomeInput           service.AgentIncomeSetInput
 	removeInviteDefaultGroupCalls int
 	removeInviteDefaultGroupActor int64
 	removeInviteDefaultGroupID    int64
@@ -291,6 +299,22 @@ func (s *fakeAgentManagementService) SetChildGroupDelegationsBatch(context.Conte
 	return nil
 }
 
+func (s *fakeAgentManagementService) SetDirectChildrenGroupDelegationsBatch(_ context.Context, actorID int64, kind service.DirectChildKind, input service.ChildGroupDelegationBatchInput) (int, error) {
+	s.setDirectBatchCalls++
+	s.setDirectBatchActor = actorID
+	s.setDirectBatchKind = kind
+	s.setDirectBatchInput = input
+	return 3, nil
+}
+
+func (s *fakeAgentManagementService) SetAgentIncome(_ context.Context, actorID int64, childID int64, input service.AgentIncomeSetInput) (*service.User, error) {
+	s.setAgentIncomeCalls++
+	s.setAgentIncomeActor = actorID
+	s.setAgentIncomeChildID = childID
+	s.setAgentIncomeInput = input
+	return &service.User{ID: childID, Role: service.RoleAgentLevel1, AgentIncome: input.AgentIncome, Status: service.StatusActive}, nil
+}
+
 func (s *fakeAgentManagementService) RemoveChildGroupDelegation(context.Context, int64, int64, int64) error {
 	return nil
 }
@@ -339,7 +363,11 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 		c.Next()
 	})
 	r.GET("/direct-users", h.ListDirectUsers)
+	r.PUT("/direct-users/groups/batch", h.SetDirectUsersGroupDelegationsBatch)
+	r.PUT("/direct-agents/groups/batch", h.SetDirectAgentsGroupDelegationsBatch)
+	r.PUT("/direct-enterprises/groups/batch", h.SetDirectEnterprisesGroupDelegationsBatch)
 	r.PUT("/children/:id/allocation", h.UpdateAllocation)
+	r.PUT("/children/:id/agent-income", h.SetAgentIncome)
 	r.POST("/children/:id/upgrade", h.UpgradeDirectUser)
 	r.POST("/direct-users", h.CreateDirectUser)
 	r.GET("/children/:id/groups", h.ListChildGroupDelegationOptions)
@@ -351,6 +379,74 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	r.GET("/usage", h.ListUsage)
 	r.GET("/usage/stats", h.UsageStats)
 	return r
+}
+
+func TestAgentManagementHandlerSetsDirectChildrenGroupDelegationsBatch(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/direct-enterprises/groups/batch", strings.NewReader(`{
+		"group_ids": [20, 30],
+		"all": false,
+		"rate_multiplier": 2.4,
+		"can_delegate": true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.setDirectBatchCalls)
+	require.Equal(t, int64(42), svc.setDirectBatchActor)
+	require.Equal(t, service.DirectChildKindEnterprises, svc.setDirectBatchKind)
+	require.Equal(t, []int64{20, 30}, svc.setDirectBatchInput.GroupIDs)
+	require.False(t, svc.setDirectBatchInput.All)
+	require.InDelta(t, 2.4, svc.setDirectBatchInput.RateMultiplier, 1e-12)
+	require.True(t, svc.setDirectBatchInput.CanDelegate)
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			Kind            string  `json:"kind"`
+			GroupIDs        []int64 `json:"group_ids"`
+			UpdatedChildren int     `json:"updated_children"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, 0, body.Code)
+	require.Equal(t, "enterprises", body.Data.Kind)
+	require.Equal(t, []int64{20, 30}, body.Data.GroupIDs)
+	require.Equal(t, 3, body.Data.UpdatedChildren)
+}
+
+func TestAgentManagementHandlerSetsAgentIncome(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/children/12/agent-income", strings.NewReader(`{
+		"agent_income": 0,
+		"reason": "settled"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.setAgentIncomeCalls)
+	require.Equal(t, int64(42), svc.setAgentIncomeActor)
+	require.Equal(t, int64(12), svc.setAgentIncomeChildID)
+	require.InDelta(t, 0, svc.setAgentIncomeInput.AgentIncome, 1e-12)
+	require.Equal(t, "settled", svc.setAgentIncomeInput.Reason)
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			ID          int64   `json:"id"`
+			AgentIncome float64 `json:"agent_income"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, 0, body.Code)
+	require.Equal(t, int64(12), body.Data.ID)
+	require.InDelta(t, 0, body.Data.AgentIncome, 1e-12)
 }
 
 func TestAgentManagementHandlerReturnsAdminAgentTree(t *testing.T) {

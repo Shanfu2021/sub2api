@@ -25,6 +25,7 @@ type enterpriseManagementRepoStub struct {
 	deleteEmployeeCalls     []int64
 	releaseEmployeeCalls    []int64
 	groupDelegations        []agentGroupDelegationRecord
+	employeeGroupDefaults   []int64
 }
 
 func newEnterpriseManagementRepoStub(users ...*User) *enterpriseManagementRepoStub {
@@ -244,6 +245,31 @@ func (r *enterpriseManagementRepoStub) DeleteGroupDelegation(_ context.Context, 
 	return nil
 }
 
+func (r *enterpriseManagementRepoStub) ListEmployeeGroupDefaults(context.Context, int64) ([]int64, error) {
+	return append([]int64(nil), r.employeeGroupDefaults...), nil
+}
+
+func (r *enterpriseManagementRepoStub) UpsertEmployeeGroupDefault(_ context.Context, _ int64, groupID int64) error {
+	for _, existing := range r.employeeGroupDefaults {
+		if existing == groupID {
+			return nil
+		}
+	}
+	r.employeeGroupDefaults = append(r.employeeGroupDefaults, groupID)
+	return nil
+}
+
+func (r *enterpriseManagementRepoStub) DeleteEmployeeGroupDefault(_ context.Context, _ int64, groupID int64) error {
+	filtered := r.employeeGroupDefaults[:0]
+	for _, existing := range r.employeeGroupDefaults {
+		if existing != groupID {
+			filtered = append(filtered, existing)
+		}
+	}
+	r.employeeGroupDefaults = filtered
+	return nil
+}
+
 func TestEnterpriseManagementCreateEmployeeRequiresEnterpriseActor(t *testing.T) {
 	actorID := int64(1)
 	repo := newEnterpriseManagementRepoStub(&User{ID: actorID, Role: RoleUser, Status: StatusActive})
@@ -306,6 +332,45 @@ func TestEnterpriseManagementCreateEmployeeSetsEmployeeRoleAndParent(t *testing.
 	require.Len(t, repo.createEmployeeCalls, 1)
 }
 
+func TestEnterpriseManagementCreateEmployeeAppliesEmployeeGroupDefaultsAtEnterpriseRate(t *testing.T) {
+	enterpriseID := int64(1)
+	groupID := int64(100)
+	upstreamID := int64(9)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &upstreamID, Balance: 100, Status: StatusActive, AllowedGroups: []int64{groupID}},
+	)
+	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100}
+	repo.groupDelegations = []agentGroupDelegationRecord{{
+		managerID:      upstreamID,
+		childID:        enterpriseID,
+		groupID:        groupID,
+		rateMultiplier: 1.8,
+		canDelegate:    true,
+	}}
+	repo.employeeGroupDefaults = []int64{groupID}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", Status: StatusActive, IsExclusive: true, RateMultiplier: 2})
+	userGroupRateRepo := &agentManagementUserGroupRateRepoStub{}
+	svc := NewEnterpriseManagementService(repo, userRepo, groupRepo, userGroupRateRepo, nil)
+
+	employee, err := svc.CreateEmployee(context.Background(), enterpriseID, EmployeeCreateInput{
+		Email:       "employee@test.local",
+		Password:    "password-123",
+		Username:    "employee",
+		Concurrency: 2,
+		RPM:         20,
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, repo.users[employee.ID].AllowedGroups, groupID)
+	delegation, err := repo.GetGroupDelegation(context.Background(), enterpriseID, employee.ID, groupID)
+	require.NoError(t, err)
+	require.NotNil(t, delegation)
+	require.InDelta(t, 1.8, delegation.RateMultiplier, 1e-12)
+	require.False(t, delegation.CanDelegate)
+	require.InDelta(t, 1.8, userGroupRateRepo.rates[employee.ID][groupID], 1e-12)
+}
+
 func TestEnterpriseManagementImportEmployeesSkipsIncompleteRowsAndCreatesValidRows(t *testing.T) {
 	enterpriseID := int64(1)
 	repo := newEnterpriseManagementRepoStub(
@@ -352,6 +417,54 @@ func TestEnterpriseManagementImportEmployeesSkipsIncompleteRowsAndCreatesValidRo
 		{Row: 2, Email: "missing-username@test.local", Reason: "missing required fields: username"},
 		{Row: 3, Email: "exists@test.local", Reason: "email already exists"},
 	}, result.Skipped)
+}
+
+func TestEnterpriseManagementImportEmployeesAppliesEmployeeGroupDefaultsToCreatedRows(t *testing.T) {
+	enterpriseID := int64(1)
+	groupID := int64(100)
+	upstreamID := int64(9)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &upstreamID, Balance: 100, Status: StatusActive, AllowedGroups: []int64{groupID}},
+	)
+	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 20, PoolRPM: 200}
+	repo.groupDelegations = []agentGroupDelegationRecord{{
+		managerID:      upstreamID,
+		childID:        enterpriseID,
+		groupID:        groupID,
+		rateMultiplier: 1.8,
+		canDelegate:    true,
+	}}
+	repo.employeeGroupDefaults = []int64{groupID}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", Status: StatusActive, IsExclusive: true, RateMultiplier: 2})
+	userGroupRateRepo := &agentManagementUserGroupRateRepoStub{}
+	svc := NewEnterpriseManagementService(repo, userRepo, groupRepo, userGroupRateRepo, nil)
+	emailA := "new-a@test.local"
+	usernameA := "new-a"
+	passwordA := "password-123"
+	concurrencyA := 2
+	rpmA := 20
+	emailB := "new-b@test.local"
+	usernameB := "new-b"
+	passwordB := "password-123"
+	concurrencyB := 3
+	rpmB := 30
+
+	result, err := svc.ImportEmployees(context.Background(), enterpriseID, EmployeeImportInput{Employees: []EmployeeImportRecord{
+		{Email: &emailA, Username: &usernameA, Password: &passwordA, Concurrency: &concurrencyA, RPM: &rpmA},
+		{Email: &emailB, Username: &usernameB, Password: &passwordB, Concurrency: &concurrencyB, RPM: &rpmB},
+	}})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.CreatedCount)
+	for _, employee := range result.Created {
+		require.Contains(t, repo.users[employee.ID].AllowedGroups, groupID)
+		delegation, err := repo.GetGroupDelegation(context.Background(), enterpriseID, employee.ID, groupID)
+		require.NoError(t, err)
+		require.NotNil(t, delegation)
+		require.InDelta(t, 1.8, delegation.RateMultiplier, 1e-12)
+		require.InDelta(t, 1.8, userGroupRateRepo.rates[employee.ID][groupID], 1e-12)
+	}
 }
 
 func TestEnterpriseManagementImportEmployeesRejectsWhenValidRowsExceedQuota(t *testing.T) {
@@ -547,4 +660,59 @@ func TestEnterpriseManagementSetEmployeeGroupUsesEnterpriseRateWithoutDelegation
 	require.NoError(t, err)
 	require.Empty(t, repo.users[employeeID].AllowedGroups)
 	require.NotContains(t, userGroupRateRepo.rates[employeeID], groupID)
+}
+
+func TestEnterpriseManagementEmployeeGroupDefaultOptionsUseEnterpriseGroups(t *testing.T) {
+	enterpriseID := int64(1)
+	groupID := int64(100)
+	upstreamID := int64(9)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &upstreamID, Balance: 100, Status: StatusActive, AllowedGroups: []int64{groupID}},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{{
+		managerID:      upstreamID,
+		childID:        enterpriseID,
+		groupID:        groupID,
+		rateMultiplier: 1.8,
+		canDelegate:    true,
+	}}
+	repo.employeeGroupDefaults = []int64{groupID}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", Status: StatusActive, IsExclusive: true, RateMultiplier: 2})
+	svc := NewEnterpriseManagementService(repo, userRepo, groupRepo, nil, nil)
+
+	options, err := svc.ListEmployeeGroupDefaultOptions(context.Background(), enterpriseID)
+
+	require.NoError(t, err)
+	require.Len(t, options, 1)
+	require.Equal(t, groupID, options[0].Group.ID)
+	require.True(t, options[0].Assigned)
+	require.InDelta(t, 1.8, options[0].EffectiveRate, 1e-12)
+	require.InDelta(t, 1.8, options[0].ChildRateMultiplier, 1e-12)
+	require.False(t, options[0].ChildCanDelegate)
+}
+
+func TestEnterpriseManagementSetsAndRemovesEmployeeGroupDefault(t *testing.T) {
+	enterpriseID := int64(1)
+	groupID := int64(100)
+	upstreamID := int64(9)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &upstreamID, Balance: 100, Status: StatusActive, AllowedGroups: []int64{groupID}},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{{
+		managerID:      upstreamID,
+		childID:        enterpriseID,
+		groupID:        groupID,
+		rateMultiplier: 1.8,
+		canDelegate:    true,
+	}}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", Status: StatusActive, IsExclusive: true, RateMultiplier: 2})
+	svc := NewEnterpriseManagementService(repo, userRepo, groupRepo, nil, nil)
+
+	require.NoError(t, svc.SetEmployeeGroupDefault(context.Background(), enterpriseID, groupID, true))
+	require.Equal(t, []int64{groupID}, repo.employeeGroupDefaults)
+
+	require.NoError(t, svc.SetEmployeeGroupDefault(context.Background(), enterpriseID, groupID, false))
+	require.Empty(t, repo.employeeGroupDefaults)
 }

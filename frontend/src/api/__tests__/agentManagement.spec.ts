@@ -102,6 +102,16 @@ describe('agent management api', () => {
     expect(put).toHaveBeenCalledWith('/agent-management/children/12/allocation', payload)
   })
 
+  it('sets a direct agent income target through the backend settlement route', async () => {
+    const response = { id: 12, role: 'agent_level1', agent_income: 0 }
+    const payload = { agent_income: 0, reason: 'settled' }
+    put.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.setAgentIncome(12, payload)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/children/12/agent-income', payload)
+  })
+
   it('updates agent invitation registration defaults', async () => {
     const response = {
       user_id: 12,
@@ -189,6 +199,16 @@ describe('agent management api', () => {
     await expect(agentManagementAPI.setChildGroupDelegationsBatch(12, payload)).resolves.toEqual(response)
 
     expect(put).toHaveBeenCalledWith('/agent-management/children/12/groups/batch', payload)
+  })
+
+  it('updates direct children group delegations in batch by child kind', async () => {
+    const response = { kind: 'enterprises', group_ids: [7, 8], all: false, updated_children: 3 }
+    const payload = { group_ids: [7, 8], all: false, rate_multiplier: 3.2, can_delegate: true }
+    put.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.setDirectChildrenGroupDelegationsBatch('enterprises', payload)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/direct-enterprises/groups/batch', payload)
   })
 
   it('updates invite default groups in batch', async () => {

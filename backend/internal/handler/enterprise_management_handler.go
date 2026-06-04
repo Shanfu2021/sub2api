@@ -24,6 +24,8 @@ type enterpriseManagementService interface {
 	ListMyGroups(ctx context.Context, actorID int64) ([]service.AgentGroupRate, error)
 	ListEmployeeGroupOptions(ctx context.Context, actorID int64, employeeID int64) ([]service.ChildGroupDelegationOption, error)
 	SetEmployeeGroup(ctx context.Context, actorID int64, employeeID int64, groupID int64, assigned bool) error
+	ListEmployeeGroupDefaultOptions(ctx context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error)
+	SetEmployeeGroupDefault(ctx context.Context, actorID int64, groupID int64, assigned bool) error
 }
 
 type EnterpriseManagementHandler struct {
@@ -250,6 +252,59 @@ func (h *EnterpriseManagementHandler) RemoveEmployeeGroup(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"employee_id": employeeID, "group_id": groupID})
+}
+
+func (h *EnterpriseManagementHandler) ListEmployeeGroupDefaultOptions(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	options, err := h.service.ListEmployeeGroupDefaultOptions(c.Request.Context(), actorID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]childGroupDelegationOptionResponse, 0, len(options))
+	for i := range options {
+		out = append(out, childGroupDelegationOptionFromService(options[i]))
+	}
+	response.Success(c, out)
+}
+
+func (h *EnterpriseManagementHandler) SetEmployeeGroupDefault(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	groupID, ok := parsePositiveID(c, "group_id", "Invalid group ID")
+	if !ok {
+		return
+	}
+	assigned, ok := bindEmployeeGroupAssignment(c)
+	if !ok {
+		return
+	}
+	if err := h.service.SetEmployeeGroupDefault(c.Request.Context(), actorID, groupID, assigned); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"group_id": groupID})
+}
+
+func (h *EnterpriseManagementHandler) RemoveEmployeeGroupDefault(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	groupID, ok := parsePositiveID(c, "group_id", "Invalid group ID")
+	if !ok {
+		return
+	}
+	if err := h.service.SetEmployeeGroupDefault(c.Request.Context(), actorID, groupID, false); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"group_id": groupID})
 }
 
 func bindEmployeeCreate(c *gin.Context) (service.EmployeeCreateInput, bool) {

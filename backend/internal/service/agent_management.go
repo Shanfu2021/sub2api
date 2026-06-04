@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -20,6 +22,7 @@ var (
 	ErrAgentManagementInvalidTarget         = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_TARGET", "invalid target user")
 	ErrAgentManagementInvalidAllocation     = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_ALLOCATION", "concurrency must be positive and RPM must be non-negative")
 	ErrAgentManagementInvalidGroupRate      = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_RATE", "group delegation rate multiplier must be positive")
+	ErrAgentManagementInvalidIncome         = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_INCOME", "agent income must be a valid number")
 	ErrAgentManagementGroupRateBelowCost    = infraerrors.BadRequest("AGENT_MANAGEMENT_GROUP_RATE_BELOW_COST", "group delegation rate multiplier cannot be lower than manager cost rate")
 	ErrAgentManagementInvalidGroup          = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP", "only active exclusive groups can be delegated")
 	ErrAgentManagementInvalidGroupSelection = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_SELECTION", "at least one group must be selected")
@@ -80,6 +83,11 @@ type CreateDirectUserInput struct {
 type AgentInviteDefaultsUpdate struct {
 	InviteDefaultConcurrency int `json:"invite_default_concurrency"`
 	InviteDefaultRPM         int `json:"invite_default_rpm"`
+}
+
+type AgentIncomeSetInput struct {
+	AgentIncome float64 `json:"agent_income"`
+	Reason      string  `json:"reason"`
 }
 
 type AllocationSummary struct {
@@ -170,6 +178,14 @@ type ChildGroupDelegationInput struct {
 	CanDelegate    bool    `json:"can_delegate"`
 }
 
+type DirectChildKind string
+
+const (
+	DirectChildKindUsers       DirectChildKind = "users"
+	DirectChildKindAgents      DirectChildKind = "agents"
+	DirectChildKindEnterprises DirectChildKind = "enterprises"
+)
+
 type ChildGroupDelegationBatchInput struct {
 	GroupIDs       []int64 `json:"group_ids"`
 	All            bool    `json:"all"`
@@ -221,6 +237,7 @@ type AgentManagementRepository interface {
 	DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error
 	ListInviteGroupDefaults(ctx context.Context, agentID int64) ([]AgentInviteGroupDefault, error)
 	GetAgentIncomeTotals(ctx context.Context, agentIDs []int64) (map[int64]float64, error)
+	AddAgentIncomeAdjustment(ctx context.Context, agentID int64, adminID int64, amount float64, reason string) error
 	UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error
 	DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error
 	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
@@ -729,6 +746,42 @@ func (s *AgentManagementService) updateProfileBackedChildPool(ctx context.Contex
 	return &summary, nil
 }
 
+func (s *AgentManagementService) SetAgentIncome(ctx context.Context, actorID int64, childID int64, input AgentIncomeSetInput) (*User, error) {
+	if math.IsNaN(input.AgentIncome) || math.IsInf(input.AgentIncome, 0) {
+		return nil, ErrAgentManagementInvalidIncome
+	}
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role != RoleAdmin {
+		return nil, ErrAgentManagementForbidden
+	}
+	rootAdmin, err := s.repo.GetRootAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+	}
+	child, err := s.requireDirectChild(ctx, rootAdmin, childID)
+	if err != nil {
+		return nil, err
+	}
+	if child.Role != RoleAgentLevel1 {
+		return nil, ErrAgentManagementUnsupportedRole
+	}
+
+	totals, err := s.repo.GetAgentIncomeTotals(ctx, []int64{child.ID})
+	if err != nil {
+		return nil, err
+	}
+	currentIncome := totals[child.ID]
+	delta := input.AgentIncome - currentIncome
+	if err := s.repo.AddAgentIncomeAdjustment(ctx, child.ID, actor.ID, delta, strings.TrimSpace(input.Reason)); err != nil {
+		return nil, err
+	}
+	child.AgentIncome = input.AgentIncome
+	return child, nil
+}
+
 func (s *AgentManagementService) profileBackedChildUsage(ctx context.Context, child *User) (QuotaUsageSummary, error) {
 	if child.Role == RoleEnterprise {
 		return s.repo.GetEnterpriseEmployeeQuotaUsage(ctx, child.ID, nil)
@@ -1021,7 +1074,7 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 	if err := s.syncDelegatedUserGroupRate(ctx, child.ID, groupID, &input.RateMultiplier); err != nil {
 		return err
 	}
-	if err := s.raiseManagedGroupRateFloorIfNeeded(ctx, actor, child, groupID, input); err != nil {
+	if err := s.raiseManagedGroupRateFloorIfNeeded(ctx, actor, child, groupID, input, existing); err != nil {
 		return err
 	}
 	s.invalidateUser(ctx, child.ID)
@@ -1053,6 +1106,39 @@ func (s *AgentManagementService) SetChildGroupDelegationsBatch(ctx context.Conte
 		}
 	}
 	return nil
+}
+
+func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind DirectChildKind, input ChildGroupDelegationBatchInput) (int, error) {
+	if input.RateMultiplier <= 0 {
+		return 0, ErrAgentManagementInvalidGroupRate
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return 0, err
+	}
+	roles, err := rolesForDirectChildKind(kind)
+	if err != nil {
+		return 0, err
+	}
+	groupIDs, err := s.resolveManagerGroupDelegationBatchGroupIDs(ctx, actor.ID, input.GroupIDs, input.All)
+	if err != nil {
+		return 0, err
+	}
+	children, err := s.listAllDirectChildrenForRoles(ctx, actor.ID, roles)
+	if err != nil {
+		return 0, err
+	}
+	for i := range children {
+		for _, groupID := range groupIDs {
+			if err := s.SetChildGroupDelegation(ctx, actor.ID, children[i].ID, groupID, ChildGroupDelegationInput{
+				RateMultiplier: input.RateMultiplier,
+				CanDelegate:    input.CanDelegate,
+			}); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return len(children), nil
 }
 
 func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error {
@@ -1578,6 +1664,26 @@ func (s *AgentManagementService) resolveChildGroupDelegationBatchGroupIDs(ctx co
 	return normalizeBatchGroupIDs(requested)
 }
 
+func (s *AgentManagementService) resolveManagerGroupDelegationBatchGroupIDs(ctx context.Context, actorID int64, requested []int64, all bool) ([]int64, error) {
+	if all {
+		groups, err := s.ListMyGroups(ctx, actorID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]int64, 0, len(groups))
+		for i := range groups {
+			if groups[i].Group.ID > 0 && groups[i].Group.IsExclusive && groups[i].CanDelegate {
+				out = append(out, groups[i].Group.ID)
+			}
+		}
+		if len(out) == 0 {
+			return nil, ErrAgentManagementInvalidGroupSelection
+		}
+		return out, nil
+	}
+	return normalizeBatchGroupIDs(requested)
+}
+
 func (s *AgentManagementService) resolveInviteGroupDefaultBatchGroupIDs(ctx context.Context, actorID int64, requested []int64, all bool) ([]int64, error) {
 	if all {
 		options, err := s.ListInviteGroupDefaultOptions(ctx, actorID)
@@ -1623,8 +1729,14 @@ func (s *AgentManagementService) invalidateUser(ctx context.Context, userID int6
 	}
 }
 
-func (s *AgentManagementService) raiseManagedGroupRateFloorIfNeeded(ctx context.Context, actor *User, child *User, groupID int64, input ChildGroupDelegationInput) error {
-	if actor == nil || child == nil || actor.Role != RoleAdmin || !input.CanDelegate {
+func (s *AgentManagementService) raiseManagedGroupRateFloorIfNeeded(ctx context.Context, actor *User, child *User, groupID int64, input ChildGroupDelegationInput, existing *AgentGroupDelegation) error {
+	if actor == nil || child == nil || !input.CanDelegate {
+		return nil
+	}
+	if existing != nil && existing.RateMultiplier >= input.RateMultiplier {
+		return nil
+	}
+	if actor.Role != RoleAdmin && child.Role != RoleEnterprise {
 		return nil
 	}
 	if child.Role != RoleAgentLevel1 && child.Role != RoleEnterprise {
@@ -1663,6 +1775,19 @@ func (s *AgentManagementService) invalidateManagedGroupRateFloorUsers(ctx contex
 
 func isAgentManagerRole(role string) bool {
 	return role == RoleAdmin || role == RoleAgentLevel1
+}
+
+func rolesForDirectChildKind(kind DirectChildKind) ([]string, error) {
+	switch kind {
+	case DirectChildKindUsers:
+		return []string{RoleUser}, nil
+	case DirectChildKindAgents:
+		return []string{RoleAgentLevel1}, nil
+	case DirectChildKindEnterprises:
+		return []string{RoleEnterprise}, nil
+	default:
+		return nil, ErrAgentManagementInvalidTarget
+	}
 }
 
 func isProfileBackedChildRole(role string) bool {

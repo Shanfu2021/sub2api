@@ -6,6 +6,8 @@ import type {
   EnterpriseEmployeeBalanceInitializationRequest,
   EnterpriseEmployeeBalanceInitializationResult,
   EnterpriseEmployeeCreateRequest,
+  EnterpriseEmployeeGroupDefaultOption,
+  EnterpriseEmployeeGroupDefaultResponse,
   EnterpriseEmployeeGroupOption,
   EnterpriseEmployeeGroupRequest,
   EnterpriseEmployeeGroupResponse,
@@ -84,6 +86,11 @@ export async function listEmployeeGroupOptions(employeeId: number): Promise<Ente
   return data
 }
 
+export async function listEmployeeGroupDefaultOptions(): Promise<EnterpriseEmployeeGroupDefaultOption[]> {
+  const { data } = await apiClient.get<EnterpriseEmployeeGroupDefaultOption[]>(`${BASE_PATH}/employee-group-defaults`)
+  return data
+}
+
 export async function setEmployeeGroup(
   employeeId: number,
   groupId: number,
@@ -92,6 +99,24 @@ export async function setEmployeeGroup(
   const { data } = await apiClient.put<EnterpriseEmployeeGroupResponse>(
     `${BASE_PATH}/employees/${employeeId}/groups/${groupId}`,
     payload
+  )
+  return data
+}
+
+export async function setEmployeeGroupDefault(
+  groupId: number,
+  payload: EnterpriseEmployeeGroupRequest
+): Promise<EnterpriseEmployeeGroupDefaultResponse> {
+  const { data } = await apiClient.put<EnterpriseEmployeeGroupDefaultResponse>(
+    `${BASE_PATH}/employee-group-defaults/${groupId}`,
+    payload
+  )
+  return data
+}
+
+export async function removeEmployeeGroupDefault(groupId: number): Promise<EnterpriseEmployeeGroupDefaultResponse> {
+  const { data } = await apiClient.delete<EnterpriseEmployeeGroupDefaultResponse>(
+    `${BASE_PATH}/employee-group-defaults/${groupId}`
   )
   return data
 }
@@ -116,8 +141,11 @@ export const enterpriseManagementAPI = {
   initializeEmployeeBalances,
   deleteEmployee,
   listGroups,
+  listEmployeeGroupDefaultOptions,
   listEmployeeGroupOptions,
   setEmployeeGroup,
+  setEmployeeGroupDefault,
+  removeEmployeeGroupDefault,
   removeEmployeeGroup,
 }
 

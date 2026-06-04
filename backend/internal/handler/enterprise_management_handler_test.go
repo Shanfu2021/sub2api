@@ -21,6 +21,9 @@ type fakeEnterpriseManagementService struct {
 	initializeBalanceCalls int
 	setCalls               int
 	removeCalls            int
+	defaultSetCalls        int
+	defaultRemoveCalls     int
+	listDefaultsCalls      int
 
 	listActorID              int64
 	listQuery                service.DirectChildrenQuery
@@ -39,6 +42,10 @@ type fakeEnterpriseManagementService struct {
 	removeActorID            int64
 	removeChildID            int64
 	removeGroupID            int64
+	defaultSetActorID        int64
+	defaultSetGroupID        int64
+	defaultRemoveActorID     int64
+	defaultRemoveGroupID     int64
 }
 
 func (s *fakeEnterpriseManagementService) ListEmployeesWithQuery(_ context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
@@ -130,6 +137,16 @@ func (s *fakeEnterpriseManagementService) ListEmployeeGroupOptions(context.Conte
 	return []service.ChildGroupDelegationOption{}, nil
 }
 
+func (s *fakeEnterpriseManagementService) ListEmployeeGroupDefaultOptions(_ context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error) {
+	s.listDefaultsCalls++
+	return []service.ChildGroupDelegationOption{{
+		Group:               service.Group{ID: 11, Name: "exclusive", Status: service.StatusActive, IsExclusive: true},
+		EffectiveRate:       1.8,
+		Assigned:            true,
+		ChildRateMultiplier: 1.8,
+	}}, nil
+}
+
 func (s *fakeEnterpriseManagementService) SetEmployeeGroup(_ context.Context, actorID int64, employeeID int64, groupID int64, assigned bool) error {
 	if assigned {
 		s.setCalls++
@@ -142,6 +159,19 @@ func (s *fakeEnterpriseManagementService) SetEmployeeGroup(_ context.Context, ac
 	s.removeActorID = actorID
 	s.removeChildID = employeeID
 	s.removeGroupID = groupID
+	return nil
+}
+
+func (s *fakeEnterpriseManagementService) SetEmployeeGroupDefault(_ context.Context, actorID int64, groupID int64, assigned bool) error {
+	if assigned {
+		s.defaultSetCalls++
+		s.defaultSetActorID = actorID
+		s.defaultSetGroupID = groupID
+		return nil
+	}
+	s.defaultRemoveCalls++
+	s.defaultRemoveActorID = actorID
+	s.defaultRemoveGroupID = groupID
 	return nil
 }
 
@@ -158,6 +188,9 @@ func newEnterpriseManagementHandlerTestRouter(svc *fakeEnterpriseManagementServi
 	r.POST("/employees/import", h.ImportEmployees)
 	r.PUT("/employees/balances/initialize", h.InitializeEmployeeBalances)
 	r.PUT("/employees/:id/allocation", h.UpdateEmployeeAllocation)
+	r.GET("/employee-group-defaults", h.ListEmployeeGroupDefaultOptions)
+	r.PUT("/employee-group-defaults/:group_id", h.SetEmployeeGroupDefault)
+	r.DELETE("/employee-group-defaults/:group_id", h.RemoveEmployeeGroupDefault)
 	r.PUT("/employees/:id/groups/:group_id", h.SetEmployeeGroup)
 	r.DELETE("/employees/:id/groups/:group_id", h.RemoveEmployeeGroup)
 	return r
@@ -296,6 +329,60 @@ func TestEnterpriseManagementHandlerRejectsGroupRatePayload(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Equal(t, 0, svc.setCalls)
+}
+
+func TestEnterpriseManagementHandlerListsEmployeeGroupDefaultOptions(t *testing.T) {
+	svc := &fakeEnterpriseManagementService{}
+	router := newEnterpriseManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/employee-group-defaults", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listDefaultsCalls)
+	require.Contains(t, rec.Body.String(), `"assigned":true`)
+	require.Contains(t, rec.Body.String(), `"child_rate_multiplier":1.8`)
+}
+
+func TestEnterpriseManagementHandlerRejectsEmployeeGroupDefaultRatePayload(t *testing.T) {
+	svc := &fakeEnterpriseManagementService{}
+	router := newEnterpriseManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/employee-group-defaults/11", strings.NewReader(`{
+		"rate_multiplier": 2.0,
+		"assigned": true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, 0, svc.defaultSetCalls)
+}
+
+func TestEnterpriseManagementHandlerSetsAndRemovesEmployeeGroupDefault(t *testing.T) {
+	svc := &fakeEnterpriseManagementService{}
+	router := newEnterpriseManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/employee-group-defaults/11", strings.NewReader(`{"assigned": true}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.defaultSetCalls)
+	require.Equal(t, int64(42), svc.defaultSetActorID)
+	require.Equal(t, int64(11), svc.defaultSetGroupID)
+
+	req = httptest.NewRequest(http.MethodDelete, "/employee-group-defaults/11", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.defaultRemoveCalls)
+	require.Equal(t, int64(42), svc.defaultRemoveActorID)
+	require.Equal(t, int64(11), svc.defaultRemoveGroupID)
 }
 
 func TestEnterpriseManagementHandlerSetsAndRemovesEmployeeGroup(t *testing.T) {

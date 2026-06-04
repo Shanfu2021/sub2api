@@ -566,6 +566,84 @@ func (r *enterpriseManagementRepository) DeleteEmployeeAndReturnAllocation(ctx c
 	return uniqueInt64s([]int64{enterpriseID, employeeID}), nil
 }
 
+func (r *enterpriseManagementRepository) ListEmployeeGroupDefaults(ctx context.Context, enterpriseID int64) ([]int64, error) {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT group_id
+FROM enterprise_employee_group_defaults
+WHERE enterprise_user_id = $1
+  AND deleted_at IS NULL
+ORDER BY group_id`,
+		enterpriseID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]int64, 0)
+	for rows.Next() {
+		var groupID int64
+		if err := rows.Scan(&groupID); err != nil {
+			return nil, err
+		}
+		out = append(out, groupID)
+	}
+	return out, rows.Err()
+}
+
+func (r *enterpriseManagementRepository) UpsertEmployeeGroupDefault(ctx context.Context, enterpriseID int64, groupID int64) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	updated, err := exec.ExecContext(ctx, `
+UPDATE enterprise_employee_group_defaults
+SET updated_at = CURRENT_TIMESTAMP,
+    deleted_at = NULL
+WHERE enterprise_user_id = $1
+  AND group_id = $2
+  AND deleted_at IS NOT NULL`,
+		enterpriseID,
+		groupID,
+	)
+	if err != nil {
+		return err
+	}
+	if affected, _ := updated.RowsAffected(); affected > 0 {
+		return nil
+	}
+	_, err = exec.ExecContext(ctx, `
+INSERT INTO enterprise_employee_group_defaults (enterprise_user_id, group_id, created_at, updated_at)
+VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT DO NOTHING`,
+		enterpriseID,
+		groupID,
+	)
+	return err
+}
+
+func (r *enterpriseManagementRepository) DeleteEmployeeGroupDefault(ctx context.Context, enterpriseID int64, groupID int64) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+UPDATE enterprise_employee_group_defaults
+SET deleted_at = CURRENT_TIMESTAMP,
+    updated_at = CURRENT_TIMESTAMP
+WHERE enterprise_user_id = $1
+  AND group_id = $2
+  AND deleted_at IS NULL`,
+		enterpriseID,
+		groupID,
+	)
+	return err
+}
+
 func (r *enterpriseManagementRepository) HardDeleteEnterpriseWithEmployees(ctx context.Context, enterpriseID int64) ([]int64, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {

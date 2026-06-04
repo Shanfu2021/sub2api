@@ -42,6 +42,8 @@ type agentManagementService interface {
 	ListChildGroupDelegationOptions(ctx context.Context, actorID int64, childID int64) ([]service.ChildGroupDelegationOption, error)
 	SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input service.ChildGroupDelegationInput) error
 	SetChildGroupDelegationsBatch(ctx context.Context, actorID int64, childID int64, input service.ChildGroupDelegationBatchInput) error
+	SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind service.DirectChildKind, input service.ChildGroupDelegationBatchInput) (int, error)
+	SetAgentIncome(ctx context.Context, actorID int64, childID int64, input service.AgentIncomeSetInput) (*service.User, error)
 	RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error
 	ListInviteGroupDefaultOptions(ctx context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error)
 	SetInviteGroupDefault(ctx context.Context, actorID int64, groupID int64, input service.AgentInviteGroupDefaultInput) error
@@ -380,6 +382,58 @@ func (h *AgentManagementHandler) SetChildGroupDelegationsBatch(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"child_id": childID, "group_ids": req.GroupIDs, "all": req.All})
+}
+
+func (h *AgentManagementHandler) SetDirectUsersGroupDelegationsBatch(c *gin.Context) {
+	h.setDirectChildrenGroupDelegationsBatch(c, service.DirectChildKindUsers)
+}
+
+func (h *AgentManagementHandler) SetDirectAgentsGroupDelegationsBatch(c *gin.Context) {
+	h.setDirectChildrenGroupDelegationsBatch(c, service.DirectChildKindAgents)
+}
+
+func (h *AgentManagementHandler) SetDirectEnterprisesGroupDelegationsBatch(c *gin.Context) {
+	h.setDirectChildrenGroupDelegationsBatch(c, service.DirectChildKindEnterprises)
+}
+
+func (h *AgentManagementHandler) setDirectChildrenGroupDelegationsBatch(c *gin.Context, kind service.DirectChildKind) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var req service.ChildGroupDelegationBatchInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	updated, err := h.service.SetDirectChildrenGroupDelegationsBatch(c.Request.Context(), actorID, kind, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"kind": kind, "group_ids": req.GroupIDs, "all": req.All, "updated_children": updated})
+}
+
+func (h *AgentManagementHandler) SetAgentIncome(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	childID, ok := parsePositiveID(c, "id", "Invalid child ID")
+	if !ok {
+		return
+	}
+	var req service.AgentIncomeSetInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	user, err := h.service.SetAgentIncome(c.Request.Context(), actorID, childID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, agentManagedUserFromService(user))
 }
 
 func (h *AgentManagementHandler) RemoveChildGroupDelegation(c *gin.Context) {

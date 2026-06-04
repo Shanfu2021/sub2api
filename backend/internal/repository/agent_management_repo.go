@@ -856,10 +856,17 @@ func (r *agentManagementRepository) GetAgentIncomeTotals(ctx context.Context, ag
 		return nil, errors.New("sql executor is not configured")
 	}
 	rows, err := exec.QueryContext(ctx, `
-SELECT agent_owner_user_id, COALESCE(SUM(agent_income), 0)
-FROM usage_logs
-WHERE agent_owner_user_id = ANY($1)
-GROUP BY agent_owner_user_id
+SELECT agent_id, COALESCE(SUM(income), 0)
+FROM (
+  SELECT agent_owner_user_id AS agent_id, agent_income AS income
+  FROM usage_logs
+  WHERE agent_owner_user_id = ANY($1)
+  UNION ALL
+  SELECT agent_user_id AS agent_id, amount AS income
+  FROM agent_income_adjustments
+  WHERE agent_user_id = ANY($1)
+) totals
+GROUP BY agent_id
 `, pq.Array(agentIDs))
 	if err != nil {
 		return nil, err
@@ -878,6 +885,18 @@ GROUP BY agent_owner_user_id
 		return nil, err
 	}
 	return out, nil
+}
+
+func (r *agentManagementRepository) AddAgentIncomeAdjustment(ctx context.Context, agentID int64, adminID int64, amount float64, reason string) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+INSERT INTO agent_income_adjustments (agent_user_id, admin_user_id, amount, reason)
+VALUES ($1, $2, $3, $4)
+`, agentID, adminID, amount, reason)
+	return err
 }
 
 func (r *agentManagementRepository) UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error {

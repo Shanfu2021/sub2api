@@ -59,6 +59,15 @@
               <Icon name="dollar" size="sm" />
               <span>{{ t('enterpriseManagement.employees.balanceInit.title') }}</span>
             </button>
+            <button
+              data-test="open-employee-group-defaults"
+              class="btn btn-secondary px-3"
+              :disabled="loading"
+              @click="openDefaultGroupDialog"
+            >
+              <Icon name="grid" size="sm" />
+              <span>{{ t('enterpriseManagement.employees.defaultGroups.title') }}</span>
+            </button>
             <button class="btn btn-secondary px-3" :disabled="loading" @click="loadData">
               <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
             </button>
@@ -351,6 +360,66 @@
     </BaseDialog>
 
     <BaseDialog
+      :show="defaultGroupDialog.show"
+      :title="t('enterpriseManagement.employees.defaultGroups.title')"
+      width="wide"
+      @close="closeDefaultGroupDialog"
+    >
+      <div class="space-y-4" data-test="enterprise-employee-default-groups-modal">
+        <div class="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+          {{ t('enterpriseManagement.employees.defaultGroups.description') }}
+        </div>
+
+        <div v-if="defaultGroupDialog.loading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+
+        <div
+          v-else-if="defaultGroupDialog.groups.length === 0"
+          class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+        >
+          {{ t('enterpriseManagement.employees.emptyGroups') }}
+        </div>
+
+        <div v-else class="space-y-3">
+          <div
+            v-for="groupRate in defaultGroupDialog.groups"
+            :key="groupRate.group.id"
+            class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+          >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <input
+                    :data-test="`employee-default-group-assigned-${groupRate.group.id}`"
+                    class="checkbox"
+                    type="checkbox"
+                    :checked="defaultGroupDraftFor(groupRate).assigned"
+                    @change="updateDefaultGroupDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                  <h4 class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ groupRate.group.name }}</h4>
+                  <span class="badge badge-gray">{{ sourceLabel(groupRate.source) }}</span>
+                </div>
+                <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('agentManagement.groups.effectiveRate') }}: {{ groupRate.effective_rate }}
+                </div>
+              </div>
+              <button
+                :data-test="`save-employee-default-group-${groupRate.group.id}`"
+                class="btn btn-primary btn-sm"
+                :disabled="defaultGroupDialog.savingGroupId === groupRate.group.id"
+                @click="saveDefaultGroupAssignment(groupRate)"
+              >
+                <Icon name="check" size="sm" />
+                <span>{{ t('common.save') }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
+
+    <BaseDialog
       :show="groupDialog.show"
       :title="groupDialogTitle"
       width="wide"
@@ -431,6 +500,7 @@ import type {
   EnterpriseEmployeeAllocationUpdate,
   EnterpriseEmployeeBalanceInitializationResult,
   EnterpriseEmployeeCreateRequest,
+  EnterpriseEmployeeGroupDefaultOption,
   EnterpriseEmployeeGroupOption,
   EnterpriseEmployeeImportRecord,
   EnterpriseEmployeeImportResult,
@@ -503,7 +573,19 @@ const groupDialog = reactive<{
   savingGroupId: null,
   groups: [],
 })
+const defaultGroupDialog = reactive<{
+  show: boolean
+  loading: boolean
+  savingGroupId: number | null
+  groups: EnterpriseEmployeeGroupDefaultOption[]
+}>({
+  show: false,
+  loading: false,
+  savingGroupId: null,
+  groups: [],
+})
 const groupDrafts = reactive<Record<number, { assigned: boolean }>>({})
+const defaultGroupDrafts = reactive<Record<number, { assigned: boolean }>>({})
 
 const columns = computed<Column[]>(() => [
   { key: 'username', label: t('common.email') },
@@ -916,6 +998,71 @@ function groupDraftFor(groupRate: EnterpriseEmployeeGroupOption) {
 
 function updateGroupDraft(groupID: number, assigned: boolean) {
   groupDrafts[groupID] = { assigned }
+}
+
+function clearDefaultGroupDrafts() {
+  for (const key of Object.keys(defaultGroupDrafts)) {
+    delete defaultGroupDrafts[Number(key)]
+  }
+}
+
+function syncDefaultGroupDrafts(groups: EnterpriseEmployeeGroupDefaultOption[]) {
+  clearDefaultGroupDrafts()
+  for (const item of groups) {
+    defaultGroupDrafts[item.group.id] = { assigned: item.assigned }
+  }
+}
+
+function defaultGroupDraftFor(groupRate: EnterpriseEmployeeGroupDefaultOption) {
+  if (!defaultGroupDrafts[groupRate.group.id]) {
+    defaultGroupDrafts[groupRate.group.id] = { assigned: groupRate.assigned }
+  }
+  return defaultGroupDrafts[groupRate.group.id]
+}
+
+function updateDefaultGroupDraft(groupID: number, assigned: boolean) {
+  defaultGroupDrafts[groupID] = { assigned }
+}
+
+async function openDefaultGroupDialog() {
+  defaultGroupDialog.show = true
+  defaultGroupDialog.loading = true
+  defaultGroupDialog.groups = []
+  clearDefaultGroupDrafts()
+  try {
+    const groups = await enterpriseManagementAPI.listEmployeeGroupDefaultOptions()
+    defaultGroupDialog.groups = groups.filter((item) => item.group.is_exclusive)
+    syncDefaultGroupDrafts(defaultGroupDialog.groups)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('enterpriseManagement.groups.loadFailed'))
+  } finally {
+    defaultGroupDialog.loading = false
+  }
+}
+
+function closeDefaultGroupDialog() {
+  defaultGroupDialog.show = false
+  defaultGroupDialog.groups = []
+  defaultGroupDialog.savingGroupId = null
+  clearDefaultGroupDrafts()
+}
+
+async function saveDefaultGroupAssignment(groupRate: EnterpriseEmployeeGroupDefaultOption) {
+  const draft = defaultGroupDraftFor(groupRate)
+  defaultGroupDialog.savingGroupId = groupRate.group.id
+  try {
+    if (draft.assigned) {
+      await enterpriseManagementAPI.setEmployeeGroupDefault(groupRate.group.id, { assigned: true })
+      appStore.showSuccess(t('enterpriseManagement.employees.defaultGroups.saved'))
+    } else {
+      await enterpriseManagementAPI.removeEmployeeGroupDefault(groupRate.group.id)
+      appStore.showSuccess(t('enterpriseManagement.employees.defaultGroups.removed'))
+    }
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('enterpriseManagement.employees.defaultGroups.failed'))
+  } finally {
+    defaultGroupDialog.savingGroupId = null
+  }
 }
 
 async function openGroupDialog(employee: EnterpriseEmployee) {

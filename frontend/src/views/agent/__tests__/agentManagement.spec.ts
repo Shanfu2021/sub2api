@@ -30,6 +30,8 @@ const {
   listInviteGroupDefaultOptions,
   setChildGroupDelegation,
   setChildGroupDelegationsBatch,
+  setDirectChildrenGroupDelegationsBatch,
+  setAgentIncome,
   removeChildGroupDelegation,
   setInviteGroupDefault,
   setInviteGroupDefaultsBatch,
@@ -57,6 +59,8 @@ const {
   listInviteGroupDefaultOptions: vi.fn(),
   setChildGroupDelegation: vi.fn(),
   setChildGroupDelegationsBatch: vi.fn(),
+  setDirectChildrenGroupDelegationsBatch: vi.fn(),
+  setAgentIncome: vi.fn(),
   removeChildGroupDelegation: vi.fn(),
   setInviteGroupDefault: vi.fn(),
   setInviteGroupDefaultsBatch: vi.fn(),
@@ -86,6 +90,8 @@ vi.mock('@/api/agentManagement', () => ({
     listInviteGroupDefaultOptions,
     setChildGroupDelegation,
     setChildGroupDelegationsBatch,
+    setDirectChildrenGroupDelegationsBatch,
+    setAgentIncome,
     removeChildGroupDelegation,
     setInviteGroupDefault,
     setInviteGroupDefaultsBatch,
@@ -355,6 +361,43 @@ function makeStructureResponse(): AgentStructureResponse {
   }
 }
 
+function makeLargeStructureResponse(): AgentStructureResponse {
+  const base = makeStructureResponse()
+  return {
+    ...base,
+    users: Array.from({ length: 7 }, (_, index) => makeChild({
+      id: 220 + index,
+      email: `agent-user-${index + 1}@example.com`,
+      username: `agent-user-${index + 1}`,
+      concurrency: 5,
+      rpm_limit: 50,
+      balance: 3.25,
+    })),
+    enterprises: Array.from({ length: 7 }, (_, index) => ({
+      enterprise: makeChild({
+        id: 230 + index,
+        role: 'enterprise',
+        email: `enterprise-${index + 1}@example.com`,
+        username: `enterprise-${index + 1}`,
+        pool_concurrency: 20,
+        pool_rpm: 200,
+      }),
+      employees: [
+        makeChild({
+          id: 240 + index,
+          role: 'employee',
+          parent_user_id: 230 + index,
+          email: `employee-${index + 1}@example.com`,
+          username: `employee-${index + 1}`,
+          concurrency: 2,
+          rpm_limit: 20,
+          balance: 1.5,
+        }),
+      ],
+    })),
+  }
+}
+
 function makeUsageLog(overrides: Partial<AdminUsageLog> = {}): AdminUsageLog {
   return {
     id: 9001,
@@ -495,6 +538,8 @@ describe('agent management pages', () => {
     listInviteGroupDefaultOptions.mockResolvedValue([makeChildGroupOption()])
     setChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     setChildGroupDelegationsBatch.mockResolvedValue({ child_id: 12, group_ids: [7], all: false })
+    setDirectChildrenGroupDelegationsBatch.mockResolvedValue({ kind: 'enterprises', group_ids: [7], all: false, updated_children: 2 })
+    setAgentIncome.mockResolvedValue(makeChild({ role: 'agent_level1', agent_income: 0 }))
     removeChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     setInviteGroupDefault.mockResolvedValue({ group_id: 7 })
     setInviteGroupDefaultsBatch.mockResolvedValue({ group_ids: [7], all: false })
@@ -518,6 +563,9 @@ describe('agent management pages', () => {
     expect(wrapper.text()).toContain('agent@example.com')
     expect(wrapper.text()).toContain('agent-user@example.com')
     expect(wrapper.text()).toContain('enterprise@example.com')
+    expect(wrapper.text()).not.toContain('employee@example.com')
+    await wrapper.get('[data-test="overview-enterprise-toggle-23"]').trigger('click')
+    await flushPromises()
     expect(wrapper.text()).toContain('employee@example.com')
     expect(wrapper.text()).toContain('$8.75')
     expect(wrapper.text()).toContain('agentManagement.overview.directUsers')
@@ -525,6 +573,28 @@ describe('agent management pages', () => {
     expect(wrapper.text()).not.toContain('agentManagement.direct.saveAllocation')
     expect(wrapper.text()).not.toContain('agentManagement.direct.deleteAgent')
     expect(wrapper.find('[data-test="save-allocation-21"]').exists()).toBe(false)
+  })
+
+  it('paginates subordinate structure sections and expands enterprise employees on demand', async () => {
+    getStructure.mockResolvedValue(makeLargeStructureResponse())
+    const wrapper = mountAgentView(AdminOverviewView, 'admin')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('agent-user-1@example.com')
+    expect(wrapper.text()).not.toContain('agent-user-7@example.com')
+    expect(wrapper.text()).toContain('enterprise-1@example.com')
+    expect(wrapper.text()).not.toContain('enterprise-7@example.com')
+    expect(wrapper.text()).not.toContain('employee-1@example.com')
+
+    await wrapper.get('[data-test="overview-enterprise-toggle-230"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('employee-1@example.com')
+
+    await wrapper.get('[data-test="overview-users-next"]').trigger('click')
+    await wrapper.get('[data-test="overview-enterprises-next"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('agent-user-7@example.com')
+    expect(wrapper.text()).toContain('enterprise-7@example.com')
   })
 
   it('lets admins switch subordinate structure owner', async () => {
@@ -647,6 +717,37 @@ describe('agent management pages', () => {
     expect(wrapper.text()).toContain('$8.75')
     expect((wrapper.get('[data-test="allocation-concurrency-12"]').element as HTMLInputElement).value).toBe('30')
     expect((wrapper.get('[data-test="allocation-rpm-12"]').element as HTMLInputElement).value).toBe('300')
+  })
+
+  it('lets admins set a direct agent income target for settlement', async () => {
+    listDirectAgents.mockResolvedValue(makeChildrenResponse([
+      makeChild({ role: 'agent_level1', agent_income: 8.75 }),
+    ]))
+    const wrapper = mountAgentView(DirectAgentsView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="set-agent-income-12"]').trigger('click')
+    expect(wrapper.find('[data-test="agent-income-modal"]').exists()).toBe(true)
+    expect((wrapper.get('[data-test="agent-income-input"]').element as HTMLInputElement).value).toBe('8.75')
+
+    await wrapper.get('[data-test="agent-income-input"]').setValue('0')
+    await wrapper.get('[data-test="agent-income-reason"]').setValue('settled')
+    await wrapper.get('[data-test="agent-income-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(setAgentIncome).toHaveBeenCalledWith(12, { agent_income: 0, reason: 'settled' })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.direct.agentIncomeSaved')
+    expect(listDirectAgents).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not show agent income settlement controls to agents', async () => {
+    listDirectAgents.mockResolvedValue(makeChildrenResponse([
+      makeChild({ role: 'agent_level1', agent_income: 8.75 }),
+    ]))
+    const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="set-agent-income-12"]').exists()).toBe(false)
   })
 
   it('uses pool fields for direct enterprises instead of live remaining quota', async () => {
@@ -973,6 +1074,55 @@ describe('agent management pages', () => {
       can_delegate: true,
     })
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.batchDelegationSaved')
+  })
+
+  it('batch deploys selected groups to all direct agents on the current management page', async () => {
+    listGroups.mockResolvedValue([
+      makeAgentGroupRate(),
+      makeAgentGroupRate({
+        group: makeGroup({ id: 8, name: 'Enterprise Boost' }),
+        effective_rate: 1.6,
+        can_delegate: true,
+      }),
+    ])
+    const wrapper = mountAgentView(DirectAgentsView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-batch"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-batch-select-7"]').setValue(true)
+    await wrapper.get('[data-test="direct-group-batch-select-8"]').setValue(true)
+    await wrapper.get('[data-test="direct-group-batch-rate"]').setValue('2.8')
+    await wrapper.get('[data-test="direct-group-batch-can-delegate"]').setValue(true)
+    await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('agents', {
+      group_ids: [7, 8],
+      all: false,
+      rate_multiplier: 2.8,
+      can_delegate: true,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.directBatchSaved')
+  })
+
+  it('batch deploys all groups to direct enterprises on the current management page', async () => {
+    const wrapper = mountAgentView(DirectEnterprisesView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-batch"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-batch-all"]').setValue(true)
+    await wrapper.get('[data-test="direct-group-batch-rate"]').setValue('2.2')
+    await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('enterprises', {
+      group_ids: [],
+      all: true,
+      rate_multiplier: 2.2,
+      can_delegate: false,
+    })
   })
 
   it('renders effective group rates without upstream cost fields', async () => {

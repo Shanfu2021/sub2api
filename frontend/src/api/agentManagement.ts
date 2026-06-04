@@ -3,6 +3,8 @@ import type {
   AgentAllocationSummary,
   AgentAdminTreeResponse,
   AgentChildGroupDelegationOption,
+  AgentDirectChildKind,
+  AgentDirectChildrenGroupDelegationBatchResponse,
   AgentDirectChildrenResponse,
   AgentGroupDelegationBatchRequest,
   AgentGroupDelegationBatchResponse,
@@ -10,6 +12,7 @@ import type {
   AgentGroupDelegationRequest,
   AgentGroupDelegationResponse,
   AgentGroupRate,
+  AgentIncomeSetRequest,
   AgentInviteGroupDefaultBatchRequest,
   AgentInviteGroupDefaultBatchResponse,
   AgentInviteGroupDefaultRequest,
@@ -32,6 +35,12 @@ export interface AgentDirectChildrenQuery {
   search?: string
   page?: number
   page_size?: number
+}
+
+const DIRECT_CHILD_KIND_PATH: Record<AgentDirectChildKind, string> = {
+  users: 'direct-users',
+  agents: 'direct-agents',
+  enterprises: 'direct-enterprises',
 }
 
 export async function getSummary(): Promise<AgentManagementSummary> {
@@ -149,6 +158,22 @@ export async function setChildGroupDelegationsBatch(
   return data
 }
 
+export async function setDirectChildrenGroupDelegationsBatch(
+  kind: AgentDirectChildKind,
+  payload: AgentGroupDelegationBatchRequest
+): Promise<AgentDirectChildrenGroupDelegationBatchResponse> {
+  const { data } = await apiClient.put<AgentDirectChildrenGroupDelegationBatchResponse>(
+    `${BASE_PATH}/${DIRECT_CHILD_KIND_PATH[kind]}/groups/batch`,
+    payload
+  )
+  return data
+}
+
+export async function setAgentIncome(childId: number, payload: AgentIncomeSetRequest): Promise<AgentManagedUser> {
+  const { data } = await apiClient.put<AgentManagedUser>(`${BASE_PATH}/children/${childId}/agent-income`, payload)
+  return data
+}
+
 export async function removeChildGroupDelegation(childId: number, groupId: number): Promise<AgentGroupDelegationResponse> {
   const { data } = await apiClient.delete<AgentGroupDelegationResponse>(
     `${BASE_PATH}/children/${childId}/groups/${groupId}`
@@ -204,6 +229,8 @@ export const agentManagementAPI = {
   listInviteGroupDefaultOptions,
   setChildGroupDelegation,
   setChildGroupDelegationsBatch,
+  setDirectChildrenGroupDelegationsBatch,
+  setAgentIncome,
   removeChildGroupDelegation,
   setInviteGroupDefault,
   setInviteGroupDefaultsBatch,

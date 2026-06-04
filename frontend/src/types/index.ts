@@ -405,6 +405,20 @@ export interface AgentGroupDelegationBatchResponse {
   all: boolean
 }
 
+export interface AgentIncomeSetRequest {
+  agent_income: number
+  reason?: string
+}
+
+export type AgentDirectChildKind = 'users' | 'agents' | 'enterprises'
+
+export interface AgentDirectChildrenGroupDelegationBatchResponse {
+  kind: AgentDirectChildKind
+  group_ids: number[]
+  all: boolean
+  updated_children: number
+}
+
 export interface AgentInviteGroupDefaultResponse {
   group_id: number
 }
@@ -492,6 +506,12 @@ export interface EnterpriseEmployeeGroupRequest {
 
 export interface EnterpriseEmployeeGroupResponse {
   employee_id: number
+  group_id: number
+}
+
+export type EnterpriseEmployeeGroupDefaultOption = EnterpriseEmployeeGroupOption
+
+export interface EnterpriseEmployeeGroupDefaultResponse {
   group_id: number
 }
 

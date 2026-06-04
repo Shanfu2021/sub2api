@@ -59,4 +59,20 @@ describe('enterprise management api', () => {
 
     expect(put).toHaveBeenCalledWith('/enterprise-management/employees/balances/initialize', { balance: 10 })
   })
+
+  it('manages default employee groups through enterprise routes', async () => {
+    const options = [{ group: { id: 11, name: 'exclusive' }, assigned: true }]
+    const response = { group_id: 11 }
+    get.mockResolvedValueOnce({ data: options })
+    put.mockResolvedValueOnce({ data: response })
+    del.mockResolvedValueOnce({ data: response })
+
+    await expect(enterpriseManagementAPI.listEmployeeGroupDefaultOptions()).resolves.toEqual(options)
+    await expect(enterpriseManagementAPI.setEmployeeGroupDefault(11, { assigned: true })).resolves.toEqual(response)
+    await expect(enterpriseManagementAPI.removeEmployeeGroupDefault(11)).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/enterprise-management/employee-group-defaults')
+    expect(put).toHaveBeenCalledWith('/enterprise-management/employee-group-defaults/11', { assigned: true })
+    expect(del).toHaveBeenCalledWith('/enterprise-management/employee-group-defaults/11')
+  })
 })
