@@ -731,6 +731,75 @@ func (r *agentManagementRepository) UpsertGroupDelegation(ctx context.Context, m
 		Exec(ctx)
 }
 
+func (r *agentManagementRepository) RaiseManagedGroupRateFloor(ctx context.Context, agentID int64, groupID int64, minimumRate float64) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+WITH direct_enterprises AS (
+  SELECT id
+  FROM users
+  WHERE parent_user_id = $1
+    AND role = $4
+    AND deleted_at IS NULL
+),
+affected_users AS (
+  SELECT $1::bigint AS id
+  UNION
+  SELECT id
+  FROM users
+  WHERE parent_user_id = $1
+    AND role IN ($5, $4)
+    AND deleted_at IS NULL
+  UNION
+  SELECT u.id
+  FROM users u
+  JOIN direct_enterprises e ON e.id = u.parent_user_id
+  WHERE u.role = $6
+    AND u.deleted_at IS NULL
+),
+updated_delegations AS (
+  UPDATE agent_group_delegations
+  SET rate_multiplier = $3,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE (manager_user_id = $1 OR manager_user_id IN (SELECT id FROM direct_enterprises))
+    AND group_id = $2
+    AND deleted_at IS NULL
+    AND rate_multiplier < $3
+  RETURNING 1
+),
+updated_invite_defaults AS (
+  UPDATE agent_invite_group_defaults
+  SET rate_multiplier = $3,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE agent_user_id = $1
+    AND group_id = $2
+    AND deleted_at IS NULL
+    AND rate_multiplier < $3
+  RETURNING 1
+),
+updated_user_rates AS (
+  UPDATE user_group_rate_multipliers
+  SET rate_multiplier = $3,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE user_id IN (SELECT id FROM affected_users)
+    AND group_id = $2
+    AND rate_multiplier IS NOT NULL
+    AND rate_multiplier < $3
+  RETURNING 1
+)
+SELECT 1`,
+		agentID,
+		groupID,
+		minimumRate,
+		service.RoleEnterprise,
+		service.RoleUser,
+		service.RoleEmployee,
+	)
+	return err
+}
+
 func (r *agentManagementRepository) DeleteGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) error {
 	_, err := clientFromContext(ctx, r.client).AgentGroupDelegation.Delete().
 		Where(
