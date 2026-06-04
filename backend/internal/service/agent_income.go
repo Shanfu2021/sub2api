@@ -41,14 +41,9 @@ func (r *AgentIncomeResolver) Resolve(ctx context.Context, user *User, groupID *
 		}
 	}
 
-	income := 0.0
-	if userRate > agentRate {
-		income = actualCost * (userRate - agentRate) / userRate
-	}
-
 	snapshot.AgentOwnerUserID = agentID
 	snapshot.AgentCostRateMultiplier = agentRate
-	snapshot.AgentIncome = income
+	snapshot.AgentIncome = actualCost * (userRate - agentRate) / userRate
 	return snapshot
 }
 

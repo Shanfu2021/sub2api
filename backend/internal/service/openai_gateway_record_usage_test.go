@@ -316,7 +316,7 @@ func TestOpenAIGatewayServiceRecordUsage_CapturesDirectAgentIncomeSnapshot(t *te
 	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.2-0.1)/0.2, usageRepo.lastLog.AgentIncome, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_KeepsAgentIncomeZeroWhenChildRateIsBelowCost(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_DeductsAgentIncomeWhenChildRateIsBelowCost(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	agentID := int64(1000)
 	userRepo := &openAIRecordUsageUserRepoStub{
@@ -355,7 +355,7 @@ func TestOpenAIGatewayServiceRecordUsage_KeepsAgentIncomeZeroWhenChildRateIsBelo
 	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
 	require.InDelta(t, 0.1, usageRepo.lastLog.AgentUserRateMultiplier, 1e-12)
 	require.InDelta(t, 0.2, usageRepo.lastLog.AgentCostRateMultiplier, 1e-12)
-	require.Zero(t, usageRepo.lastLog.AgentIncome)
+	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.1-0.2)/0.1, usageRepo.lastLog.AgentIncome, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_KeepsAgentIncomeZeroWhenChildRateEqualsCost(t *testing.T) {
