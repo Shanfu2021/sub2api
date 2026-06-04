@@ -138,7 +138,7 @@ func (s *GatewayService) ForwardAsResponses(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
-		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Request failed")
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -172,7 +172,7 @@ func (s *GatewayService) ForwardAsResponses(
 		}
 
 		// Non-failover error: return Responses-formatted error to client
-		writeResponsesError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
+		writeResponsesError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", clientSafeUpstreamErrorMessage(resp.StatusCode))
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
@@ -316,7 +316,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}
 
 	if finalResp == nil {
-		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Service stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
 

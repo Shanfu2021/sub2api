@@ -76,14 +76,16 @@ type EnterpriseManagementService struct {
 	repo                 EnterpriseManagementRepository
 	userRepo             UserRepository
 	groupRepo            GroupRepository
+	userGroupRateRepo    UserGroupRateRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 }
 
-func NewEnterpriseManagementService(repo EnterpriseManagementRepository, userRepo UserRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *EnterpriseManagementService {
+func NewEnterpriseManagementService(repo EnterpriseManagementRepository, userRepo UserRepository, groupRepo GroupRepository, userGroupRateRepo UserGroupRateRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *EnterpriseManagementService {
 	return &EnterpriseManagementService{
 		repo:                 repo,
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
+		userGroupRateRepo:    userGroupRateRepo,
 		authCacheInvalidator: authCacheInvalidator,
 	}
 }
@@ -189,9 +191,7 @@ func (s *EnterpriseManagementService) DeleteEmployee(ctx context.Context, actorI
 	if err != nil {
 		return err
 	}
-	s.invalidateUser(ctx, actor.ID)
-	s.invalidateUser(ctx, employee.ID)
-	s.invalidateUsers(ctx, affected)
+	s.invalidateUsers(ctx, append([]int64{actor.ID, employee.ID}, affected...))
 	return nil
 }
 
@@ -340,6 +340,9 @@ func (s *EnterpriseManagementService) SetEmployeeGroup(ctx context.Context, acto
 				return err
 			}
 		}
+		if err := s.syncEmployeeUserGroupRate(ctx, employee.ID, groupID, nil); err != nil {
+			return err
+		}
 		s.invalidateUser(ctx, employee.ID)
 		return nil
 	}
@@ -355,8 +358,18 @@ func (s *EnterpriseManagementService) SetEmployeeGroup(ctx context.Context, acto
 			return err
 		}
 	}
+	if err := s.syncEmployeeUserGroupRate(ctx, employee.ID, groupID, &rate); err != nil {
+		return err
+	}
 	s.invalidateUser(ctx, employee.ID)
 	return nil
+}
+
+func (s *EnterpriseManagementService) syncEmployeeUserGroupRate(ctx context.Context, userID int64, groupID int64, rate *float64) error {
+	if s == nil || s.userGroupRateRepo == nil || userID <= 0 || groupID <= 0 {
+		return nil
+	}
+	return s.userGroupRateRepo.SyncUserGroupRates(ctx, userID, map[int64]*float64{groupID: rate})
 }
 
 func (s *EnterpriseManagementService) ensureEnterpriseQuotaAvailable(ctx context.Context, enterpriseID int64, excludeEmployeeID *int64, requestedConcurrency int, requestedRPM int) error {
@@ -420,7 +433,12 @@ func (s *EnterpriseManagementService) invalidateUser(ctx context.Context, userID
 }
 
 func (s *EnterpriseManagementService) invalidateUsers(ctx context.Context, userIDs []int64) {
+	seen := make(map[int64]struct{}, len(userIDs))
 	for _, userID := range userIDs {
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
 		s.invalidateUser(ctx, userID)
 	}
 }

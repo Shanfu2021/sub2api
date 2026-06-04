@@ -96,6 +96,11 @@ type agentManagementRepoStub struct {
 		agentID     int64
 		rootAdminID int64
 	}
+	rehomeChildGroupDelegationCalls []struct {
+		oldManagerID int64
+		newManagerID int64
+		childID      int64
+	}
 	groupDelegations      []agentGroupDelegationRecord
 	inviteGroupDefaults   []agentGroupDelegationRecord
 	upsertInviteDefaults  []agentGroupDelegationRecord
@@ -413,6 +418,11 @@ func (r *agentManagementRepoStub) DeleteLevel1AgentAndMoveChildren(_ context.Con
 	if _, ok := r.users[agentID]; !ok {
 		return ErrUserNotFound
 	}
+	for i := range r.groupDelegations {
+		if r.groupDelegations[i].managerID == agentID {
+			r.groupDelegations[i].managerID = rootAdminID
+		}
+	}
 	for _, child := range r.users {
 		if child.ParentUserID == nil || *child.ParentUserID != agentID {
 			continue
@@ -423,6 +433,20 @@ func (r *agentManagementRepoStub) DeleteLevel1AgentAndMoveChildren(_ context.Con
 		}
 	}
 	delete(r.users, agentID)
+	return nil
+}
+
+func (r *agentManagementRepoStub) RehomeChildGroupDelegations(_ context.Context, oldManagerID int64, newManagerID int64, childID int64) error {
+	r.rehomeChildGroupDelegationCalls = append(r.rehomeChildGroupDelegationCalls, struct {
+		oldManagerID int64
+		newManagerID int64
+		childID      int64
+	}{oldManagerID: oldManagerID, newManagerID: newManagerID, childID: childID})
+	for i := range r.groupDelegations {
+		if r.groupDelegations[i].managerID == oldManagerID && r.groupDelegations[i].childID == childID {
+			r.groupDelegations[i].managerID = newManagerID
+		}
+	}
 	return nil
 }
 
@@ -1688,6 +1712,11 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 		{ID: level2UnderDeletedAgentID, Role: RoleAgentLevel2, ParentUserID: &level1UnderAdminID},
 	}
 	repo := newAgentManagementRepoStub(users...)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: level1ID, childID: level1DirectUserID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
+		{managerID: level1UnderAdminID, childID: userUnderDeletedAgentID, groupID: 21, rateMultiplier: 1.9, canDelegate: false},
+		{managerID: level1UnderAdminID, childID: level2UnderDeletedAgentID, groupID: 22, rateMultiplier: 2.7, canDelegate: true},
+	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
 	enterpriseCleanup := &agentEnterpriseCleanupRepoStub{
@@ -1709,6 +1738,9 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, level1DirectUserID))
 	require.Equal(t, rootID, *repo.users[level1DirectUserID].ParentUserID)
 	require.Equal(t, RoleUser, repo.users[level1DirectUserID].Role)
+	require.Equal(t, rootID, repo.groupDelegations[0].managerID)
+	require.Equal(t, level1DirectUserID, repo.groupDelegations[0].childID)
+	require.Equal(t, 2.4, repo.groupDelegations[0].rateMultiplier)
 
 	require.NoError(t, svc.DeleteDirectChild(context.Background(), level1ID, level2ID))
 	require.Equal(t, rootID, *repo.users[level2ID].ParentUserID)
@@ -1723,6 +1755,11 @@ func TestAgentManagementDeleteRules(t *testing.T) {
 	require.Equal(t, RoleUser, repo.users[userUnderDeletedAgentID].Role)
 	require.Equal(t, rootID, *repo.users[level2UnderDeletedAgentID].ParentUserID)
 	require.Equal(t, RoleAgentLevel1, repo.users[level2UnderDeletedAgentID].Role)
+	require.Equal(t, []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1DirectUserID, groupID: 20, rateMultiplier: 2.4, canDelegate: false},
+		{managerID: rootID, childID: userUnderDeletedAgentID, groupID: 21, rateMultiplier: 1.9, canDelegate: false},
+		{managerID: rootID, childID: level2UnderDeletedAgentID, groupID: 22, rateMultiplier: 2.7, canDelegate: true},
+	}, repo.groupDelegations)
 	require.Contains(t, invalidator.userIDs, adminDirectUserID)
 	require.Contains(t, invalidator.userIDs, adminDirectEnterpriseID)
 	require.Contains(t, invalidator.userIDs, adminEnterpriseEmployeeID)
@@ -1777,6 +1814,9 @@ func TestAgentManagementDeletingLevel2AgentRecalculatesLevel1Quota(t *testing.T)
 		level1ID: {UserID: level1ID, PoolConcurrency: 100, PoolRPM: 1000},
 		level2ID: {UserID: level2ID, PoolConcurrency: 30, PoolRPM: 300},
 	}
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: level1ID, childID: level2ID, groupID: 20, rateMultiplier: 1.8, canDelegate: true},
+	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	invalidator := &agentManagementAuthInvalidatorStub{}
 	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
@@ -1791,6 +1831,14 @@ func TestAgentManagementDeletingLevel2AgentRecalculatesLevel1Quota(t *testing.T)
 	require.Equal(t, 90, repo.users[level1ID].Concurrency)
 	require.Equal(t, 900, repo.users[level1ID].RPMLimit)
 	require.Empty(t, userRepo.deletedUserIDs)
+	require.Equal(t, []struct {
+		oldManagerID int64
+		newManagerID int64
+		childID      int64
+	}{{oldManagerID: level1ID, newManagerID: rootID, childID: level2ID}}, repo.rehomeChildGroupDelegationCalls)
+	require.Equal(t, []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level2ID, groupID: 20, rateMultiplier: 1.8, canDelegate: true},
+	}, repo.groupDelegations)
 	require.Contains(t, invalidator.userIDs, level2ID)
 	require.Contains(t, invalidator.userIDs, level1ID)
 }

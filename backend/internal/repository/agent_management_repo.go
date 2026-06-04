@@ -389,6 +389,10 @@ func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context
 		return err
 	}
 
+	if err := r.rehomeManagedGroupDelegations(txCtx, exec, agent.ID, rootAdminID); err != nil {
+		return err
+	}
+
 	if _, err := txClient.User.Update().
 		Where(
 			dbuser.ParentUserIDEQ(agent.ID),
@@ -400,9 +404,6 @@ func (r *agentManagementRepository) DeleteLevel1AgentAndMoveChildren(ctx context
 		return err
 	}
 
-	if err := r.cleanupAgentDelegatedGroups(txCtx, exec, agent.ID); err != nil {
-		return err
-	}
 	if err := r.deleteAgentAccountRows(txCtx, exec, agent.ID); err != nil {
 		return err
 	}
@@ -508,6 +509,9 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 		Save(ctx); err != nil {
 		return nil, err
 	}
+	if err := r.rehomeManagedGroupDelegations(ctx, exec, user.ID, rootAdmin.ID); err != nil {
+		return nil, err
+	}
 	if _, err := client.User.Update().
 		Where(
 			dbuser.ParentUserIDEQ(user.ID),
@@ -528,9 +532,6 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 		return nil, err
 	}
 
-	if err := r.cleanupAgentDelegatedGroups(ctx, exec, user.ID); err != nil {
-		return nil, err
-	}
 	if err := r.deleteAgentAccountRows(ctx, exec, user.ID); err != nil {
 		return nil, err
 	}
@@ -573,52 +574,91 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 	return int64Keys(affected), nil
 }
 
-func (r *agentManagementRepository) cleanupAgentDelegatedGroups(ctx context.Context, exec sqlQueryExecutor, agentID int64) error {
-	if _, err := exec.ExecContext(ctx, `
-WITH RECURSIVE lost(user_id, group_id) AS (
-    SELECT child_user_id, group_id
-    FROM agent_group_delegations
-    WHERE manager_user_id = $1 AND deleted_at IS NULL
-  UNION
-    SELECT child_user_id, group_id
-    FROM agent_group_delegations
-    WHERE child_user_id = $1 AND deleted_at IS NULL
-  UNION
-    SELECT agd.child_user_id, agd.group_id
-    FROM agent_group_delegations agd
-    JOIN lost l ON l.user_id = agd.manager_user_id AND l.group_id = agd.group_id
-    WHERE agd.deleted_at IS NULL
+func (r *agentManagementRepository) rehomeManagedGroupDelegations(ctx context.Context, exec sqlQueryExecutor, oldManagerID int64, newManagerID int64) error {
+	_, err := exec.ExecContext(ctx, `
+WITH source AS (
+  SELECT child_user_id, group_id, rate_multiplier, can_delegate
+  FROM agent_group_delegations
+  WHERE manager_user_id = $1
+    AND deleted_at IS NULL
+),
+updated AS (
+  UPDATE agent_group_delegations target
+  SET rate_multiplier = source.rate_multiplier,
+      can_delegate = source.can_delegate,
+      updated_at = CURRENT_TIMESTAMP
+  FROM source
+  WHERE target.manager_user_id = $2
+    AND target.child_user_id = source.child_user_id
+    AND target.group_id = source.group_id
+    AND target.deleted_at IS NULL
+  RETURNING target.child_user_id, target.group_id
+),
+inserted AS (
+  INSERT INTO agent_group_delegations (manager_user_id, child_user_id, group_id, rate_multiplier, can_delegate, created_at, updated_at)
+  SELECT $2, source.child_user_id, source.group_id, source.rate_multiplier, source.can_delegate, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+  FROM source
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM updated
+    WHERE updated.child_user_id = source.child_user_id
+      AND updated.group_id = source.group_id
+  )
+  RETURNING child_user_id, group_id
 )
-DELETE FROM user_allowed_groups uag
-USING lost
-WHERE uag.user_id = lost.user_id
-  AND uag.group_id = lost.group_id`, agentID); err != nil {
-		return err
+DELETE FROM agent_group_delegations
+WHERE manager_user_id = $1
+  AND deleted_at IS NULL`,
+		oldManagerID,
+		newManagerID,
+	)
+	return err
+}
+
+func (r *agentManagementRepository) RehomeChildGroupDelegations(ctx context.Context, oldManagerID int64, newManagerID int64, childID int64) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
 	}
 	_, err := exec.ExecContext(ctx, `
-WITH RECURSIVE lost(user_id, group_id) AS (
-    SELECT child_user_id, group_id
-    FROM agent_group_delegations
-    WHERE manager_user_id = $1 AND deleted_at IS NULL
-  UNION
-    SELECT child_user_id, group_id
-    FROM agent_group_delegations
-    WHERE child_user_id = $1 AND deleted_at IS NULL
-  UNION
-    SELECT agd.child_user_id, agd.group_id
-    FROM agent_group_delegations agd
-    JOIN lost l ON l.user_id = agd.manager_user_id AND l.group_id = agd.group_id
-    WHERE agd.deleted_at IS NULL
+WITH source AS (
+  SELECT group_id, rate_multiplier, can_delegate
+  FROM agent_group_delegations
+  WHERE manager_user_id = $1
+    AND child_user_id = $3
+    AND deleted_at IS NULL
+),
+updated AS (
+  UPDATE agent_group_delegations target
+  SET rate_multiplier = source.rate_multiplier,
+      can_delegate = source.can_delegate,
+      updated_at = CURRENT_TIMESTAMP
+  FROM source
+  WHERE target.manager_user_id = $2
+    AND target.child_user_id = $3
+    AND target.group_id = source.group_id
+    AND target.deleted_at IS NULL
+  RETURNING target.group_id
+),
+inserted AS (
+  INSERT INTO agent_group_delegations (manager_user_id, child_user_id, group_id, rate_multiplier, can_delegate, created_at, updated_at)
+  SELECT $2, $3, source.group_id, source.rate_multiplier, source.can_delegate, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+  FROM source
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM updated
+    WHERE updated.group_id = source.group_id
+  )
+  RETURNING group_id
 )
-DELETE FROM agent_group_delegations agd
-USING lost
-WHERE agd.deleted_at IS NULL
-  AND (
-    agd.manager_user_id = $1
-    OR agd.child_user_id = $1
-    OR (agd.manager_user_id = lost.user_id AND agd.group_id = lost.group_id)
-    OR (agd.child_user_id = lost.user_id AND agd.group_id = lost.group_id)
-  )`, agentID)
+DELETE FROM agent_group_delegations
+WHERE manager_user_id = $1
+  AND child_user_id = $3
+  AND deleted_at IS NULL`,
+		oldManagerID,
+		newManagerID,
+		childID,
+	)
 	return err
 }
 

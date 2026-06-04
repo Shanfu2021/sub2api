@@ -68,7 +68,6 @@ func applyErrorPassthroughRule(
 		c.Set(OpsSkipPassthroughKey, true)
 	}
 
-	// 与现有 failover 场景保持一致：命中规则时统一返回 upstream_error。
-	errType = "upstream_error"
+	errType = clientSafeUpstreamErrorType(upstreamStatus, defaultErrType)
 	return status, errType, errMsg, true
 }

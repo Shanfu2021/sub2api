@@ -2297,8 +2297,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			if !reqStream {
 				c.JSON(statusCode, gin.H{
 					"error": gin.H{
-						"type":    "upstream_error",
-						"message": errMsg,
+						"type":    clientSafeUpstreamErrorType(statusCode, "api_error"),
+						"message": clientSafeUpstreamErrorMessage(statusCode),
 					},
 				})
 			}
@@ -3013,14 +3013,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
 				return nil, NewOpenAIWSClientCloseError(
 					coderws.StatusPolicyViolation,
-					"upstream continuation connection is unavailable; please restart the conversation",
+					"continuation connection is unavailable; please restart the conversation",
 					acquireErr,
 				)
 			}
 			if errors.Is(acquireErr, context.DeadlineExceeded) || errors.Is(acquireErr, errOpenAIWSConnQueueFull) {
 				return nil, NewOpenAIWSClientCloseError(
 					coderws.StatusTryAgainLater,
-					"upstream websocket is busy, please retry later",
+					"service is busy, please retry later",
 					acquireErr,
 				)
 			}
@@ -3752,7 +3752,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					resetSessionLease(true)
 					return NewOpenAIWSClientCloseError(
 						coderws.StatusPolicyViolation,
-						"upstream continuation connection is unavailable; please restart the conversation",
+						"continuation connection is unavailable; please restart the conversation",
 						pingErr,
 					)
 				}

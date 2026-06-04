@@ -723,15 +723,15 @@ func resolveOpenAIWSFallbackErrorResponse(err error) (statusCode int, errType st
 	if upstreamMessage == "" {
 		switch reason {
 		case "upgrade_required":
-			upstreamMessage = "upstream websocket upgrade required"
+			upstreamMessage = "Websocket upgrade required"
 		case "ws_unsupported":
-			upstreamMessage = "upstream websocket not supported"
+			upstreamMessage = "Websocket is not supported"
 		case "auth_failed":
-			upstreamMessage = "upstream authentication failed"
+			upstreamMessage = clientSafeUpstreamErrorMessage(http.StatusUnauthorized)
 		case "upstream_rate_limited":
-			upstreamMessage = "upstream rate limit exceeded, please retry later"
+			upstreamMessage = clientSafeUpstreamErrorMessage(http.StatusTooManyRequests)
 		default:
-			upstreamMessage = "Upstream request failed"
+			upstreamMessage = "Request failed"
 		}
 	}
 
@@ -739,7 +739,7 @@ func resolveOpenAIWSFallbackErrorResponse(err error) (statusCode int, errType st
 		if statusCode == http.StatusTooManyRequests {
 			errType = "rate_limit_error"
 		} else {
-			errType = "upstream_error"
+			errType = "api_error"
 		}
 	}
 	clientMessage = upstreamMessage
@@ -755,7 +755,7 @@ func (s *OpenAIGatewayService) writeOpenAIWSFallbackErrorResponse(c *gin.Context
 		return false
 	}
 	if strings.TrimSpace(clientMessage) == "" {
-		clientMessage = "Upstream request failed"
+		clientMessage = "Request failed"
 	}
 	if strings.TrimSpace(upstreamMessage) == "" {
 		upstreamMessage = clientMessage
@@ -2969,8 +2969,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			})
 			c.JSON(http.StatusBadGateway, gin.H{
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -3265,8 +3265,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		})
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream request failed",
+				"type":    "api_error",
+				"message": "Request failed",
 			},
 		})
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -3573,12 +3573,12 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		UpstreamResponseBody: upstreamDetail,
 	})
 
-	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/json"
-	}
-	c.Data(resp.StatusCode, contentType, body)
+	c.JSON(resp.StatusCode, gin.H{
+		"error": gin.H{
+			"type":    clientSafeUpstreamErrorType(resp.StatusCode, "api_error"),
+			"message": clientSafeUpstreamErrorMessage(resp.StatusCode),
+		},
+	})
 
 	if upstreamMsg == "" {
 		return fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -3742,8 +3742,8 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	}
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
-			"type":    "upstream_error",
-			"message": message,
+			"type":    "api_error",
+			"message": "Service temporarily unavailable",
 		},
 	})
 	return &UpstreamFailoverError{
@@ -4014,7 +4014,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		if terminalOK && terminalType == "response.failed" {
 			msg := extractOpenAISSEErrorMessage(terminalPayload)
 			if msg == "" {
-				msg = "Upstream compact response failed"
+				msg = "Service response failed"
 			}
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
@@ -4267,8 +4267,8 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		resp.StatusCode,
 		body,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed",
+		"api_error",
+		"Request failed",
 	); matched {
 		c.JSON(status, gin.H{
 			"error": gin.H{
@@ -4299,8 +4299,8 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		})
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream gateway error",
+				"type":    "api_error",
+				"message": "Request failed",
 			},
 		})
 		if upstreamMsg == "" {
@@ -4347,24 +4347,24 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	switch resp.StatusCode {
 	case 401:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream authentication failed, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 402:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream payment required: insufficient balance or billing issue"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 403:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream access forbidden, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 429:
 		statusCode = http.StatusTooManyRequests
-		errType = "rate_limit_error"
-		errMsg = "Upstream rate limit exceeded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	default:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream request failed"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	}
 
 	c.JSON(statusCode, gin.H{
@@ -4400,7 +4400,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	if upstreamMsg == "" {
-		upstreamMsg = fmt.Sprintf("Upstream error: %d", resp.StatusCode)
+		upstreamMsg = fmt.Sprintf("service error: %d", resp.StatusCode)
 	}
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
@@ -4417,7 +4417,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	// Apply error passthrough rules
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
 		c, account.Platform, resp.StatusCode, body,
-		http.StatusBadGateway, "api_error", "Upstream request failed",
+		http.StatusBadGateway, "api_error", "Request failed",
 	); matched {
 		writeError(c, status, errType, errMsg)
 		if upstreamMsg == "" {
@@ -4442,7 +4442,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			Message:            upstreamMsg,
 			Detail:             upstreamDetail,
 		})
-		writeError(c, http.StatusInternalServerError, "api_error", "Upstream gateway error")
+		writeError(c, http.StatusInternalServerError, "api_error", "Request failed")
 		if upstreamMsg == "" {
 			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
 		}
@@ -4492,7 +4492,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		errType = "api_error"
 	}
 
-	writeError(c, resp.StatusCode, errType, upstreamMsg)
+	writeError(c, resp.StatusCode, errType, clientSafeUpstreamErrorMessage(resp.StatusCode))
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 
@@ -4602,7 +4602,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return
 		}
 		errorEventSent = true
-		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
+		payload := `{"type":"error","sequence_number":0,"error":{"type":"api_error","message":` + strconv.Quote("Request failed") + `,"code":` + strconv.Quote(reason) + `}}`
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
 			return
@@ -5167,7 +5167,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if terminalOK && terminalType == "response.failed" {
 			msg := extractOpenAISSEErrorMessage(terminalPayload)
 			if msg == "" {
-				msg = "Upstream compact response failed"
+				msg = "Service response failed"
 			}
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
@@ -5232,15 +5232,15 @@ func extractOpenAISSEErrorMessage(payload []byte) string {
 func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.Response, c *gin.Context, message string) error {
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
-		message = "Upstream returned an invalid non-streaming response"
+		message = "Service returned an invalid non-streaming response"
 	}
 	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusBadGateway, gin.H{
 		"error": gin.H{
-			"type":    "upstream_error",
-			"message": message,
+			"type":    "api_error",
+			"message": "Service temporarily unavailable",
 		},
 	})
 	return fmt.Errorf("non-streaming openai protocol error: %s", message)

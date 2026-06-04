@@ -174,6 +174,7 @@ type AgentManagementRepository interface {
 	SetRoleAndParent(ctx context.Context, userID int64, role string, parentID *int64) error
 	SetAllocation(ctx context.Context, userID int64, concurrency int, rpm int) error
 	DeleteLevel1AgentAndMoveChildren(ctx context.Context, agentID int64, rootAdminID int64) error
+	RehomeChildGroupDelegations(ctx context.Context, oldManagerID int64, newManagerID int64, childID int64) error
 	ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]AgentGroupDelegation, error)
 	GetGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64) (*AgentGroupDelegation, error)
 	UpsertGroupDelegation(ctx context.Context, managerID int64, childID int64, groupID int64, rateMultiplier float64, canDelegate bool) error
@@ -631,6 +632,9 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 		return nil
 	}
 	if actor.Role == RoleAgentLevel1 && child.Role == RoleAgentLevel2 {
+		if err := s.repo.RehomeChildGroupDelegations(ctx, actor.ID, rootAdmin.ID, child.ID); err != nil {
+			return err
+		}
 		if err := s.repo.SetRoleAndParent(ctx, child.ID, RoleAgentLevel1, &rootAdmin.ID); err != nil {
 			return err
 		}
@@ -662,6 +666,9 @@ func (s *AgentManagementService) DeleteDirectChild(ctx context.Context, actorID 
 		return nil
 	}
 	if child.Role == RoleUser || child.Role == RoleEnterprise {
+		if err := s.repo.RehomeChildGroupDelegations(ctx, actor.ID, rootAdmin.ID, child.ID); err != nil {
+			return err
+		}
 		if err := s.repo.SetParent(ctx, child.ID, &rootAdmin.ID); err != nil {
 			return err
 		}

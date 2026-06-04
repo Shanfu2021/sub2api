@@ -141,7 +141,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
-		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Request failed")
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -174,7 +174,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			}
 		}
 
-		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
+		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", clientSafeUpstreamErrorMessage(resp.StatusCode))
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
@@ -297,7 +297,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}
 
 	if finalResp == nil {
-		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Service stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
 

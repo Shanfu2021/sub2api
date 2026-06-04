@@ -1412,7 +1412,8 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
-	require.Contains(t, string(failoverErr.ResponseBody), "upstream processing failed")
+	require.Contains(t, string(failoverErr.ResponseBody), "Service temporarily unavailable")
+	require.NotContains(t, string(failoverErr.ResponseBody), "upstream processing failed")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
 }
@@ -2387,7 +2388,8 @@ func TestHandleSSEToJSON_ResponseFailedReturnsProtocolError(t *testing.T) {
 	require.Nil(t, usage)
 	require.Error(t, err)
 	require.Equal(t, http.StatusBadGateway, rec.Code)
-	require.Contains(t, rec.Body.String(), "upstream rejected request")
+	require.Contains(t, rec.Body.String(), "Service temporarily unavailable")
+	require.NotContains(t, rec.Body.String(), "upstream rejected request")
 	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 }
 

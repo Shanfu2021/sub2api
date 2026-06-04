@@ -98,7 +98,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
-		writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "api_error", "Request failed")
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -136,14 +136,18 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
-		writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
+		statusCode := resp.StatusCode
+		if statusCode >= http.StatusInternalServerError {
+			statusCode = http.StatusBadGateway
+		}
+		writeOpenAIEmbeddingsError(c, statusCode, clientSafeUpstreamErrorType(resp.StatusCode, "api_error"), clientSafeUpstreamErrorMessage(resp.StatusCode))
 		return nil, fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
+			writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 		}
 		return nil, fmt.Errorf("read upstream body: %w", err)
 	}

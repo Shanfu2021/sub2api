@@ -20,6 +20,7 @@ type enterpriseManagementRepoStub struct {
 	createEmployeeCalls   []User
 	updateAllocationCalls []EmployeeAllocationUpdate
 	deleteEmployeeCalls   []int64
+	releaseEmployeeCalls  []int64
 	groupDelegations      []agentGroupDelegationRecord
 }
 
@@ -196,7 +197,7 @@ func TestEnterpriseManagementCreateEmployeeRequiresEnterpriseActor(t *testing.T)
 	actorID := int64(1)
 	repo := newEnterpriseManagementRepoStub(&User{ID: actorID, Role: RoleUser, Status: StatusActive})
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
-	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, nil)
 
 	_, err := svc.CreateEmployee(context.Background(), actorID, EmployeeCreateInput{
 		Email:       "employee@test.local",
@@ -215,7 +216,7 @@ func TestEnterpriseManagementCreateEmployeeRejectsBalanceOverEnterpriseBalance(t
 	repo := newEnterpriseManagementRepoStub(&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 5, Status: StatusActive})
 	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
-	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, nil)
 
 	_, err := svc.CreateEmployee(context.Background(), enterpriseID, EmployeeCreateInput{
 		Email:       "employee@test.local",
@@ -234,7 +235,7 @@ func TestEnterpriseManagementCreateEmployeeSetsEmployeeRoleAndParent(t *testing.
 	repo := newEnterpriseManagementRepoStub(&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive})
 	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
-	svc := NewEnterpriseManagementService(repo, userRepo, nil, &agentManagementAuthInvalidatorStub{})
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, &agentManagementAuthInvalidatorStub{})
 
 	employee, err := svc.CreateEmployee(context.Background(), enterpriseID, EmployeeCreateInput{
 		Email:       "employee@test.local",
@@ -263,7 +264,7 @@ func TestEnterpriseManagementUpdateEmployeeAllocationRejectsZeroConcurrency(t *t
 	)
 	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 0}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
-	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, nil)
 
 	_, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
 		Balance:     10,
@@ -285,7 +286,7 @@ func TestEnterpriseManagementUpdateEmployeeAllocationRejectsWhenItWouldExhaustEn
 	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100}
 	repo.quotaUsage = QuotaUsageSummary{Concurrency: 8, RPM: 80}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
-	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, nil)
 
 	_, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
 		Balance:     10,
@@ -306,7 +307,7 @@ func TestEnterpriseManagementFiniteEnterpriseCannotAllocateUnlimitedRPMToEmploye
 	)
 	repo.profiles[enterpriseID] = EnterpriseProfile{UserID: enterpriseID, PoolConcurrency: 10, PoolRPM: 100}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
-	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil)
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, nil)
 
 	_, err := svc.UpdateEmployeeAllocation(context.Background(), enterpriseID, employeeID, EmployeeAllocationUpdate{
 		Balance:     10,
@@ -316,6 +317,26 @@ func TestEnterpriseManagementFiniteEnterpriseCannotAllocateUnlimitedRPMToEmploye
 
 	require.ErrorIs(t, err, ErrEnterpriseManagementAllocationExceeded)
 	require.Empty(t, repo.updateAllocationCalls)
+}
+
+func TestEnterpriseManagementDeleteEmployeeHardDeletesAndReturnsAllocation(t *testing.T) {
+	enterpriseID := int64(10)
+	employeeID := int64(20)
+	repo := newEnterpriseManagementRepoStub(
+		&User{ID: enterpriseID, Role: RoleEnterprise, Balance: 100, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, Balance: 10, Status: StatusActive},
+	)
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := NewEnterpriseManagementService(repo, userRepo, nil, nil, cache)
+
+	err := svc.DeleteEmployee(context.Background(), enterpriseID, employeeID)
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{employeeID}, repo.deleteEmployeeCalls)
+	require.Empty(t, repo.releaseEmployeeCalls)
+	require.NotContains(t, repo.users, employeeID)
+	require.ElementsMatch(t, []int64{enterpriseID, employeeID}, cache.userIDs)
 }
 
 func TestEffectiveAPIUsageCapacityPreservesNegativeEnterpriseRPMAsNoAvailableRPM(t *testing.T) {
@@ -350,7 +371,8 @@ func TestEnterpriseManagementSetEmployeeGroupUsesEnterpriseRateWithoutDelegation
 	}}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", Status: StatusActive, IsExclusive: true, RateMultiplier: 2})
-	svc := NewEnterpriseManagementService(repo, userRepo, groupRepo, nil)
+	userGroupRateRepo := &agentManagementUserGroupRateRepoStub{}
+	svc := NewEnterpriseManagementService(repo, userRepo, groupRepo, userGroupRateRepo, nil)
 
 	err := svc.SetEmployeeGroup(context.Background(), enterpriseID, employeeID, groupID, true)
 
@@ -362,4 +384,11 @@ func TestEnterpriseManagementSetEmployeeGroupUsesEnterpriseRateWithoutDelegation
 	require.Equal(t, 1.8, delegation.RateMultiplier)
 	require.False(t, delegation.CanDelegate)
 	require.Equal(t, []int64{groupID}, repo.users[employeeID].AllowedGroups)
+	require.Equal(t, 1.8, userGroupRateRepo.rates[employeeID][groupID])
+
+	err = svc.SetEmployeeGroup(context.Background(), enterpriseID, employeeID, groupID, false)
+
+	require.NoError(t, err)
+	require.Empty(t, repo.users[employeeID].AllowedGroups)
+	require.NotContains(t, userGroupRateRepo.rates[employeeID], groupID)
 }

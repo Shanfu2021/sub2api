@@ -154,8 +154,8 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		})
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream request failed",
+				"type":    "api_error",
+				"message": "Request failed",
 			},
 		})
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -221,7 +221,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 			c.JSON(http.StatusBadGateway, gin.H{
 				"error": gin.H{
 					"type":    "api_error",
-					"message": "Failed to read upstream response",
+					"message": "Failed to read service response",
 				},
 			})
 		}

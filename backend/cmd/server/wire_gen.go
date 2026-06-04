@@ -77,7 +77,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	enterpriseManagementRepository := repository.NewEnterpriseManagementRepository(client, db)
 	purchaseInfoRepository := repository.NewPurchaseInfoRepository(db)
 	agentManagementService := service.ProvideAgentManagementService(agentManagementRepository, userRepository, groupRepository, apiKeyAuthCacheInvalidator, enterpriseManagementRepository, userGroupRateRepository, settingRepository)
-	enterpriseManagementService := service.NewEnterpriseManagementService(enterpriseManagementRepository, userRepository, groupRepository, apiKeyAuthCacheInvalidator)
+	enterpriseManagementService := service.NewEnterpriseManagementService(enterpriseManagementRepository, userRepository, groupRepository, userGroupRateRepository, apiKeyAuthCacheInvalidator)
 	purchaseInfoService := service.NewPurchaseInfoService(purchaseInfoRepository)
 	authService := service.ProvideAuthService(client, userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService, subscriptionService, affiliateService, serviceUserPlatformQuotaRepository, agentManagementService)
 	userService := service.NewUserService(userRepository, settingRepository, apiKeyAuthCacheInvalidator, billingCache)

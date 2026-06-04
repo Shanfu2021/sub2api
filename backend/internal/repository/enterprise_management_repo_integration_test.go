@@ -243,7 +243,7 @@ UPDATE users SET balance = 30, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
 	s.Require().InDelta(30, s.userBalance(employee.ID), 0.000001)
 }
 
-func (s *EnterpriseManagementRepoSuite) TestDeleteEmployeeReturnsBalanceAndHardDeletes() {
+func (s *EnterpriseManagementRepoSuite) TestDeleteEmployeeAndReturnAllocationHardDeletesEmployeeAndConfiguration() {
 	enterprise := s.mustCreateEnterprise("enterprise-delete@test.local", 100, service.StatusActive)
 	s.Require().NoError(s.repo.UpsertEnterpriseProfile(s.ctx, enterprise.ID, 10, 100))
 	employee := s.mustCreateEmployeeThroughRepo(enterprise.ID, "employee-delete@test.local", 25, 3, 30)
@@ -269,12 +269,7 @@ VALUES ($1, $2, $3, 1.25, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 	s.Require().Contains(affected, enterprise.ID)
 	s.Require().Contains(affected, employee.ID)
 	s.Require().InDelta(100, s.userBalance(enterprise.ID), 0.000001)
-
-	exists, err := s.client.User.Query().
-		Where(dbuser.IDEQ(employee.ID)).
-		Exist(mixins.SkipSoftDelete(s.ctx))
-	s.Require().NoError(err)
-	s.Require().False(exists)
+	s.Require().False(s.userExistsIncludingDeleted(employee.ID))
 	s.Require().Equal(0, s.countRows("user_allowed_groups", "user_id = $1", employee.ID))
 	s.Require().Equal(0, s.countRows("agent_group_delegations", "child_user_id = $1", employee.ID))
 	s.Require().Equal(1, s.countRows("enterprise_employee_balance_logs", "employee_user_id = $1 AND reason = $2", employee.ID, "delete_employee"))

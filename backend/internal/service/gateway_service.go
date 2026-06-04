@@ -4678,8 +4678,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -5208,8 +5208,8 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -5999,8 +5999,8 @@ func (s *GatewayService) executeBedrockUpstream(
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -7324,8 +7324,8 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		resp.StatusCode,
 		body,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed",
+		"api_error",
+		"Request failed",
 	); matched {
 		c.JSON(status, gin.H{
 			"type": "error",
@@ -7351,7 +7351,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": clientSafeUpstreamErrorMessage(resp.StatusCode),
+			},
+		})
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -7362,28 +7368,28 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
 	case 401:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream authentication failed, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 403:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream access forbidden, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 429:
 		statusCode = http.StatusTooManyRequests
-		errType = "rate_limit_error"
-		errMsg = "Upstream rate limit exceeded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 529:
 		statusCode = http.StatusServiceUnavailable
-		errType = "overloaded_error"
-		errMsg = "Upstream service overloaded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 500, 502, 503, 504:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream service temporarily unavailable"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	default:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream request failed"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	}
 
 	// 返回自定义错误响应
@@ -7486,8 +7492,8 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		resp.StatusCode,
 		respBody,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed after retries",
+		"api_error",
+		clientSafeUpstreamErrorMessage(resp.StatusCode),
 	); matched {
 		c.JSON(status, gin.H{
 			"type": "error",
@@ -7511,8 +7517,8 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	c.JSON(http.StatusBadGateway, gin.H{
 		"type": "error",
 		"error": gin.H{
-			"type":    "upstream_error",
-			"message": "Upstream request failed after retries",
+			"type":    clientSafeUpstreamErrorType(resp.StatusCode, "api_error"),
+			"message": clientSafeUpstreamErrorMessage(resp.StatusCode),
 		},
 	})
 
@@ -9385,7 +9391,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// 获取凭证
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to get access token")
 		return err
 	}
 
@@ -9410,19 +9416,19 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
 
 	// 读取响应体
 	countTokensTooLarge := func(c *gin.Context) {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Service response too large")
 	}
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 	_ = resp.Body.Close()
 	if err != nil {
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+			s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 		}
 		return err
 	}
@@ -9445,7 +9451,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 				_ = resp.Body.Close()
 				if err != nil {
 					if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-						s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+						s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 					}
 					return err
 				}
@@ -9490,14 +9496,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		}
 
 		// 返回简化的错误响应
-		errMsg := "Upstream request failed"
-		switch resp.StatusCode {
-		case 429:
-			errMsg = "Rate limit exceeded"
-		case 529:
-			errMsg = "Service overloaded"
-		}
-		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
+		s.countTokensError(c, resp.StatusCode, clientSafeUpstreamErrorType(resp.StatusCode, "api_error"), clientSafeUpstreamErrorMessage(resp.StatusCode))
 		if upstreamMsg == "" {
 			return fmt.Errorf("upstream error: %d", resp.StatusCode)
 		}
@@ -9512,11 +9511,11 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to get access token")
 		return err
 	}
 	if tokenType != "apikey" {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Invalid account token type")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Invalid account token type")
 		return fmt.Errorf("anthropic api key passthrough requires apikey token, got: %s", tokenType)
 	}
 
@@ -9544,18 +9543,18 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			Kind:               "request_error",
 			Message:            sanitizeUpstreamErrorMessage(err.Error()),
 		})
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
 
 	countTokensTooLarge := func(c *gin.Context) {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Service response too large")
 	}
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 	_ = resp.Body.Close()
 	if err != nil {
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+			s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 		}
 		return err
 	}
@@ -9575,7 +9574,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			logger.LegacyPrintf("service.gateway",
 				"[count_tokens] Upstream does not support count_tokens (404), returning 404: account=%d name=%s msg=%s",
 				account.ID, account.Name, truncateString(upstreamMsg, 512))
-			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported by upstream")
+			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported")
 			return nil
 		}
 
@@ -9601,14 +9600,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			Detail:             upstreamDetail,
 		})
 
-		errMsg := "Upstream request failed"
-		switch resp.StatusCode {
-		case 429:
-			errMsg = "Rate limit exceeded"
-		case 529:
-			errMsg = "Service overloaded"
-		}
-		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
+		s.countTokensError(c, resp.StatusCode, clientSafeUpstreamErrorType(resp.StatusCode, "api_error"), clientSafeUpstreamErrorMessage(resp.StatusCode))
 		if upstreamMsg == "" {
 			return fmt.Errorf("upstream error: %d", resp.StatusCode)
 		}

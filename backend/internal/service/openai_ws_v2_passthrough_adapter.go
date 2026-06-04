@@ -688,28 +688,28 @@ func (s *OpenAIGatewayService) mapOpenAIWSPassthroughDialError(
 	if errors.Is(err, context.DeadlineExceeded) {
 		return NewOpenAIWSClientCloseError(
 			coderws.StatusTryAgainLater,
-			"upstream websocket connect timeout",
+			"service connection timeout",
 			wrappedErr,
 		)
 	}
 	if statusCode == http.StatusTooManyRequests {
 		return NewOpenAIWSClientCloseError(
 			coderws.StatusTryAgainLater,
-			"upstream websocket is busy, please retry later",
+			"service is busy, please retry later",
 			wrappedErr,
 		)
 	}
 	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
 		return NewOpenAIWSClientCloseError(
 			coderws.StatusPolicyViolation,
-			"upstream websocket authentication failed",
+			"authentication failed",
 			wrappedErr,
 		)
 	}
 	if statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError {
 		return NewOpenAIWSClientCloseError(
 			coderws.StatusPolicyViolation,
-			"upstream websocket handshake rejected",
+			"websocket handshake rejected",
 			wrappedErr,
 		)
 	}
