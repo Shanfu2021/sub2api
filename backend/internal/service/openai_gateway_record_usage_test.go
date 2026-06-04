@@ -342,6 +342,208 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_UsesAuthSnapshotUserGroupRateOverride(t *testing.T) {
+	groupID := int64(111)
+	snapshotRate := 0.36
+	usage := OpenAIUsage{InputTokens: 16, OutputTokens: 6}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	rateRepo := &openAIUserGroupRateRepoStub{err: errors.New("should not query repo when snapshot override exists")}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		rateRepo,
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_snapshot_user_group_rate",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      9100,
+			GroupID: i64p(groupID),
+			Group:  &Group{ID: groupID, RateMultiplier: 1.0},
+		},
+		User:    &User{ID: 9200, UserGroupRateOverride: &snapshotRate},
+		Account: &Account{ID: 9300},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 0, rateRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, snapshotRate, usageRepo.lastLog.RateMultiplier, 1e-12)
+
+	expected := expectedOpenAICost(t, svc, "gpt-5.1", usage, snapshotRate)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expected.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_UsesSnapshotLoadedDefaultWhenGroupRateCleared(t *testing.T) {
+	groupID := int64(1111)
+	usage := OpenAIUsage{InputTokens: 14, OutputTokens: 4}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	rateRepo := &openAIUserGroupRateRepoStub{err: errors.New("should not query repo when snapshot confirms no override")}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		rateRepo,
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_snapshot_group_rate_cleared",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      9111,
+			GroupID: i64p(groupID),
+			Group:  &Group{ID: groupID, RateMultiplier: 0.9},
+		},
+		User: &User{
+			ID:                          9211,
+			UserGroupRateOverrideLoaded: true,
+			Enterprise: &EnterpriseContext{
+				TenantID:                     9311,
+				TenantStatus:                 EnterpriseTenantStatusActive,
+				MemberDefaultPricingFactor: 0.44,
+			},
+		},
+		Account: &Account{ID: 9411},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 0, rateRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.44, usageRepo.lastLog.RateMultiplier, 1e-12)
+
+	expected := expectedOpenAICost(t, svc, "gpt-5.1", usage, 0.44)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expected.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_EnterpriseMemberPricingAndTenantCostAreSeparated(t *testing.T) {
+	groupID := int64(112)
+	tenantID := int64(9012)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 5, CacheReadInputTokens: 2}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, &openAIUserGroupRateRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_enterprise_member_pricing",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      9101,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+			},
+		},
+		User: &User{
+			ID: 9201,
+			Enterprise: &EnterpriseContext{
+				TenantID:          tenantID,
+				TenantStatus:      EnterpriseTenantStatusActive,
+				PricingFactor:     0.55,
+				PricingScope:      PromoDiscountScopeBalance,
+				PricingFloorFactor: 0.8,
+				GroupRates: map[int64]float64{
+					groupID: 0.3,
+				},
+				MemberGroupRates: map[int64]float64{
+					groupID: 0.5,
+				},
+			},
+		},
+		Account: &Account{ID: 9301},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.55, usageRepo.lastLog.RateMultiplier, 1e-12)
+
+	memberCost := expectedOpenAICost(t, svc, "gpt-5.1", usage, 0.55)
+	tenantCost := expectedOpenAICost(t, svc, "gpt-5.1", usage, 0.3)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.NotNil(t, billingRepo.lastCmd.EnterpriseTenantID)
+	require.Equal(t, tenantID, *billingRepo.lastCmd.EnterpriseTenantID)
+	require.InDelta(t, memberCost.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-12)
+	require.InDelta(t, tenantCost.ActualCost, billingRepo.lastCmd.EnterpriseCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_EnterpriseGroupDefaultMemberPricing(t *testing.T) {
+	groupID := int64(113)
+	usage := OpenAIUsage{InputTokens: 12, OutputTokens: 4}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		&openAIUserGroupRateRepoStub{},
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_enterprise_group_default_member_pricing",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      9102,
+			GroupID: i64p(groupID),
+			Group:  &Group{ID: groupID, RateMultiplier: 1.0},
+		},
+		User: &User{
+			ID: 9202,
+			Enterprise: &EnterpriseContext{
+				TenantID:     9013,
+				TenantStatus: EnterpriseTenantStatusActive,
+				GroupRates: map[int64]float64{
+					groupID: 0.2,
+				},
+				MemberGroupRates: map[int64]float64{
+					groupID: 0.42,
+				},
+			},
+		},
+		Account: &Account{ID: 9302},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.42, usageRepo.lastLog.RateMultiplier, 1e-12)
+
+	memberCost := expectedOpenAICost(t, svc, "gpt-5.1", usage, 0.42)
+	tenantCost := expectedOpenAICost(t, svc, "gpt-5.1", usage, 0.2)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, memberCost.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-12)
+	require.InDelta(t, tenantCost.ActualCost, billingRepo.lastCmd.EnterpriseCost, 1e-12)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

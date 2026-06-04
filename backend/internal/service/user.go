@@ -68,6 +68,13 @@ type User struct {
 	// 避免每请求查 DB。字段不持久化到数据库。
 	UserGroupRPMOverride *int
 
+	// UserGroupRateOverride 来自 auth cache snapshot 的 (user, group) 专属倍率覆盖值。
+	// nil = 无 override（回退到企业/分组默认）；非 nil 时计费热路径直接使用。
+	UserGroupRateOverride *float64
+	// UserGroupRateOverrideLoaded 表示当前 API Key 对应的 (user, group) 专属倍率已查询过。
+	// true 且 UserGroupRateOverride == nil 时，必须直接使用默认倍率，避免清空专属倍率后命中旧本地缓存。
+	UserGroupRateOverrideLoaded bool
+
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 }

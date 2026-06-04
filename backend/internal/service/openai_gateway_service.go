@@ -6059,11 +6059,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			groupDefault = enterpriseDefault
 			usesEnterpriseGroupDefault = true
 		}
-		resolver := s.userGroupRateResolver
-		if resolver == nil {
-			resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
+		if user != nil && user.UserGroupRateOverride != nil {
+			multiplier = *user.UserGroupRateOverride
+		} else if user != nil && user.UserGroupRateOverrideLoaded {
+			multiplier = groupDefault
+		} else {
+			resolver := s.userGroupRateResolver
+			if resolver == nil {
+				resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
+			}
+			multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, groupDefault)
 		}
-		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
 	discountFactor := effectiveUserPricingDiscountFactor(user, apiKey.Group)
 	if usesEnterpriseGroupDefault {

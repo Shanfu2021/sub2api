@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: enterprise member defaults and concurrency
+const apiKeyAuthSnapshotVersion = 19 // v19: enterprise pricing/concurrency + explicit group-rate nil snapshot
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -242,13 +242,20 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		},
 	}
 
-	// 填充 (user, group) RPM override —— snapshot 构建时查一次 DB，后续请求零 DB 往返。
+	// 填充 (user, group) 专属倍率/RPM override —— snapshot 构建时查一次 DB，后续请求零 DB 往返。
 	if apiKey.GroupID != nil && *apiKey.GroupID > 0 && s.userGroupRateRepo != nil {
+		rate, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
+		if err == nil {
+			snapshot.User.UserGroupRateOverrideLoaded = true
+			if rate != nil {
+				snapshot.User.UserGroupRateOverride = rate
+			}
+		}
 		override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
 		if err == nil && override != nil {
 			snapshot.User.UserGroupRPMOverride = override
 		}
-		// 查询失败或无 override 时留 nil，checkRPM 会回退到 DB 查询
+		// 查询失败或无 override 时留 nil，运行态会回退到默认值/DB 查询
 	}
 	if apiKey.Group != nil {
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
@@ -324,6 +331,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			TotalRecharged:             snapshot.User.TotalRecharged,
 			RPMLimit:                   snapshot.User.RPMLimit,
 			UserGroupRPMOverride:       snapshot.User.UserGroupRPMOverride,
+			UserGroupRateOverride:      snapshot.User.UserGroupRateOverride,
+			UserGroupRateOverrideLoaded: snapshot.User.UserGroupRateOverrideLoaded,
 		},
 	}
 	if snapshot.Group != nil {

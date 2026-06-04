@@ -1411,7 +1411,14 @@ func (s *EnterpriseService) syncEnterpriseMemberGroupRates(ctx context.Context, 
 	if s.userGroupRateRepo == nil {
 		return errors.InternalServer("ENTERPRISE_GROUP_RATES_UNAVAILABLE", "enterprise group rate repository unavailable")
 	}
-	return s.userGroupRateRepo.SyncUserGroupRates(ctx, userID, normalizeEnterpriseMemberGroupRatesForRepo(rates))
+	if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, userID, normalizeEnterpriseMemberGroupRatesForRepo(rates)); err != nil {
+		return err
+	}
+	invalidateUserGroupRateRuntimeCache()
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	}
+	return nil
 }
 
 func hashPasswordForEnterpriseCreate(password string) (string, error) {

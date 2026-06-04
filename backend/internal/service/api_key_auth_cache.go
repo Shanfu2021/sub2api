@@ -56,6 +56,13 @@ type APIKeyAuthUserSnapshot struct {
 	// UserGroupRPMOverride 该 API Key 对应的 (user, group) 专属 RPM 覆盖值。
 	// nil = 无 override（回退到 group/user 级）；0 = 不限流；>0 = 专属上限。
 	UserGroupRPMOverride *int `json:"user_group_rpm_override,omitempty"`
+
+	// UserGroupRateOverride 该 API Key 对应的 (user, group) 专属倍率覆盖值。
+	// nil = 无 override（回退到企业/分组默认）。
+	UserGroupRateOverride *float64 `json:"user_group_rate_override,omitempty"`
+	// UserGroupRateOverrideLoaded 表示已查询过 (user, group) 专属倍率。
+	// true 且 UserGroupRateOverride == nil 表示确认无覆盖，运行态不得再查旧本地缓存。
+	UserGroupRateOverrideLoaded bool `json:"user_group_rate_override_loaded,omitempty"`
 }
 
 // APIKeyAuthGroupSnapshot 分组快照

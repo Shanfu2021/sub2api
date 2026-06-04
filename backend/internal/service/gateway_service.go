@@ -8137,13 +8137,13 @@ func enterpriseGroupDefaultRateMultiplier(user *User, group *Group) (float64, bo
 	if user == nil || group == nil || user.Enterprise == nil || user.Enterprise.TenantStatus != EnterpriseTenantStatusActive {
 		return 0, false
 	}
+	if PromoDiscountAppliesToGroup(NormalizeEnterprisePricingScopeForRepo(user.Enterprise.PricingScope), group) && user.Enterprise.PricingFactor > 0 {
+		return normalizeEnterprisePricingFactor(user.Enterprise.PricingFactor), true
+	}
 	if user.Enterprise.MemberGroupRates != nil {
 		if rate, ok := user.Enterprise.MemberGroupRates[group.ID]; ok {
 			return normalizeEnterprisePricingFactor(rate), true
 		}
-	}
-	if PromoDiscountAppliesToGroup(NormalizeEnterprisePricingScopeForRepo(user.Enterprise.PricingScope), group) && user.Enterprise.PricingFactor > 0 {
-		return normalizeEnterprisePricingFactor(user.Enterprise.PricingFactor), true
 	}
 	if user.Enterprise.MemberDefaultPricingFactor > 0 {
 		return normalizeEnterprisePricingFactor(user.Enterprise.MemberDefaultPricingFactor), true
@@ -8797,7 +8797,13 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			groupDefault = enterpriseDefault
 			usesEnterpriseGroupDefault = true
 		}
-		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
+		if user != nil && user.UserGroupRateOverride != nil {
+			multiplier = *user.UserGroupRateOverride
+		} else if user != nil && user.UserGroupRateOverrideLoaded {
+			multiplier = groupDefault
+		} else {
+			multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
+		}
 	}
 	discountFactor := effectiveUserPricingDiscountFactor(user, apiKey.Group)
 	if usesEnterpriseGroupDefault {
