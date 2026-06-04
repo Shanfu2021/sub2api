@@ -180,4 +180,24 @@ describe('agent management api', () => {
     expect(put).toHaveBeenCalledWith('/agent-management/invite-default-groups/7', { rate_multiplier: 2.4 })
     expect(del).toHaveBeenCalledWith('/agent-management/invite-default-groups/7')
   })
+
+  it('updates child group delegations in batch', async () => {
+    const response = { child_id: 12, group_ids: [7, 8], all: false }
+    const payload = { group_ids: [7, 8], all: false, rate_multiplier: 3.2, can_delegate: true }
+    put.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.setChildGroupDelegationsBatch(12, payload)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/children/12/groups/batch', payload)
+  })
+
+  it('updates invite default groups in batch', async () => {
+    const response = { group_ids: [], all: true }
+    const payload = { group_ids: [], all: true, rate_multiplier: 3.2 }
+    put.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.setInviteGroupDefaultsBatch(payload)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/invite-default-groups/batch', payload)
+  })
 })

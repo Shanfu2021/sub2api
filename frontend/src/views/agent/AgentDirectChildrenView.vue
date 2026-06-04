@@ -238,6 +238,58 @@
         </div>
 
         <div v-else class="space-y-3">
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div class="flex flex-wrap items-center gap-3">
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                  <input
+                    data-test="group-batch-all"
+                    class="checkbox"
+                    type="checkbox"
+                    :checked="groupBatchAll"
+                    @change="setGroupBatchAll(($event.target as HTMLInputElement).checked)"
+                  />
+                  <span>{{ t('agentManagement.groups.batchAll') }}</span>
+                </label>
+                <span class="text-sm text-gray-500 dark:text-dark-400">
+                  {{ t('agentManagement.groups.batchSelected', { count: selectedGroupBatchIDs.length }) }}
+                </span>
+              </div>
+
+              <div class="flex flex-wrap items-end gap-3">
+                <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                  <span>{{ t('agentManagement.groups.batchRate') }}</span>
+                  <input
+                    v-model.number="groupBatchRate"
+                    data-test="group-batch-rate"
+                    class="input h-9 w-28"
+                    type="number"
+                    min="0.000001"
+                    step="0.000001"
+                  />
+                </label>
+                <label class="flex min-h-9 items-center gap-2 text-xs text-gray-600 dark:text-dark-300">
+                  <input
+                    v-model="groupBatchCanDelegate"
+                    data-test="group-batch-can-delegate"
+                    class="checkbox"
+                    type="checkbox"
+                  />
+                  <span>{{ t('agentManagement.groups.allowChildDelegate') }}</span>
+                </label>
+                <button
+                  data-test="apply-group-batch"
+                  class="btn btn-primary h-9 px-3"
+                  :disabled="groupBatchSaving"
+                  @click="applyGroupDelegationBatch"
+                >
+                  <Icon name="check" size="sm" />
+                  <span>{{ t('agentManagement.groups.applyBatch') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div
             v-for="groupRate in groupDialog.groups"
             :key="groupRate.group.id"
@@ -246,6 +298,14 @@
             <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
+                  <input
+                    :data-test="`group-batch-select-${groupRate.group.id}`"
+                    class="checkbox"
+                    type="checkbox"
+                    :checked="selectedGroupBatchIDs.includes(groupRate.group.id)"
+                    :disabled="groupBatchAll"
+                    @change="updateGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                  />
                   <input
                     :data-test="`group-assigned-${groupRate.group.id}`"
                     class="checkbox"
@@ -383,6 +443,11 @@ const groupDialog = reactive<{
   groups: [],
 })
 const groupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number; can_delegate: boolean }>>({})
+const groupBatchAll = ref(false)
+const groupBatchRate = ref(1)
+const groupBatchCanDelegate = ref(false)
+const groupBatchSaving = ref(false)
+const selectedGroupBatchIDs = ref<number[]>([])
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
@@ -729,6 +794,10 @@ function syncGroupDrafts(groups: AgentChildGroupDelegationOption[]) {
       can_delegate: item.assigned ? item.child_can_delegate : false,
     }
   }
+  selectedGroupBatchIDs.value = []
+  groupBatchAll.value = false
+  groupBatchRate.value = groups[0]?.effective_rate ?? 1
+  groupBatchCanDelegate.value = false
 }
 
 function groupDraftFor(groupRate: AgentChildGroupDelegationOption) {
@@ -763,6 +832,23 @@ function updateGroupCanDelegateDraft(groupID: number, canDelegate: boolean) {
   }
 }
 
+function setGroupBatchAll(all: boolean) {
+  groupBatchAll.value = all
+  if (all) {
+    selectedGroupBatchIDs.value = []
+  }
+}
+
+function updateGroupBatchSelection(groupID: number, selected: boolean) {
+  const next = new Set(selectedGroupBatchIDs.value)
+  if (selected) {
+    next.add(groupID)
+  } else {
+    next.delete(groupID)
+  }
+  selectedGroupBatchIDs.value = Array.from(next)
+}
+
 async function openGroupDialog(child: AgentManagedUser) {
   groupDialog.child = child
   groupDialog.show = true
@@ -785,6 +871,7 @@ function closeGroupDialog() {
   groupDialog.child = null
   groupDialog.groups = []
   groupDialog.savingGroupId = null
+  groupBatchSaving.value = false
   clearGroupDrafts()
 }
 
@@ -823,6 +910,37 @@ async function removeGroupDelegation(groupRate: AgentChildGroupDelegationOption)
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.removeFailed'))
   } finally {
     groupDialog.savingGroupId = null
+  }
+}
+
+async function applyGroupDelegationBatch() {
+  if (!groupDialog.child) return
+  const rateMultiplier = normalizedPositiveFloat(groupBatchRate.value)
+  if (rateMultiplier <= 0) {
+    appStore.showError(t('agentManagement.groups.invalidRate'))
+    return
+  }
+  if (!groupBatchAll.value && selectedGroupBatchIDs.value.length === 0) {
+    appStore.showError(t('agentManagement.groups.batchSelectionRequired'))
+    return
+  }
+
+  groupBatchSaving.value = true
+  try {
+    await agentManagementAPI.setChildGroupDelegationsBatch(groupDialog.child.id, {
+      group_ids: groupBatchAll.value ? [] : selectedGroupBatchIDs.value,
+      all: groupBatchAll.value,
+      rate_multiplier: rateMultiplier,
+      can_delegate: groupBatchCanDelegate.value,
+    })
+    appStore.showSuccess(t('agentManagement.groups.batchDelegationSaved'))
+    const groups = await agentManagementAPI.listChildGroupDelegationOptions(groupDialog.child.id)
+    groupDialog.groups = groups.filter((item) => item.can_delegate && item.group.is_exclusive)
+    syncGroupDrafts(groupDialog.groups)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.batchDelegationFailed'))
+  } finally {
+    groupBatchSaving.value = false
   }
 }
 

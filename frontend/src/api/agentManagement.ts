@@ -4,10 +4,14 @@ import type {
   AgentAdminTreeResponse,
   AgentChildGroupDelegationOption,
   AgentDirectChildrenResponse,
+  AgentGroupDelegationBatchRequest,
+  AgentGroupDelegationBatchResponse,
   AgentDirectUserCreateRequest,
   AgentGroupDelegationRequest,
   AgentGroupDelegationResponse,
   AgentGroupRate,
+  AgentInviteGroupDefaultBatchRequest,
+  AgentInviteGroupDefaultBatchResponse,
   AgentInviteGroupDefaultRequest,
   AgentInviteGroupDefaultResponse,
   AgentInviteDefaultsUpdate,
@@ -134,6 +138,17 @@ export async function setChildGroupDelegation(
   return data
 }
 
+export async function setChildGroupDelegationsBatch(
+  childId: number,
+  payload: AgentGroupDelegationBatchRequest
+): Promise<AgentGroupDelegationBatchResponse> {
+  const { data } = await apiClient.put<AgentGroupDelegationBatchResponse>(
+    `${BASE_PATH}/children/${childId}/groups/batch`,
+    payload
+  )
+  return data
+}
+
 export async function removeChildGroupDelegation(childId: number, groupId: number): Promise<AgentGroupDelegationResponse> {
   const { data } = await apiClient.delete<AgentGroupDelegationResponse>(
     `${BASE_PATH}/children/${childId}/groups/${groupId}`
@@ -147,6 +162,16 @@ export async function setInviteGroupDefault(
 ): Promise<AgentInviteGroupDefaultResponse> {
   const { data } = await apiClient.put<AgentInviteGroupDefaultResponse>(
     `${BASE_PATH}/invite-default-groups/${groupId}`,
+    payload
+  )
+  return data
+}
+
+export async function setInviteGroupDefaultsBatch(
+  payload: AgentInviteGroupDefaultBatchRequest
+): Promise<AgentInviteGroupDefaultBatchResponse> {
+  const { data } = await apiClient.put<AgentInviteGroupDefaultBatchResponse>(
+    `${BASE_PATH}/invite-default-groups/batch`,
     payload
   )
   return data
@@ -178,8 +203,10 @@ export const agentManagementAPI = {
   listChildGroupDelegationOptions,
   listInviteGroupDefaultOptions,
   setChildGroupDelegation,
+  setChildGroupDelegationsBatch,
   removeChildGroupDelegation,
   setInviteGroupDefault,
+  setInviteGroupDefaultsBatch,
   removeInviteGroupDefault,
 }
 

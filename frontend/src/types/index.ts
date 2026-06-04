@@ -380,8 +380,18 @@ export interface AgentGroupDelegationRequest {
   can_delegate: boolean
 }
 
+export interface AgentGroupDelegationBatchRequest extends AgentGroupDelegationRequest {
+  group_ids: number[]
+  all: boolean
+}
+
 export interface AgentInviteGroupDefaultRequest {
   rate_multiplier: number
+}
+
+export interface AgentInviteGroupDefaultBatchRequest extends AgentInviteGroupDefaultRequest {
+  group_ids: number[]
+  all: boolean
 }
 
 export interface AgentGroupDelegationResponse {
@@ -389,8 +399,19 @@ export interface AgentGroupDelegationResponse {
   group_id: number
 }
 
+export interface AgentGroupDelegationBatchResponse {
+  child_id: number
+  group_ids: number[]
+  all: boolean
+}
+
 export interface AgentInviteGroupDefaultResponse {
   group_id: number
+}
+
+export interface AgentInviteGroupDefaultBatchResponse {
+  group_ids: number[]
+  all: boolean
 }
 
 export interface EnterpriseEmployee extends AgentManagedUser {

@@ -46,6 +46,49 @@
             </div>
 
             <div v-else class="grid gap-3">
+              <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+                <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                      <input
+                        data-test="invite-default-batch-all"
+                        class="checkbox"
+                        type="checkbox"
+                        :checked="inviteDefaultBatchAll"
+                        @change="setInviteDefaultBatchAll(($event.target as HTMLInputElement).checked)"
+                      />
+                      <span>{{ t('agentManagement.groups.batchAll') }}</span>
+                    </label>
+                    <span class="text-sm text-gray-500 dark:text-dark-400">
+                      {{ t('agentManagement.groups.batchSelected', { count: selectedInviteDefaultBatchGroupIDs.length }) }}
+                    </span>
+                  </div>
+
+                  <div class="flex flex-wrap items-end gap-3">
+                    <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                      <span>{{ t('agentManagement.groups.batchRate') }}</span>
+                      <input
+                        v-model.number="inviteDefaultBatchRate"
+                        data-test="invite-default-batch-rate"
+                        class="input h-9 w-28"
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                      />
+                    </label>
+                    <button
+                      data-test="apply-invite-default-batch"
+                      class="btn btn-primary h-9 px-3"
+                      :disabled="savingInviteDefaultBatch"
+                      @click="applyInviteDefaultBatch"
+                    >
+                      <Icon name="check" size="sm" />
+                      <span>{{ t('agentManagement.groups.applyBatch') }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div
                 v-for="groupRate in inviteDefaultGroupOptions"
                 :key="groupRate.group.id"
@@ -56,6 +99,17 @@
               >
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center">
                   <div class="flex min-w-0 flex-1 items-center gap-4">
+                    <div class="flex-shrink-0">
+                      <input
+                        :data-test="`invite-default-batch-select-${groupRate.group.id}`"
+                        class="checkbox"
+                        type="checkbox"
+                        :checked="selectedInviteDefaultBatchGroupIDs.includes(groupRate.group.id)"
+                        :disabled="inviteDefaultBatchAll"
+                        @change="updateInviteDefaultBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                      />
+                    </div>
+
                     <div class="flex-shrink-0">
                       <input
                         :data-test="`invite-default-assigned-${groupRate.group.id}`"
@@ -179,9 +233,13 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const inviteDefaultLoading = ref(false)
 const savingInviteDefaultGroupId = ref<number | null>(null)
+const savingInviteDefaultBatch = ref(false)
 const groups = ref<AgentGroupRate[]>([])
 const inviteDefaultGroupOptions = ref<AgentChildGroupDelegationOption[]>([])
 const inviteDefaultDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number }>>({})
+const inviteDefaultBatchAll = ref(false)
+const inviteDefaultBatchRate = ref(1)
+const selectedInviteDefaultBatchGroupIDs = ref<number[]>([])
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('common.name') },
@@ -224,6 +282,9 @@ function syncInviteDefaultDrafts(options: AgentChildGroupDelegationOption[]) {
       rate_multiplier: item.assigned ? item.child_rate_multiplier : item.effective_rate,
     }
   }
+  selectedInviteDefaultBatchGroupIDs.value = []
+  inviteDefaultBatchAll.value = false
+  inviteDefaultBatchRate.value = options[0]?.effective_rate ?? 1
 }
 
 function inviteDefaultDraftFor(groupRate: AgentChildGroupDelegationOption) {
@@ -248,6 +309,23 @@ function updateInviteDefaultRateDraft(groupId: number, rawValue: string) {
     ...(inviteDefaultDrafts[groupId] || { assigned: true, rate_multiplier: 0 }),
     rate_multiplier: normalizedPositiveFloat(rawValue),
   }
+}
+
+function setInviteDefaultBatchAll(all: boolean) {
+  inviteDefaultBatchAll.value = all
+  if (all) {
+    selectedInviteDefaultBatchGroupIDs.value = []
+  }
+}
+
+function updateInviteDefaultBatchSelection(groupId: number, selected: boolean) {
+  const next = new Set(selectedInviteDefaultBatchGroupIDs.value)
+  if (selected) {
+    next.add(groupId)
+  } else {
+    next.delete(groupId)
+  }
+  selectedInviteDefaultBatchGroupIDs.value = Array.from(next)
 }
 
 async function loadGroups() {
@@ -323,6 +401,33 @@ async function removeInviteDefaultGroup(groupRate: AgentChildGroupDelegationOpti
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.inviteDefaultGroupRemoveFailed'))
   } finally {
     savingInviteDefaultGroupId.value = null
+  }
+}
+
+async function applyInviteDefaultBatch() {
+  const rateMultiplier = normalizedPositiveFloat(inviteDefaultBatchRate.value)
+  if (rateMultiplier <= 0) {
+    appStore.showError(t('agentManagement.groups.invalidRate'))
+    return
+  }
+  if (!inviteDefaultBatchAll.value && selectedInviteDefaultBatchGroupIDs.value.length === 0) {
+    appStore.showError(t('agentManagement.groups.batchSelectionRequired'))
+    return
+  }
+
+  savingInviteDefaultBatch.value = true
+  try {
+    await agentManagementAPI.setInviteGroupDefaultsBatch({
+      group_ids: inviteDefaultBatchAll.value ? [] : selectedInviteDefaultBatchGroupIDs.value,
+      all: inviteDefaultBatchAll.value,
+      rate_multiplier: rateMultiplier,
+    })
+    appStore.showSuccess(t('agentManagement.groups.inviteDefaultBatchSaved'))
+    await loadInviteDefaultGroups()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.inviteDefaultBatchFailed'))
+  } finally {
+    savingInviteDefaultBatch.value = false
   }
 }
 

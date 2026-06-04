@@ -29,8 +29,10 @@ const {
   listChildGroupDelegationOptions,
   listInviteGroupDefaultOptions,
   setChildGroupDelegation,
+  setChildGroupDelegationsBatch,
   removeChildGroupDelegation,
   setInviteGroupDefault,
+  setInviteGroupDefaultsBatch,
   removeInviteGroupDefault,
   showError,
   showSuccess,
@@ -54,8 +56,10 @@ const {
   listChildGroupDelegationOptions: vi.fn(),
   listInviteGroupDefaultOptions: vi.fn(),
   setChildGroupDelegation: vi.fn(),
+  setChildGroupDelegationsBatch: vi.fn(),
   removeChildGroupDelegation: vi.fn(),
   setInviteGroupDefault: vi.fn(),
+  setInviteGroupDefaultsBatch: vi.fn(),
   removeInviteGroupDefault: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -81,8 +85,10 @@ vi.mock('@/api/agentManagement', () => ({
     listChildGroupDelegationOptions,
     listInviteGroupDefaultOptions,
     setChildGroupDelegation,
+    setChildGroupDelegationsBatch,
     removeChildGroupDelegation,
     setInviteGroupDefault,
+    setInviteGroupDefaultsBatch,
     removeInviteGroupDefault,
   },
 }))
@@ -488,8 +494,10 @@ describe('agent management pages', () => {
     listChildGroupDelegationOptions.mockResolvedValue([makeChildGroupOption()])
     listInviteGroupDefaultOptions.mockResolvedValue([makeChildGroupOption()])
     setChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
+    setChildGroupDelegationsBatch.mockResolvedValue({ child_id: 12, group_ids: [7], all: false })
     removeChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     setInviteGroupDefault.mockResolvedValue({ group_id: 7 })
+    setInviteGroupDefaultsBatch.mockResolvedValue({ group_ids: [7], all: false })
     removeInviteGroupDefault.mockResolvedValue({ group_id: 7 })
   })
 
@@ -936,6 +944,37 @@ describe('agent management pages', () => {
     expect(wrapper.find('[data-test="save-group-7"]').exists()).toBe(true)
   })
 
+  it('batch updates selected child group delegations', async () => {
+    listChildGroupDelegationOptions.mockResolvedValue([
+      makeChildGroupOption(),
+      makeChildGroupOption({
+        group: makeGroup({ id: 8, name: 'Enterprise Boost' }),
+        effective_rate: 1.6,
+        assigned: false,
+        child_rate_multiplier: 0,
+      }),
+    ])
+    const wrapper = mountAgentView(DirectEnterprisesView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="group-batch-select-7"]').setValue(true)
+    await wrapper.get('[data-test="group-batch-select-8"]').setValue(true)
+    await wrapper.get('[data-test="group-batch-rate"]').setValue('3.2')
+    await wrapper.get('[data-test="group-batch-can-delegate"]').setValue(true)
+    await wrapper.get('[data-test="apply-group-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(setChildGroupDelegationsBatch).toHaveBeenCalledWith(12, {
+      group_ids: [7, 8],
+      all: false,
+      rate_multiplier: 3.2,
+      can_delegate: true,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.batchDelegationSaved')
+  })
+
   it('renders effective group rates without upstream cost fields', async () => {
     const wrapper = mountAgentView(MyGroupsView, 'agent_level1')
     await flushPromises()
@@ -987,6 +1026,32 @@ describe('agent management pages', () => {
     expect(removeInviteGroupDefault).toHaveBeenCalledWith(7)
     expect(setInviteGroupDefault).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.inviteDefaultGroupRemoved')
+  })
+
+  it('batch updates all invite default group rates', async () => {
+    listInviteGroupDefaultOptions.mockResolvedValue([
+      makeChildGroupOption(),
+      makeChildGroupOption({
+        group: makeGroup({ id: 8, name: 'Enterprise Boost' }),
+        effective_rate: 1.6,
+        assigned: false,
+        child_rate_multiplier: 0,
+      }),
+    ])
+    const wrapper = mountAgentView(MyGroupsView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="invite-default-batch-all"]').setValue(true)
+    await wrapper.get('[data-test="invite-default-batch-rate"]').setValue('3.2')
+    await wrapper.get('[data-test="apply-invite-default-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(setInviteGroupDefaultsBatch).toHaveBeenCalledWith({
+      group_ids: [],
+      all: true,
+      rate_multiplier: 3.2,
+    })
+    expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.inviteDefaultBatchSaved')
   })
 
   it('shows invite default group propagation config for admins', async () => {
