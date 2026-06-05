@@ -371,26 +371,37 @@
           >
             <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <input
-                    :data-test="`group-batch-select-${groupRate.group.id}`"
-                    class="checkbox"
-                    type="checkbox"
-                    :checked="selectedGroupBatchIDs.includes(groupRate.group.id)"
-                    :disabled="groupBatchAll"
-                    @change="updateGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <input
-                    :data-test="`group-assigned-${groupRate.group.id}`"
-                    class="checkbox"
-                    type="checkbox"
-                    :checked="groupDraftFor(groupRate).assigned"
-                    @change="updateGroupAssignedDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <h4 class="truncate text-sm font-semibold text-gray-900 dark:text-white">
-                    {{ groupRate.group.name }}
-                  </h4>
-                  <span class="badge badge-gray">{{ sourceLabel(groupRate.source) }}</span>
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-900/40">
+                    <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-dark-300">
+                      <input
+                        :data-test="`group-batch-select-${groupRate.group.id}`"
+                        class="checkbox"
+                        type="checkbox"
+                        :checked="selectedGroupBatchIDs.includes(groupRate.group.id)"
+                        :disabled="groupBatchAll"
+                        @change="updateGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                      />
+                      <span>{{ t('agentManagement.groups.batchSelectLabel') }}</span>
+                    </label>
+                    <span class="h-4 w-px bg-gray-200 dark:bg-dark-600"></span>
+                    <label class="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-dark-200">
+                      <input
+                        :data-test="`group-assigned-${groupRate.group.id}`"
+                        class="checkbox"
+                        type="checkbox"
+                        :checked="groupDraftFor(groupRate).assigned"
+                        @change="updateGroupAssignedDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                      />
+                      <span>{{ t('agentManagement.groups.groupAssignLabel') }}</span>
+                    </label>
+                  </div>
+                  <div class="min-w-0 flex flex-1 flex-wrap items-center gap-2">
+                    <h4 class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                      {{ groupRate.group.name }}
+                    </h4>
+                    <span class="badge badge-gray">{{ sourceLabel(groupRate.source) }}</span>
+                  </div>
                 </div>
                 <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
                   {{ t('agentManagement.groups.effectiveRate') }}: {{ groupRate.effective_rate }}

@@ -99,25 +99,29 @@
               >
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center">
                   <div class="flex min-w-0 flex-1 items-center gap-4">
-                    <div class="flex-shrink-0">
-                      <input
-                        :data-test="`invite-default-batch-select-${groupRate.group.id}`"
-                        class="checkbox"
-                        type="checkbox"
-                        :checked="selectedInviteDefaultBatchGroupIDs.includes(groupRate.group.id)"
-                        :disabled="inviteDefaultBatchAll"
-                        @change="updateInviteDefaultBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
-                      />
-                    </div>
-
-                    <div class="flex-shrink-0">
-                      <input
-                        :data-test="`invite-default-assigned-${groupRate.group.id}`"
-                        class="checkbox"
-                        type="checkbox"
-                        :checked="inviteDefaultDraftFor(groupRate).assigned"
-                        @change="updateInviteDefaultAssignedDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
-                      />
+                    <div class="flex flex-shrink-0 flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-900/40">
+                      <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-dark-300">
+                        <input
+                          :data-test="`invite-default-batch-select-${groupRate.group.id}`"
+                          class="checkbox"
+                          type="checkbox"
+                          :checked="selectedInviteDefaultBatchGroupIDs.includes(groupRate.group.id)"
+                          :disabled="inviteDefaultBatchAll"
+                          @change="updateInviteDefaultBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                        />
+                        <span>{{ t('agentManagement.groups.batchSelectLabel') }}</span>
+                      </label>
+                      <span class="h-4 w-px bg-gray-200 dark:bg-dark-600"></span>
+                      <label class="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-dark-200">
+                        <input
+                          :data-test="`invite-default-assigned-${groupRate.group.id}`"
+                          class="checkbox"
+                          type="checkbox"
+                          :checked="inviteDefaultDraftFor(groupRate).assigned"
+                          @change="updateInviteDefaultAssignedDraft(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+                        />
+                        <span>{{ t('agentManagement.groups.defaultAssignLabel') }}</span>
+                      </label>
                     </div>
 
                     <div class="min-w-0 flex-1">
