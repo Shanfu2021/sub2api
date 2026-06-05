@@ -90,6 +90,10 @@ type AgentIncomeSetInput struct {
 	Reason      string  `json:"reason"`
 }
 
+type AgentChildNotesUpdate struct {
+	Notes string `json:"notes"`
+}
+
 type AllocationSummary struct {
 	TotalConcurrency     int  `json:"total_concurrency"`
 	AllocatedConcurrency int  `json:"allocated_concurrency"`
@@ -201,12 +205,11 @@ type ChildGroupDelegationBatchInput struct {
 }
 
 type DirectChildrenGroupDelegationBatchInput struct {
-	GroupIDs       []int64 `json:"group_ids"`
-	All            bool    `json:"all"`
-	ChildIDs       []int64 `json:"child_ids"`
-	AllChildren    *bool   `json:"all_children"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	CanDelegate    bool    `json:"can_delegate"`
+	GroupIDs    []int64 `json:"group_ids"`
+	All         bool    `json:"all"`
+	ChildIDs    []int64 `json:"child_ids"`
+	AllChildren *bool   `json:"all_children"`
+	CanDelegate bool    `json:"can_delegate"`
 }
 
 type DirectChildrenGroupDelegationUpdateInput struct {
@@ -286,6 +289,8 @@ type AgentManagementRepository interface {
 	ListInviteGroupDefaults(ctx context.Context, agentID int64) ([]AgentInviteGroupDefault, error)
 	GetAgentIncomeTotals(ctx context.Context, agentIDs []int64) (map[int64]float64, error)
 	AddAgentIncomeAdjustment(ctx context.Context, agentID int64, adminID int64, amount float64, reason string) error
+	GetChildNotes(ctx context.Context, managerID int64, childIDs []int64) (map[int64]string, error)
+	UpsertChildNotes(ctx context.Context, managerID int64, childID int64, notes string) error
 	UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error
 	DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error
 	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
@@ -651,6 +656,33 @@ func (s *AgentManagementService) UpdateAllocation(ctx context.Context, actorID i
 	usage = usage.WithRequest(requestedConcurrency, requestedRPM)
 	summary := buildAllocationSummary(actor, totalConcurrency, totalRPM, usage)
 	return &summary, nil
+}
+
+func (s *AgentManagementService) UpdateChildNotes(ctx context.Context, actorID int64, childID int64, input AgentChildNotesUpdate) (*User, error) {
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	child, err := s.requireDirectChild(ctx, actor, childID)
+	if err != nil {
+		return nil, err
+	}
+	notes := strings.TrimSpace(input.Notes)
+	if len([]rune(notes)) > 500 {
+		return nil, infraerrors.BadRequest("AGENT_MANAGEMENT_NOTES_TOO_LONG", "notes must be at most 500 characters")
+	}
+	if err := s.repo.UpsertChildNotes(ctx, actor.ID, child.ID, notes); err != nil {
+		return nil, err
+	}
+	child.Notes = notes
+	out := []User{*child}
+	if err := s.populateProfileBackedUsers(ctx, out); err != nil {
+		return nil, err
+	}
+	if err := s.populateAgentIncomeTotals(ctx, out); err != nil {
+		return nil, err
+	}
+	return &out[0], nil
 }
 
 func (s *AgentManagementService) UpdateInviteDefaults(ctx context.Context, actorID int64, input AgentInviteDefaultsUpdate) (*AgentProfile, error) {
@@ -1172,9 +1204,6 @@ func (s *AgentManagementService) SetChildGroupDelegationsBatch(ctx context.Conte
 }
 
 func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind DirectChildKind, input DirectChildrenGroupDelegationBatchInput) (int, error) {
-	if input.RateMultiplier <= 0 {
-		return 0, ErrAgentManagementInvalidGroupRate
-	}
 	actor, err := s.requireManager(ctx, actorID)
 	if err != nil {
 		return 0, err
@@ -1184,6 +1213,10 @@ func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx cont
 		return 0, err
 	}
 	groupIDs, err := s.resolveManagerGroupDelegationBatchGroupIDs(ctx, actor.ID, input.GroupIDs, input.All)
+	if err != nil {
+		return 0, err
+	}
+	groupRates, err := s.directChildrenGroupDelegationBatchRates(ctx, actor, groupIDs)
 	if err != nil {
 		return 0, err
 	}
@@ -1221,8 +1254,12 @@ func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx cont
 			if existing != nil {
 				continue
 			}
+			rate, ok := groupRates[groupID]
+			if !ok || rate <= 0 {
+				return 0, ErrAgentManagementInvalidGroupRate
+			}
 			if err := s.SetChildGroupDelegation(ctx, actor.ID, children[i].ID, groupID, ChildGroupDelegationInput{
-				RateMultiplier: input.RateMultiplier,
+				RateMultiplier: rate,
 				CanDelegate:    input.CanDelegate,
 			}); err != nil {
 				return 0, err
@@ -1234,6 +1271,48 @@ func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx cont
 		}
 	}
 	return updatedChildren, nil
+}
+
+func (s *AgentManagementService) directChildrenGroupDelegationBatchRates(ctx context.Context, actor *User, groupIDs []int64) (map[int64]float64, error) {
+	options, err := s.ListInviteGroupDefaultOptions(ctx, actor.ID)
+	if err != nil {
+		return nil, err
+	}
+	selected := make(map[int64]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID > 0 {
+			selected[groupID] = struct{}{}
+		}
+	}
+	rates := make(map[int64]float64, len(selected))
+	for i := range options {
+		groupID := options[i].Group.ID
+		if _, ok := selected[groupID]; !ok {
+			continue
+		}
+		if !options[i].Group.IsExclusive || !options[i].CanDelegate {
+			continue
+		}
+		rate := options[i].ChildRateMultiplier
+		if rate <= 0 {
+			rate = options[i].EffectiveRate
+		}
+		access, err := s.requireGroupDelegationAccess(ctx, actor, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if rate < access.minimumRate {
+			rate = access.minimumRate
+		}
+		if rate <= 0 {
+			return nil, ErrAgentManagementInvalidGroupRate
+		}
+		rates[groupID] = rate
+	}
+	if len(rates) != len(selected) {
+		return nil, ErrAgentManagementInvalidGroupSelection
+	}
+	return rates, nil
 }
 
 func (s *AgentManagementService) ListDirectChildrenWithGroupDelegation(ctx context.Context, actorID int64, kind DirectChildKind, query DirectChildrenGroupQuery) (*DirectChildrenResult, error) {
@@ -1896,7 +1975,28 @@ func (s *AgentManagementService) listDirectChildrenForActorWithQuery(ctx context
 	if err := s.populateAgentIncomeTotals(ctx, users); err != nil {
 		return nil, err
 	}
+	if err := s.populateChildNotes(ctx, actor.ID, users); err != nil {
+		return nil, err
+	}
 	return &DirectChildrenResult{Users: users, Pagination: page}, nil
+}
+
+func (s *AgentManagementService) populateChildNotes(ctx context.Context, managerID int64, users []User) error {
+	if len(users) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(users))
+	for i := range users {
+		ids = append(ids, users[i].ID)
+	}
+	notesByChildID, err := s.repo.GetChildNotes(ctx, managerID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range users {
+		users[i].Notes = notesByChildID[users[i].ID]
+	}
+	return nil
 }
 
 func (s *AgentManagementService) populateProfileBackedUsers(ctx context.Context, users []User) error {

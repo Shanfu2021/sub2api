@@ -134,6 +134,11 @@ export async function updateAllocation(childId: number, payload: AgentAllocation
   return data
 }
 
+export async function updateChildNotes(childId: number, payload: { notes: string }): Promise<AgentManagedUser> {
+  const { data } = await apiClient.put<AgentManagedUser>(`${BASE_PATH}/children/${childId}/notes`, payload)
+  return data
+}
+
 export async function updateInviteDefaults(payload: AgentInviteDefaultsUpdate): Promise<AgentProfile> {
   const { data } = await apiClient.put<AgentProfile>(`${BASE_PATH}/invite-defaults`, payload)
   return data
@@ -274,6 +279,7 @@ export const agentManagementAPI = {
   listUsageUsers,
   createDirectUser,
   updateAllocation,
+  updateChildNotes,
   updateInviteDefaults,
   upgradeChild,
   deleteDirectChild,

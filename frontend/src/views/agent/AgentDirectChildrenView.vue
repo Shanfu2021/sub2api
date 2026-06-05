@@ -132,6 +132,22 @@
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ formatCurrency(Number(value || 0)) }}</span>
           </template>
 
+          <template #cell-notes="{ row }">
+            <div class="flex min-w-[180px] max-w-[260px] items-center gap-2">
+              <span class="min-w-0 flex-1 truncate text-sm text-gray-600 dark:text-dark-300" :title="row.notes || ''">
+                {{ row.notes || '-' }}
+              </span>
+              <button
+                :data-test="`edit-child-notes-${row.id}`"
+                class="btn btn-secondary btn-sm px-2"
+                :disabled="savingChildId === row.id"
+                @click="openNotesDialog(row)"
+              >
+                <Icon name="edit" size="sm" />
+              </button>
+            </div>
+          </template>
+
           <template #cell-agent_income="{ value }">
             <span class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{{ formatCurrency(Number(value || 0)) }}</span>
           </template>
@@ -247,6 +263,49 @@
       @confirm="confirmUpgrade"
       @cancel="closeUpgradeDialog"
     />
+    <BaseDialog
+      :show="notesDialog.show"
+      :title="t('agentManagement.direct.notesTitle')"
+      @close="closeNotesDialog"
+    >
+      <div class="space-y-4" data-test="child-notes-modal">
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="text-sm font-medium text-gray-900 dark:text-white">
+            {{ notesDialog.child?.email || '-' }}
+          </div>
+          <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('agentManagement.direct.notesHint') }}
+          </div>
+        </div>
+
+        <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+          <span>{{ t('agentManagement.direct.notes') }}</span>
+          <textarea
+            v-model="notesDraft"
+            data-test="child-notes-input"
+            class="input min-h-28"
+            rows="4"
+            maxlength="500"
+          ></textarea>
+        </label>
+
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-secondary px-3" type="button" @click="closeNotesDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            data-test="child-notes-submit"
+            class="btn btn-primary px-3"
+            type="button"
+            :disabled="notesDialog.saving"
+            @click="saveNotes"
+          >
+            <Icon name="check" size="sm" />
+            <span>{{ t('common.save') }}</span>
+          </button>
+        </div>
+      </div>
+    </BaseDialog>
     <AgentDirectUserCreateModal
       v-if="canCreateDirectUser"
       :show="showCreateUserModal"
@@ -335,17 +394,21 @@
               <div class="flex flex-wrap items-center gap-3">
                 <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
                   <input
-                    data-test="group-batch-all"
-                    class="checkbox"
-                    type="checkbox"
-                    :checked="groupBatchAll"
-                    @change="setGroupBatchAll(($event.target as HTMLInputElement).checked)"
-                  />
-                  <span>{{ t('agentManagement.groups.batchAll') }}</span>
-                </label>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
-                  {{ t('agentManagement.groups.batchSelected', { count: selectedGroupBatchIDs.length }) }}
-                </span>
+	                    data-test="group-batch-all"
+	                    class="checkbox"
+	                    type="checkbox"
+	                    :checked="groupBatchAllChecked"
+	                    @change="setGroupBatchAll(($event.target as HTMLInputElement).checked)"
+	                  />
+	                  <span>{{ t('agentManagement.groups.batchAll') }}</span>
+	                </label>
+	                <span
+	                  data-test="group-batch-selected-count"
+	                  :data-count="groupBatchSelectedCount"
+	                  class="text-sm text-gray-500 dark:text-dark-400"
+	                >
+	                  {{ t('agentManagement.groups.batchSelected', { count: groupBatchSelectedCount }) }}
+	                </span>
               </div>
 
               <div class="flex flex-wrap items-end gap-3">
@@ -393,13 +456,12 @@
                   <div class="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-dark-700 dark:bg-dark-900/40">
                     <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-dark-300">
                       <input
-                        :data-test="`group-batch-select-${groupRate.group.id}`"
-                        class="checkbox"
-                        type="checkbox"
-                        :checked="selectedGroupBatchIDs.includes(groupRate.group.id)"
-                        :disabled="groupBatchAll"
-                        @change="updateGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
-                      />
+	                        :data-test="`group-batch-select-${groupRate.group.id}`"
+	                        class="checkbox"
+	                        type="checkbox"
+	                        :checked="isGroupBatchSelected(groupRate.group.id)"
+	                        @change="updateGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+	                      />
                       <span>{{ t('agentManagement.groups.batchSelectLabel') }}</span>
                     </label>
                     <span class="h-4 w-px bg-gray-200 dark:bg-dark-600"></span>
@@ -495,31 +557,24 @@
               <div class="flex flex-wrap items-center gap-3">
                 <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
                   <input
-                    data-test="direct-group-batch-all"
-                    class="checkbox"
-                    type="checkbox"
-                    :checked="directGroupBatchAll"
-                    @change="setDirectGroupBatchAll(($event.target as HTMLInputElement).checked)"
-                  />
-                  <span>{{ t('agentManagement.groups.batchAll') }}</span>
-                </label>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
-                  {{ t('agentManagement.groups.batchSelected', { count: selectedDirectGroupBatchIDs.length }) }}
-                </span>
+	                    data-test="direct-group-batch-all"
+	                    class="checkbox"
+	                    type="checkbox"
+	                    :checked="directGroupBatchAllChecked"
+	                    @change="setDirectGroupBatchAll(($event.target as HTMLInputElement).checked)"
+	                  />
+	                  <span>{{ t('agentManagement.groups.batchAll') }}</span>
+	                </label>
+	                <span
+	                  data-test="direct-group-batch-group-count"
+	                  :data-count="directGroupBatchSelectedCount"
+	                  class="text-sm text-gray-500 dark:text-dark-400"
+	                >
+	                  {{ t('agentManagement.groups.batchSelected', { count: directGroupBatchSelectedCount }) }}
+	                </span>
               </div>
 
               <div class="flex flex-wrap items-end gap-3">
-                <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
-                  <span>{{ t('agentManagement.groups.batchRate') }}</span>
-                  <input
-                    v-model.number="directGroupBatchRate"
-                    data-test="direct-group-batch-rate"
-                    class="input h-9 w-28"
-                    type="number"
-                    min="0.000001"
-                    step="0.000001"
-                  />
-                </label>
                 <label class="flex min-h-9 items-center gap-2 text-xs text-gray-600 dark:text-dark-300">
                   <input
                     v-model="directGroupBatchCanDelegate"
@@ -549,13 +604,12 @@
               class="flex items-center gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700"
             >
               <input
-                :data-test="`direct-group-batch-select-${groupRate.group.id}`"
-                class="checkbox"
-                type="checkbox"
-                :checked="selectedDirectGroupBatchIDs.includes(groupRate.group.id)"
-                :disabled="directGroupBatchAll"
-                @change="updateDirectGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
-              />
+	                :data-test="`direct-group-batch-select-${groupRate.group.id}`"
+	                class="checkbox"
+	                type="checkbox"
+	                :checked="isDirectGroupBatchSelected(groupRate.group.id)"
+	                @change="updateDirectGroupBatchSelection(groupRate.group.id, ($event.target as HTMLInputElement).checked)"
+	              />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ groupRate.group.name }}</span>
                 <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
@@ -593,18 +647,22 @@
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
               <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
                 <input
-                  data-test="direct-group-batch-all-children"
-                  class="checkbox"
-                  type="checkbox"
-                  :checked="directGroupBatchAllChildren"
-                  :disabled="!directGroupBatchHasGroupSelection"
-                  @change="setDirectGroupBatchAllChildren(($event.target as HTMLInputElement).checked)"
-                />
-                <span>{{ t('agentManagement.groups.batchAllDeployableChildren') }}</span>
-              </label>
-              <span class="text-sm text-gray-500 dark:text-dark-400">
-                {{ t('agentManagement.groups.updateSelectedChildren', { count: selectedDirectGroupBatchChildIDs.length }) }}
-              </span>
+	                  data-test="direct-group-batch-all-children"
+	                  class="checkbox"
+	                  type="checkbox"
+	                  :checked="directGroupBatchAllChildrenChecked"
+	                  :disabled="!directGroupBatchHasGroupSelection"
+	                  @change="setDirectGroupBatchAllChildren(($event.target as HTMLInputElement).checked)"
+	                />
+	                <span>{{ t('agentManagement.groups.batchAllDeployableChildren') }}</span>
+	              </label>
+	              <span
+	                data-test="direct-group-batch-child-count"
+	                :data-count="directGroupBatchChildSelectedCount"
+	                class="text-sm text-gray-500 dark:text-dark-400"
+	              >
+	                {{ t('agentManagement.groups.updateSelectedChildren', { count: directGroupBatchChildSelectedCount }) }}
+	              </span>
             </div>
 
             <div
@@ -629,13 +687,12 @@
                 class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700"
               >
                 <input
-                  :data-test="`direct-group-batch-child-${child.id}`"
-                  class="checkbox"
-                  type="checkbox"
-                  :checked="selectedDirectGroupBatchChildIDs.includes(child.id)"
-                  :disabled="directGroupBatchAllChildren"
-                  @change="updateDirectGroupBatchChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
-                />
+	                  :data-test="`direct-group-batch-child-${child.id}`"
+	                  class="checkbox"
+	                  type="checkbox"
+	                  :checked="isDirectGroupBatchChildSelected(child.id)"
+	                  @change="updateDirectGroupBatchChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
+	                />
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ child.email }}</span>
                   <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">{{ child.username || '-' }}</span>
@@ -727,17 +784,21 @@
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
                     <input
-                      data-test="direct-group-update-all"
-                      class="checkbox"
-                      type="checkbox"
-                      :checked="directGroupUpdateAll"
-                      @change="setDirectGroupUpdateAll(($event.target as HTMLInputElement).checked)"
-                    />
-                    <span>{{ t('agentManagement.groups.updateAllAssigned') }}</span>
-                  </label>
-                  <span class="text-sm text-gray-500 dark:text-dark-400">
-                    {{ t('agentManagement.groups.updateSelectedChildren', { count: selectedDirectGroupUpdateChildIDs.length }) }}
-                  </span>
+	                      data-test="direct-group-update-all"
+	                      class="checkbox"
+	                      type="checkbox"
+	                      :checked="directGroupUpdateAllChecked"
+	                      @change="setDirectGroupUpdateAll(($event.target as HTMLInputElement).checked)"
+	                    />
+	                    <span>{{ t('agentManagement.groups.updateAllAssigned') }}</span>
+	                  </label>
+	                  <span
+	                    data-test="direct-group-update-child-count"
+	                    :data-count="directGroupUpdateSelectedCount"
+	                    class="text-sm text-gray-500 dark:text-dark-400"
+	                  >
+	                    {{ t('agentManagement.groups.updateSelectedChildren', { count: directGroupUpdateSelectedCount }) }}
+	                  </span>
                 </div>
 
                 <div v-if="directGroupUpdateDialog.childrenLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
@@ -756,13 +817,12 @@
                     class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700"
                   >
                     <input
-                      :data-test="`direct-group-update-child-${child.id}`"
-                      class="checkbox"
-                      type="checkbox"
-                      :checked="selectedDirectGroupUpdateChildIDs.includes(child.id)"
-                      :disabled="directGroupUpdateAll"
-                      @change="updateDirectGroupUpdateChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
-                    />
+	                      :data-test="`direct-group-update-child-${child.id}`"
+	                      class="checkbox"
+	                      type="checkbox"
+	                      :checked="isDirectGroupUpdateChildSelected(child.id)"
+	                      @change="updateDirectGroupUpdateChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
+	                    />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ child.email }}</span>
                       <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
@@ -916,17 +976,21 @@
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
               <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
                 <input
-                  data-test="direct-group-reclaim-all"
-                  class="checkbox"
-                  type="checkbox"
-                  :checked="directGroupReclaimAll"
-                  @change="setDirectGroupReclaimAll(($event.target as HTMLInputElement).checked)"
-                />
-                <span>{{ t('agentManagement.groups.reclaimAllAssigned') }}</span>
-              </label>
-              <span class="text-sm text-gray-500 dark:text-dark-400">
-                {{ t('agentManagement.groups.updateSelectedChildren', { count: selectedDirectGroupReclaimChildIDs.length }) }}
-              </span>
+	                  data-test="direct-group-reclaim-all"
+	                  class="checkbox"
+	                  type="checkbox"
+	                  :checked="directGroupReclaimAllChecked"
+	                  @change="setDirectGroupReclaimAll(($event.target as HTMLInputElement).checked)"
+	                />
+	                <span>{{ t('agentManagement.groups.reclaimAllAssigned') }}</span>
+	              </label>
+	              <span
+	                data-test="direct-group-reclaim-child-count"
+	                :data-count="directGroupReclaimSelectedCount"
+	                class="text-sm text-gray-500 dark:text-dark-400"
+	              >
+	                {{ t('agentManagement.groups.updateSelectedChildren', { count: directGroupReclaimSelectedCount }) }}
+	              </span>
             </div>
 
             <div v-if="directGroupReclaimDialog.childrenLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
@@ -945,13 +1009,12 @@
                 class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700"
               >
                 <input
-                  :data-test="`direct-group-reclaim-child-${child.id}`"
-                  class="checkbox"
-                  type="checkbox"
-                  :checked="selectedDirectGroupReclaimChildIDs.includes(child.id)"
-                  :disabled="directGroupReclaimAll"
-                  @change="updateDirectGroupReclaimChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
-                />
+	                  :data-test="`direct-group-reclaim-child-${child.id}`"
+	                  class="checkbox"
+	                  type="checkbox"
+	                  :checked="isDirectGroupReclaimChildSelected(child.id)"
+	                  @change="updateDirectGroupReclaimChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
+	                />
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ child.email }}</span>
                   <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">{{ child.username || '-' }}</span>
@@ -1059,6 +1122,16 @@ const upgradeDialog = reactive<{ show: boolean; child: AgentManagedUser | null; 
   child: null,
   targetRole: null,
 })
+const notesDialog = reactive<{
+  show: boolean
+  child: AgentManagedUser | null
+  saving: boolean
+}>({
+  show: false,
+  child: null,
+  saving: false,
+})
+const notesDraft = ref('')
 const agentIncomeDialog = reactive<{
   show: boolean
   child: AgentManagedUser | null
@@ -1157,7 +1230,6 @@ const selectedGroupBatchIDs = ref<number[]>([])
 const directGroupBatchAllChildren = ref(true)
 const selectedDirectGroupBatchChildIDs = ref<number[]>([])
 const directGroupBatchAll = ref(false)
-const directGroupBatchRate = ref(1)
 const directGroupBatchCanDelegate = ref(false)
 const selectedDirectGroupBatchIDs = ref<number[]>([])
 const directGroupUpdateAll = ref(false)
@@ -1173,6 +1245,7 @@ const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
   { key: 'role', label: t('agentManagement.direct.role') },
   { key: 'balance', label: t('agentManagement.direct.balance') },
+  { key: 'notes', label: t('agentManagement.direct.notes') },
   ...(props.kind === 'agents' ? [{ key: 'agent_income', label: t('agentManagement.direct.agentIncome') }] : []),
   { key: 'allocation', label: t('agentManagement.direct.allocation') },
   { key: 'status', label: t('common.status') },
@@ -1230,11 +1303,53 @@ const remainingConcurrencyText = computed(() => allocation.value?.unlimited_conc
 const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
 const groupDialogTitle = computed(() => t('agentManagement.groups.manageTitle', { email: groupDialog.child?.email || '' }))
 const directChildKind = computed<AgentDirectChildKind>(() => props.kind)
+const groupDialogGroupIDs = computed(() => groupDialog.groups.map((item) => item.group.id))
+const groupBatchSelectedCount = computed(() => mergeSelectedIDs(selectedGroupBatchIDs.value, groupDialogGroupIDs.value, groupBatchAll.value).length)
+const groupBatchAllChecked = computed(() => isAllVisibleSelected(selectedGroupBatchIDs.value, groupDialogGroupIDs.value, groupBatchAll.value))
 const directGroupBatchSelectedGroupIDs = computed(() => directGroupBatchAll.value
   ? directGroupBatchDialog.groups.map((item) => item.group.id)
   : selectedDirectGroupBatchIDs.value
 )
 const directGroupBatchHasGroupSelection = computed(() => directGroupBatchSelectedGroupIDs.value.length > 0)
+const directGroupBatchSelectedCount = computed(() => directGroupBatchSelectedGroupIDs.value.length)
+const directGroupBatchAllChecked = computed(() => isAllVisibleSelected(
+  selectedDirectGroupBatchIDs.value,
+  directGroupBatchDialog.groups.map((item) => item.group.id),
+  directGroupBatchAll.value
+))
+const directGroupBatchVisibleChildIDs = computed(() => directGroupBatchDialog.children.map((child) => child.id))
+const directGroupBatchChildSelectedCount = computed(() => mergeSelectedIDs(
+  selectedDirectGroupBatchChildIDs.value,
+  directGroupBatchVisibleChildIDs.value,
+  directGroupBatchAllChildren.value
+).length)
+const directGroupBatchAllChildrenChecked = computed(() => isAllVisibleSelected(
+  selectedDirectGroupBatchChildIDs.value,
+  directGroupBatchVisibleChildIDs.value,
+  directGroupBatchAllChildren.value
+))
+const directGroupUpdateVisibleChildIDs = computed(() => directGroupUpdateDialog.children.map((child) => child.id))
+const directGroupUpdateSelectedCount = computed(() => mergeSelectedIDs(
+  selectedDirectGroupUpdateChildIDs.value,
+  directGroupUpdateVisibleChildIDs.value,
+  directGroupUpdateAll.value
+).length)
+const directGroupUpdateAllChecked = computed(() => isAllVisibleSelected(
+  selectedDirectGroupUpdateChildIDs.value,
+  directGroupUpdateVisibleChildIDs.value,
+  directGroupUpdateAll.value
+))
+const directGroupReclaimVisibleChildIDs = computed(() => directGroupReclaimDialog.children.map((child) => child.id))
+const directGroupReclaimSelectedCount = computed(() => mergeSelectedIDs(
+  selectedDirectGroupReclaimChildIDs.value,
+  directGroupReclaimVisibleChildIDs.value,
+  directGroupReclaimAll.value
+).length)
+const directGroupReclaimAllChecked = computed(() => isAllVisibleSelected(
+  selectedDirectGroupReclaimChildIDs.value,
+  directGroupReclaimVisibleChildIDs.value,
+  directGroupReclaimAll.value
+))
 
 function paginationFromResult(result: AgentDirectChildrenResponse) {
   const source = result.pagination || {}
@@ -1467,6 +1582,37 @@ async function saveAllocation(child: AgentManagedUser) {
   }
 }
 
+function openNotesDialog(child: AgentManagedUser) {
+  notesDialog.child = child
+  notesDialog.show = true
+  notesDraft.value = child.notes || ''
+}
+
+function closeNotesDialog() {
+  notesDialog.show = false
+  notesDialog.child = null
+  notesDialog.saving = false
+  notesDraft.value = ''
+}
+
+async function saveNotes() {
+  if (!notesDialog.child) return
+  const child = notesDialog.child
+  notesDialog.saving = true
+  savingChildId.value = child.id
+  try {
+    const updated = await agentManagementAPI.updateChildNotes(child.id, { notes: notesDraft.value.trim() })
+    child.notes = updated.notes || ''
+    appStore.showSuccess(t('agentManagement.direct.notesSaved'))
+    closeNotesDialog()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.direct.notesFailed'))
+  } finally {
+    notesDialog.saving = false
+    savingChildId.value = null
+  }
+}
+
 function canSetAgentIncome(child: AgentManagedUser): boolean {
   return isAdmin.value && props.kind === 'agents' && child.role === 'agent_level1'
 }
@@ -1609,21 +1755,51 @@ function updateGroupCanDelegateDraft(groupID: number, canDelegate: boolean) {
   }
 }
 
-function setGroupBatchAll(all: boolean) {
-  groupBatchAll.value = all
-  if (all) {
-    selectedGroupBatchIDs.value = []
+function mergeSelectedIDs(selectedIDs: number[], visibleIDs: number[], all: boolean): number[] {
+  if (!all) {
+    return selectedIDs
   }
+  return Array.from(new Set([...selectedIDs, ...visibleIDs]))
+}
+
+function setAllVisibleIDs(target: { value: number[] }, visibleIDs: number[], allFlag: { value: boolean }, all: boolean) {
+  allFlag.value = all
+  target.value = all ? [...visibleIDs] : []
+}
+
+function updateVisibleSelection(target: { value: number[] }, visibleIDs: number[], allFlag: { value: boolean }, id: number, selected: boolean) {
+  const next = new Set(mergeSelectedIDs(target.value, visibleIDs, allFlag.value))
+  if (selected) {
+    next.add(id)
+  } else {
+    next.delete(id)
+  }
+  allFlag.value = false
+  target.value = Array.from(next)
+}
+
+function isIDSelected(selectedIDs: number[], visibleIDs: number[], allFlag: boolean, id: number): boolean {
+  return mergeSelectedIDs(selectedIDs, visibleIDs, allFlag).includes(id)
+}
+
+function isAllVisibleSelected(selectedIDs: number[], visibleIDs: number[], allFlag: boolean): boolean {
+  if (visibleIDs.length === 0) {
+    return false
+  }
+  const selected = new Set(mergeSelectedIDs(selectedIDs, visibleIDs, allFlag))
+  return visibleIDs.every((id) => selected.has(id))
+}
+
+function setGroupBatchAll(all: boolean) {
+  setAllVisibleIDs(selectedGroupBatchIDs, groupDialogGroupIDs.value, groupBatchAll, all)
 }
 
 function updateGroupBatchSelection(groupID: number, selected: boolean) {
-  const next = new Set(selectedGroupBatchIDs.value)
-  if (selected) {
-    next.add(groupID)
-  } else {
-    next.delete(groupID)
-  }
-  selectedGroupBatchIDs.value = Array.from(next)
+  updateVisibleSelection(selectedGroupBatchIDs, groupDialogGroupIDs.value, groupBatchAll, groupID, selected)
+}
+
+function isGroupBatchSelected(groupID: number): boolean {
+  return isIDSelected(selectedGroupBatchIDs.value, groupDialogGroupIDs.value, groupBatchAll.value, groupID)
 }
 
 function syncDirectGroupBatchGroups(groups: AgentGroupRate[]) {
@@ -1637,7 +1813,6 @@ function syncDirectGroupBatchGroups(groups: AgentGroupRate[]) {
     }))
   selectedDirectGroupBatchIDs.value = []
   directGroupBatchAll.value = false
-  directGroupBatchRate.value = directGroupBatchDialog.groups[0]?.effective_rate ?? 1
   directGroupBatchCanDelegate.value = false
   directGroupBatchDialog.children = []
   directGroupBatchDialog.searchDraft = ''
@@ -1646,10 +1821,7 @@ function syncDirectGroupBatchGroups(groups: AgentGroupRate[]) {
 }
 
 async function setDirectGroupBatchAll(all: boolean) {
-  directGroupBatchAll.value = all
-  if (all) {
-    selectedDirectGroupBatchIDs.value = []
-  }
+  setAllVisibleIDs(selectedDirectGroupBatchIDs, directGroupBatchDialog.groups.map((item) => item.group.id), directGroupBatchAll, all)
   selectedDirectGroupBatchChildIDs.value = []
   directGroupBatchAllChildren.value = true
   directGroupBatchDialog.pagination.page = 1
@@ -1657,38 +1829,46 @@ async function setDirectGroupBatchAll(all: boolean) {
 }
 
 function setDirectGroupBatchAllChildren(all: boolean) {
-  directGroupBatchAllChildren.value = all
-  if (all) {
-    selectedDirectGroupBatchChildIDs.value = []
-  }
+  setAllVisibleIDs(selectedDirectGroupBatchChildIDs, directGroupBatchVisibleChildIDs.value, directGroupBatchAllChildren, all)
 }
 
 async function updateDirectGroupBatchSelection(groupID: number, selected: boolean) {
-  const next = new Set(selectedDirectGroupBatchIDs.value)
-  if (selected) {
-    next.add(groupID)
-  } else {
-    next.delete(groupID)
-  }
-  selectedDirectGroupBatchIDs.value = Array.from(next)
+  updateVisibleSelection(
+    selectedDirectGroupBatchIDs,
+    directGroupBatchDialog.groups.map((item) => item.group.id),
+    directGroupBatchAll,
+    groupID,
+    selected
+  )
   selectedDirectGroupBatchChildIDs.value = []
   directGroupBatchAllChildren.value = true
   directGroupBatchDialog.pagination.page = 1
-  const groupRate = directGroupBatchDialog.groups.find((item) => item.group.id === groupID)
-  if (selected && groupRate) {
-    directGroupBatchRate.value = groupRate.effective_rate
-  }
   await loadDirectGroupBatchChildren()
 }
 
 function updateDirectGroupBatchChildSelection(childID: number, selected: boolean) {
-  const next = new Set(selectedDirectGroupBatchChildIDs.value)
-  if (selected) {
-    next.add(childID)
-  } else {
-    next.delete(childID)
-  }
-  selectedDirectGroupBatchChildIDs.value = Array.from(next)
+  updateVisibleSelection(selectedDirectGroupBatchChildIDs, directGroupBatchVisibleChildIDs.value, directGroupBatchAllChildren, childID, selected)
+}
+
+function isDirectGroupBatchSelected(groupID: number): boolean {
+  return isIDSelected(
+    selectedDirectGroupBatchIDs.value,
+    directGroupBatchDialog.groups.map((item) => item.group.id),
+    directGroupBatchAll.value,
+    groupID
+  )
+}
+
+function isDirectGroupBatchChildSelected(childID: number): boolean {
+  return isIDSelected(selectedDirectGroupBatchChildIDs.value, directGroupBatchVisibleChildIDs.value, directGroupBatchAllChildren.value, childID)
+}
+
+function isDirectGroupUpdateChildSelected(childID: number): boolean {
+  return isIDSelected(selectedDirectGroupUpdateChildIDs.value, directGroupUpdateVisibleChildIDs.value, directGroupUpdateAll.value, childID)
+}
+
+function isDirectGroupReclaimChildSelected(childID: number): boolean {
+  return isIDSelected(selectedDirectGroupReclaimChildIDs.value, directGroupReclaimVisibleChildIDs.value, directGroupReclaimAll.value, childID)
 }
 
 async function openDirectGroupBatchDialog() {
@@ -1767,6 +1947,9 @@ async function loadDirectGroupBatchChildren() {
     })
     directGroupBatchDialog.children = result.items
     directGroupBatchDialog.pagination = paginationFromResult(result)
+    if (directGroupBatchAllChildren.value) {
+      selectedDirectGroupBatchChildIDs.value = [...directGroupBatchVisibleChildIDs.value]
+    }
   } catch (error) {
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
   } finally {
@@ -2123,11 +2306,6 @@ async function applyGroupDelegationBatch() {
 }
 
 async function applyDirectGroupBatch() {
-  const rateMultiplier = normalizedPositiveFloat(directGroupBatchRate.value)
-  if (rateMultiplier <= 0) {
-    appStore.showError(t('agentManagement.groups.invalidRate'))
-    return
-  }
   if (!directGroupBatchAll.value && selectedDirectGroupBatchIDs.value.length === 0) {
     appStore.showError(t('agentManagement.groups.batchSelectionRequired'))
     return
@@ -2144,7 +2322,6 @@ async function applyDirectGroupBatch() {
       all: directGroupBatchAll.value,
       child_ids: directGroupBatchAllChildren.value ? [] : selectedDirectGroupBatchChildIDs.value,
       all_children: directGroupBatchAllChildren.value,
-      rate_multiplier: rateMultiplier,
       can_delegate: directGroupBatchCanDelegate.value,
     })
     appStore.showSuccess(t('agentManagement.groups.directBatchSaved'))

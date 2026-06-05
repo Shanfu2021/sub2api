@@ -309,6 +309,18 @@ func (s *fakeAgentManagementService) UpdateAllocation(_ context.Context, actorID
 	}, nil
 }
 
+func (s *fakeAgentManagementService) UpdateChildNotes(_ context.Context, actorID int64, childID int64, input service.AgentChildNotesUpdate) (*service.User, error) {
+	return &service.User{
+		ID:           childID,
+		Email:        "child@example.test",
+		Username:     "child",
+		Role:         service.RoleUser,
+		ParentUserID: &actorID,
+		Status:       service.StatusActive,
+		Notes:        input.Notes,
+	}, nil
+}
+
 func (s *fakeAgentManagementService) UpdateInviteDefaults(context.Context, int64, service.AgentInviteDefaultsUpdate) (*service.AgentProfile, error) {
 	return &service.AgentProfile{InviteDefaultConcurrency: 1, InviteDefaultRPM: 1}, nil
 }
@@ -483,7 +495,6 @@ func TestAgentManagementHandlerSetsDirectChildrenGroupDelegationsBatch(t *testin
 		"all": false,
 		"child_ids": [12, 13],
 		"all_children": false,
-		"rate_multiplier": 2.4,
 		"can_delegate": true
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -499,7 +510,6 @@ func TestAgentManagementHandlerSetsDirectChildrenGroupDelegationsBatch(t *testin
 	require.Equal(t, []int64{12, 13}, svc.setDirectBatchInput.ChildIDs)
 	require.NotNil(t, svc.setDirectBatchInput.AllChildren)
 	require.False(t, *svc.setDirectBatchInput.AllChildren)
-	require.InDelta(t, 2.4, svc.setDirectBatchInput.RateMultiplier, 1e-12)
 	require.True(t, svc.setDirectBatchInput.CanDelegate)
 	var body struct {
 		Code int `json:"code"`

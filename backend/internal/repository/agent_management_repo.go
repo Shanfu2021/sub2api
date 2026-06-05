@@ -899,6 +899,56 @@ VALUES ($1, $2, $3, $4)
 	return err
 }
 
+func (r *agentManagementRepository) GetChildNotes(ctx context.Context, managerID int64, childIDs []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(childIDs))
+	if managerID <= 0 || len(childIDs) == 0 {
+		return out, nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+SELECT child_user_id, notes
+FROM agent_child_notes
+WHERE manager_user_id = $1
+  AND child_user_id = ANY($2)`,
+		managerID,
+		pq.Array(childIDs),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var childID int64
+		var notes string
+		if err := rows.Scan(&childID, &notes); err != nil {
+			return nil, err
+		}
+		out[childID] = notes
+	}
+	return out, rows.Err()
+}
+
+func (r *agentManagementRepository) UpsertChildNotes(ctx context.Context, managerID int64, childID int64, notes string) error {
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return errors.New("sql executor is not configured")
+	}
+	_, err := exec.ExecContext(ctx, `
+INSERT INTO agent_child_notes (manager_user_id, child_user_id, notes, created_at, updated_at)
+VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (manager_user_id, child_user_id) DO UPDATE SET
+    notes = EXCLUDED.notes,
+    updated_at = CURRENT_TIMESTAMP`,
+		managerID,
+		childID,
+		notes,
+	)
+	return err
+}
+
 func (r *agentManagementRepository) UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error {
 	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
 	if exec == nil {

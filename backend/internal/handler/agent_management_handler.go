@@ -37,6 +37,7 @@ type agentManagementService interface {
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
+	UpdateChildNotes(ctx context.Context, actorID int64, childID int64, input service.AgentChildNotesUpdate) (*service.User, error)
 	UpdateInviteDefaults(ctx context.Context, actorID int64, input service.AgentInviteDefaultsUpdate) (*service.AgentProfile, error)
 	UpgradeDirectUser(ctx context.Context, actorID int64, childID int64, input service.AgentUpgradeInput) (*service.User, error)
 	DeleteDirectChild(ctx context.Context, actorID int64, childID int64) error
@@ -335,6 +336,28 @@ func (h *AgentManagementHandler) UpdateAllocation(c *gin.Context) {
 		return
 	}
 	response.Success(c, summary)
+}
+
+func (h *AgentManagementHandler) UpdateChildNotes(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	childID, ok := parsePositiveID(c, "id", "Invalid child ID")
+	if !ok {
+		return
+	}
+	var req service.AgentChildNotesUpdate
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	user, err := h.service.UpdateChildNotes(c.Request.Context(), actorID, childID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, agentManagedUserFromService(user))
 }
 
 func (h *AgentManagementHandler) UpdateInviteDefaults(c *gin.Context) {
@@ -957,6 +980,7 @@ type agentManagedUserResponse struct {
 	InviteDefaultConcurrency int               `json:"invite_default_concurrency"`
 	InviteDefaultRPM         int               `json:"invite_default_rpm"`
 	AgentIncome              float64           `json:"agent_income"`
+	Notes                    string            `json:"notes"`
 	Status                   string            `json:"status"`
 	GroupRates               map[int64]float64 `json:"group_rates,omitempty"`
 	CreatedAt                string            `json:"created_at"`
@@ -1031,6 +1055,7 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		InviteDefaultConcurrency: inviteDefaultConcurrency,
 		InviteDefaultRPM:         inviteDefaultRPM,
 		AgentIncome:              u.AgentIncome,
+		Notes:                    u.Notes,
 		Status:                   u.Status,
 		GroupRates:               u.GroupRates,
 		CreatedAt:                u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),

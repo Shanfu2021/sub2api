@@ -20,6 +20,8 @@ const {
   listUsage,
   getUsageStats,
   listUsageUsers,
+  listDirectChildrenWithGroupDelegation,
+  listDirectChildrenWithoutGroupDelegation,
   updateAllocation,
   createDirectUser,
   updateInviteDefaults,
@@ -31,6 +33,8 @@ const {
   setChildGroupDelegation,
   setChildGroupDelegationsBatch,
   setDirectChildrenGroupDelegationsBatch,
+  updateDirectChildrenExistingGroupDelegations,
+  reclaimDirectChildrenGroupDelegations,
   setAgentIncome,
   removeChildGroupDelegation,
   setInviteGroupDefault,
@@ -49,6 +53,8 @@ const {
   listUsage: vi.fn(),
   getUsageStats: vi.fn(),
   listUsageUsers: vi.fn(),
+  listDirectChildrenWithGroupDelegation: vi.fn(),
+  listDirectChildrenWithoutGroupDelegation: vi.fn(),
   updateAllocation: vi.fn(),
   createDirectUser: vi.fn(),
   updateInviteDefaults: vi.fn(),
@@ -60,6 +66,8 @@ const {
   setChildGroupDelegation: vi.fn(),
   setChildGroupDelegationsBatch: vi.fn(),
   setDirectChildrenGroupDelegationsBatch: vi.fn(),
+  updateDirectChildrenExistingGroupDelegations: vi.fn(),
+  reclaimDirectChildrenGroupDelegations: vi.fn(),
   setAgentIncome: vi.fn(),
   removeChildGroupDelegation: vi.fn(),
   setInviteGroupDefault: vi.fn(),
@@ -80,6 +88,8 @@ vi.mock('@/api/agentManagement', () => ({
     listUsage,
     getUsageStats,
     listUsageUsers,
+    listDirectChildrenWithGroupDelegation,
+    listDirectChildrenWithoutGroupDelegation,
     updateAllocation,
     createDirectUser,
     updateInviteDefaults,
@@ -91,6 +101,8 @@ vi.mock('@/api/agentManagement', () => ({
     setChildGroupDelegation,
     setChildGroupDelegationsBatch,
     setDirectChildrenGroupDelegationsBatch,
+    updateDirectChildrenExistingGroupDelegations,
+    reclaimDirectChildrenGroupDelegations,
     setAgentIncome,
     removeChildGroupDelegation,
     setInviteGroupDefault,
@@ -494,6 +506,8 @@ describe('agent management pages', () => {
     listDirectUsers.mockResolvedValue(makeChildrenResponse([makeChild()]))
     listDirectAgents.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'agent_level1', agent_income: 8.75 })]))
     listDirectEnterprises.mockResolvedValue(makeChildrenResponse([makeChild({ role: 'enterprise' })]))
+    listDirectChildrenWithGroupDelegation.mockResolvedValue(makeChildrenResponse([makeChild()]))
+    listDirectChildrenWithoutGroupDelegation.mockResolvedValue(makeChildrenResponse([makeChild()]))
     getAdminAgentTree.mockResolvedValue(makeAdminTreeResponse())
     getStructure.mockResolvedValue(makeStructureResponse())
     listUsage.mockResolvedValue(makeUsageResponse())
@@ -539,6 +553,22 @@ describe('agent management pages', () => {
     setChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     setChildGroupDelegationsBatch.mockResolvedValue({ child_id: 12, group_ids: [7], all: false })
     setDirectChildrenGroupDelegationsBatch.mockResolvedValue({ kind: 'enterprises', group_ids: [7], all: false, updated_children: 2 })
+    updateDirectChildrenExistingGroupDelegations.mockResolvedValue({
+      kind: 'users',
+      group_id: 7,
+      requested_child_ids: [],
+      all: true,
+      updated_children: 1,
+      skipped_children: 0,
+    })
+    reclaimDirectChildrenGroupDelegations.mockResolvedValue({
+      kind: 'users',
+      group_id: 7,
+      requested_child_ids: [],
+      all: true,
+      removed_children: 1,
+      skipped_children: 0,
+    })
     setAgentIncome.mockResolvedValue(makeChild({ role: 'agent_level1', agent_income: 0 }))
     removeChildGroupDelegation.mockResolvedValue({ child_id: 12, group_id: 7 })
     setInviteGroupDefault.mockResolvedValue({ group_id: 7 })
@@ -1092,7 +1122,7 @@ describe('agent management pages', () => {
     await flushPromises()
     await wrapper.get('[data-test="direct-group-batch-select-7"]').setValue(true)
     await wrapper.get('[data-test="direct-group-batch-select-8"]').setValue(true)
-    await wrapper.get('[data-test="direct-group-batch-rate"]').setValue('2.8')
+    expect(wrapper.find('[data-test="direct-group-batch-rate"]').exists()).toBe(false)
     await wrapper.get('[data-test="direct-group-batch-can-delegate"]').setValue(true)
     await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
     await flushPromises()
@@ -1100,7 +1130,8 @@ describe('agent management pages', () => {
     expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('agents', {
       group_ids: [7, 8],
       all: false,
-      rate_multiplier: 2.8,
+      child_ids: [],
+      all_children: true,
       can_delegate: true,
     })
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.directBatchSaved')
@@ -1113,14 +1144,56 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="open-direct-group-batch"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-test="direct-group-batch-all"]').setValue(true)
-    await wrapper.get('[data-test="direct-group-batch-rate"]').setValue('2.2')
+    expect(wrapper.find('[data-test="direct-group-batch-rate"]').exists()).toBe(false)
     await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
     await flushPromises()
 
     expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('enterprises', {
       group_ids: [],
       all: true,
-      rate_multiplier: 2.2,
+      child_ids: [],
+      all_children: true,
+      can_delegate: false,
+    })
+  })
+
+  it('submits the same visible child selection after toggling all deployable children', async () => {
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listDirectChildrenWithoutGroupDelegation.mockResolvedValue(makeChildrenResponse([
+      makeChild({ id: 12, email: 'alpha@example.com' }),
+      makeChild({ id: 13, email: 'beta@example.com' }),
+      makeChild({ id: 14, email: 'gamma@example.com' }),
+    ]))
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-batch"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-batch-select-7"]').setValue(true)
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="direct-group-batch-all-children"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="direct-group-batch-child-12"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="direct-group-batch-child-13"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="direct-group-batch-child-14"]').element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('[data-test="direct-group-batch-child-count"]').attributes('data-count')).toBe('3')
+
+    await wrapper.get('[data-test="direct-group-batch-child-13"]').setValue(false)
+    await flushPromises()
+    expect((wrapper.get('[data-test="direct-group-batch-all-children"]').element as HTMLInputElement).checked).toBe(false)
+    expect((wrapper.get('[data-test="direct-group-batch-child-12"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-test="direct-group-batch-child-13"]').element as HTMLInputElement).checked).toBe(false)
+    expect((wrapper.get('[data-test="direct-group-batch-child-14"]').element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('[data-test="direct-group-batch-child-count"]').attributes('data-count')).toBe('2')
+
+    await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('users', {
+      group_ids: [7],
+      all: false,
+      child_ids: [12, 14],
+      all_children: false,
       can_delegate: false,
     })
   })

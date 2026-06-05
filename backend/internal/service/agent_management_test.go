@@ -113,6 +113,7 @@ type agentManagementRepoStub struct {
 		amount  float64
 		reason  string
 	}
+	childNotes           map[int64]map[int64]string
 	raiseGroupRateFloors []struct {
 		agentID     int64
 		groupID     int64
@@ -615,6 +616,31 @@ func (r *agentManagementRepoStub) AddAgentIncomeAdjustment(_ context.Context, ag
 		r.agentIncomeTotals = map[int64]float64{}
 	}
 	r.agentIncomeTotals[agentID] += amount
+	return nil
+}
+
+func (r *agentManagementRepoStub) GetChildNotes(_ context.Context, managerID int64, childIDs []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(childIDs))
+	byChildID := r.childNotes[managerID]
+	for _, childID := range childIDs {
+		if byChildID == nil {
+			continue
+		}
+		if notes, ok := byChildID[childID]; ok {
+			out[childID] = notes
+		}
+	}
+	return out, nil
+}
+
+func (r *agentManagementRepoStub) UpsertChildNotes(_ context.Context, managerID int64, childID int64, notes string) error {
+	if r.childNotes == nil {
+		r.childNotes = map[int64]map[int64]string{}
+	}
+	if r.childNotes[managerID] == nil {
+		r.childNotes[managerID] = map[int64]string{}
+	}
+	r.childNotes[managerID][childID] = notes
 	return nil
 }
 
@@ -2683,6 +2709,9 @@ func TestSetDirectChildrenGroupDelegationsBatchDeploysMissingGroupsOnlyForKind(t
 		{managerID: rootID, childID: userAID, groupID: 30, rateMultiplier: 1.3, canDelegate: false},
 		{managerID: rootID, childID: agentID, groupID: 20, rateMultiplier: 1.4, canDelegate: true},
 	}
+	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: rootID, groupID: 20, rateMultiplier: 2.6},
+	}
 	userRepo := &agentManagementUserRepoStub{users: repo.users}
 	groupRepo := newAgentManagementGroupRepoStub(
 		Group{ID: 20, Name: "exclusive-a", IsExclusive: true, Status: StatusActive},
@@ -2691,20 +2720,78 @@ func TestSetDirectChildrenGroupDelegationsBatchDeploysMissingGroupsOnlyForKind(t
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
 
 	updated, err := svc.SetDirectChildrenGroupDelegationsBatch(context.Background(), rootID, DirectChildKindUsers, DirectChildrenGroupDelegationBatchInput{
-		GroupIDs:       []int64{20},
-		ChildIDs:       []int64{userAID, userBID},
-		AllChildren:    &selectedChildrenOnly,
-		RateMultiplier: 2.0,
-		CanDelegate:    false,
+		GroupIDs:    []int64{20},
+		ChildIDs:    []int64{userAID, userBID},
+		AllChildren: &selectedChildrenOnly,
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, 1, updated)
 	require.Equal(t, 1.2, mustFindAgentManagementDelegation(t, repo, rootID, userAID, 20).rateMultiplier)
-	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, rootID, userBID, 20).rateMultiplier)
+	require.Equal(t, 2.6, mustFindAgentManagementDelegation(t, repo, rootID, userBID, 20).rateMultiplier)
+	require.False(t, mustFindAgentManagementDelegation(t, repo, rootID, userBID, 20).canDelegate)
 	require.Equal(t, 1.3, mustFindAgentManagementDelegation(t, repo, rootID, userAID, 30).rateMultiplier)
 	require.Equal(t, 1.4, mustFindAgentManagementDelegation(t, repo, rootID, agentID, 20).rateMultiplier)
 	require.ElementsMatch(t, []int64{20}, repo.users[userBID].AllowedGroups)
+}
+
+func TestSetDirectChildrenGroupDelegationsBatchUsesAgentPresetRate(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	userID := int64(3)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: userID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
+	}
+	repo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: level1ID, groupID: 20, rateMultiplier: 2.7},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: 20, Name: "exclusive-a", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	updated, err := svc.SetDirectChildrenGroupDelegationsBatch(context.Background(), level1ID, DirectChildKindUsers, DirectChildrenGroupDelegationBatchInput{
+		GroupIDs: []int64{20},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, updated)
+	delegation := mustFindAgentManagementDelegation(t, repo, level1ID, userID, 20)
+	require.Equal(t, 2.7, delegation.rateMultiplier)
+	require.False(t, delegation.canDelegate)
+	require.ElementsMatch(t, []int64{20}, repo.users[userID].AllowedGroups)
+}
+
+func TestSetDirectChildrenGroupDelegationsBatchFallsBackToEffectiveRateWithoutPreset(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	userID := int64(3)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: userID, Role: RoleUser, ParentUserID: &level1ID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: 20, rateMultiplier: 1.5, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: 20, Name: "exclusive-a", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	updated, err := svc.SetDirectChildrenGroupDelegationsBatch(context.Background(), level1ID, DirectChildKindUsers, DirectChildrenGroupDelegationBatchInput{
+		GroupIDs: []int64{20},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, updated)
+	delegation := mustFindAgentManagementDelegation(t, repo, level1ID, userID, 20)
+	require.Equal(t, 1.5, delegation.rateMultiplier)
+	require.False(t, delegation.canDelegate)
+	require.ElementsMatch(t, []int64{20}, repo.users[userID].AllowedGroups)
 }
 
 func TestListDirectChildrenWithGroupDelegationReturnsOnlyAssignedChildrenOfKind(t *testing.T) {

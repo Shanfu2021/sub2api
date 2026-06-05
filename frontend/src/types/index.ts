@@ -264,6 +264,7 @@ export interface AgentManagedUser {
   pool_concurrency: number
   pool_rpm: number
   agent_income?: number
+  notes?: string
   group_rates?: Record<number, number>
   invite_default_concurrency: number
   invite_default_rpm: number
@@ -386,9 +387,12 @@ export interface AgentGroupDelegationBatchRequest extends AgentGroupDelegationRe
   all: boolean
 }
 
-export interface AgentDirectChildrenGroupDelegationBatchRequest extends AgentGroupDelegationBatchRequest {
+export interface AgentDirectChildrenGroupDelegationBatchRequest {
+  group_ids: number[]
+  all: boolean
   child_ids: number[]
   all_children: boolean
+  can_delegate: boolean
 }
 
 export interface AgentDirectChildrenGroupQuery {

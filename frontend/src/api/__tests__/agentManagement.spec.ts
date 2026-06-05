@@ -203,7 +203,7 @@ describe('agent management api', () => {
 
   it('updates direct children group delegations in batch by child kind', async () => {
     const response = { kind: 'enterprises', group_ids: [7, 8], all: false, child_ids: [12], all_children: false, updated_children: 3 }
-    const payload = { group_ids: [7, 8], all: false, child_ids: [12], all_children: false, rate_multiplier: 3.2, can_delegate: true }
+    const payload = { group_ids: [7, 8], all: false, child_ids: [12], all_children: false, can_delegate: true }
     put.mockResolvedValue({ data: response })
 
     await expect(agentManagementAPI.setDirectChildrenGroupDelegationsBatch('enterprises', payload)).resolves.toEqual(response)
