@@ -2247,6 +2247,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err != nil {
 		return nil, err
 	}
+	oldRateMultiplier := group.RateMultiplier
 
 	if input.Name != "" {
 		group.Name = input.Name
@@ -2377,8 +2378,18 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	raisedRateFloorUserIDs, err := s.raiseManagedGroupRateFloorsForBaseGroupUpdate(ctx, group.ID, oldRateMultiplier, group.RateMultiplier, input.RateMultiplier != nil)
+	if err != nil {
+		return nil, err
+	}
+
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
+		for _, userID := range raisedRateFloorUserIDs {
+			if userID > 0 {
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+			}
+		}
 	}
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
@@ -2450,6 +2461,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 
 	return group, nil
+}
+
+func (s *adminServiceImpl) raiseManagedGroupRateFloorsForBaseGroupUpdate(ctx context.Context, groupID int64, oldRate float64, newRate float64, rateChanged bool) ([]int64, error) {
+	if s == nil || !rateChanged || groupID <= 0 || newRate <= 0 || oldRate >= newRate || s.agentDeletionCleanupRepo == nil || s.userRepo == nil {
+		return nil, nil
+	}
+	rootAdmin, err := s.userRepo.GetFirstAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get root admin for group rate floor: %w", err)
+	}
+	if rootAdmin == nil || rootAdmin.ID <= 0 {
+		return nil, nil
+	}
+	return s.agentDeletionCleanupRepo.RaiseManagedGroupRateFloorForAdminUpdate(ctx, rootAdmin.ID, groupID, newRate)
 }
 
 func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {

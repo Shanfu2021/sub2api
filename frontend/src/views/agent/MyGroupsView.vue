@@ -68,7 +68,7 @@
                     <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
                       <span>{{ t('agentManagement.groups.batchRate') }}</span>
                       <input
-                        v-model.number="inviteDefaultBatchRate"
+                        v-model="inviteDefaultBatchRate"
                         data-test="invite-default-batch-rate"
                         class="input h-9 w-28"
                         type="number"
@@ -240,9 +240,9 @@ const savingInviteDefaultGroupId = ref<number | null>(null)
 const savingInviteDefaultBatch = ref(false)
 const groups = ref<AgentGroupRate[]>([])
 const inviteDefaultGroupOptions = ref<AgentChildGroupDelegationOption[]>([])
-const inviteDefaultDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number }>>({})
+const inviteDefaultDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: string }>>({})
 const inviteDefaultBatchAll = ref(false)
-const inviteDefaultBatchRate = ref(1)
+const inviteDefaultBatchRate = ref('1')
 const selectedInviteDefaultBatchGroupIDs = ref<number[]>([])
 
 const columns = computed<Column[]>(() => [
@@ -283,19 +283,19 @@ function syncInviteDefaultDrafts(options: AgentChildGroupDelegationOption[]) {
   for (const item of options) {
     inviteDefaultDrafts[item.group.id] = {
       assigned: item.assigned,
-      rate_multiplier: item.assigned ? item.child_rate_multiplier : item.effective_rate,
+      rate_multiplier: String(item.assigned ? item.child_rate_multiplier : item.effective_rate),
     }
   }
   selectedInviteDefaultBatchGroupIDs.value = []
   inviteDefaultBatchAll.value = false
-  inviteDefaultBatchRate.value = options[0]?.effective_rate ?? 1
+  inviteDefaultBatchRate.value = String(options[0]?.effective_rate ?? 1)
 }
 
 function inviteDefaultDraftFor(groupRate: AgentChildGroupDelegationOption) {
   if (!inviteDefaultDrafts[groupRate.group.id]) {
     inviteDefaultDrafts[groupRate.group.id] = {
       assigned: groupRate.assigned,
-      rate_multiplier: groupRate.assigned ? groupRate.child_rate_multiplier : groupRate.effective_rate,
+      rate_multiplier: String(groupRate.assigned ? groupRate.child_rate_multiplier : groupRate.effective_rate),
     }
   }
   return inviteDefaultDrafts[groupRate.group.id]
@@ -303,15 +303,15 @@ function inviteDefaultDraftFor(groupRate: AgentChildGroupDelegationOption) {
 
 function updateInviteDefaultAssignedDraft(groupId: number, assigned: boolean) {
   inviteDefaultDrafts[groupId] = {
-    ...(inviteDefaultDrafts[groupId] || { assigned: false, rate_multiplier: 0 }),
+    ...(inviteDefaultDrafts[groupId] || { assigned: false, rate_multiplier: '' }),
     assigned,
   }
 }
 
 function updateInviteDefaultRateDraft(groupId: number, rawValue: string) {
   inviteDefaultDrafts[groupId] = {
-    ...(inviteDefaultDrafts[groupId] || { assigned: true, rate_multiplier: 0 }),
-    rate_multiplier: normalizedPositiveFloat(rawValue),
+    ...(inviteDefaultDrafts[groupId] || { assigned: true, rate_multiplier: '' }),
+    rate_multiplier: rawValue,
   }
 }
 
@@ -376,7 +376,8 @@ async function saveInviteDefaultGroup(groupRate: AgentChildGroupDelegationOption
     return
   }
 
-  if (draft.rate_multiplier <= 0) {
+  const rateMultiplier = normalizedPositiveFloat(draft.rate_multiplier)
+  if (rateMultiplier <= 0) {
     appStore.showError(t('agentManagement.groups.invalidRate'))
     return
   }
@@ -384,7 +385,7 @@ async function saveInviteDefaultGroup(groupRate: AgentChildGroupDelegationOption
   savingInviteDefaultGroupId.value = groupRate.group.id
   try {
     await agentManagementAPI.setInviteGroupDefault(groupRate.group.id, {
-      rate_multiplier: draft.rate_multiplier,
+      rate_multiplier: rateMultiplier,
     })
     appStore.showSuccess(t('agentManagement.groups.inviteDefaultGroupSaved'))
     await loadInviteDefaultGroups()

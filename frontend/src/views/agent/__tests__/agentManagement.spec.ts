@@ -1037,6 +1037,28 @@ describe('agent management pages', () => {
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.delegationSaved')
   })
 
+  it('keeps partial decimal text while editing child group rates', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
+    await flushPromises()
+
+    const rateInput = wrapper.get('[data-test="group-rate-7"]')
+    await rateInput.setValue('0.0')
+    await flushPromises()
+    expect((rateInput.element as HTMLInputElement).value).toBe('0.0')
+
+    await rateInput.setValue('0.05')
+    await wrapper.get('[data-test="save-group-7"]').trigger('click')
+    await flushPromises()
+
+    expect(setChildGroupDelegation).toHaveBeenCalledWith(12, 7, {
+      rate_multiplier: 0.05,
+      can_delegate: false,
+    })
+  })
+
   it('reclaims a group when it is unchecked and saved', async () => {
     const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
     await flushPromises()
@@ -1275,6 +1297,24 @@ describe('agent management pages', () => {
       rate_multiplier: 3.2,
     })
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.inviteDefaultBatchSaved')
+  })
+
+  it('keeps partial decimal text while editing invite default group rates', async () => {
+    const wrapper = mountAgentView(MyGroupsView, 'agent_level1')
+    await flushPromises()
+
+    const rateInput = wrapper.get('[data-test="invite-default-rate-7"]')
+    await rateInput.setValue('0.0')
+    await flushPromises()
+    expect((rateInput.element as HTMLInputElement).value).toBe('0.0')
+
+    await rateInput.setValue('0.05')
+    await wrapper.get('[data-test="save-invite-default-7"]').trigger('click')
+    await flushPromises()
+
+    expect(setInviteGroupDefault).toHaveBeenCalledWith(7, {
+      rate_multiplier: 0.05,
+    })
   })
 
   it('shows invite default group propagation config for admins', async () => {

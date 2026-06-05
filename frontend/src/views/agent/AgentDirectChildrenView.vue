@@ -415,7 +415,7 @@
                 <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
                   <span>{{ t('agentManagement.groups.batchRate') }}</span>
                   <input
-                    v-model.number="groupBatchRate"
+                    v-model="groupBatchRate"
                     data-test="group-batch-rate"
                     class="input h-9 w-28"
                     type="number"
@@ -857,7 +857,7 @@
                   <span>{{ t('agentManagement.groups.updateRateEnabled') }}</span>
                 </label>
                 <input
-                  v-model.number="directGroupUpdateRate"
+                  v-model="directGroupUpdateRate"
                   data-test="direct-group-update-rate"
                   class="input h-9"
                   type="number"
@@ -1221,9 +1221,9 @@ const directGroupReclaimDialog = reactive<{
   search: '',
   pagination: { total: 0, page: 1, page_size: 20, pages: 1 },
 })
-const groupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number; can_delegate: boolean }>>({})
+const groupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: string; can_delegate: boolean }>>({})
 const groupBatchAll = ref(false)
-const groupBatchRate = ref(1)
+const groupBatchRate = ref('1')
 const groupBatchCanDelegate = ref(false)
 const groupBatchSaving = ref(false)
 const selectedGroupBatchIDs = ref<number[]>([])
@@ -1235,7 +1235,7 @@ const selectedDirectGroupBatchIDs = ref<number[]>([])
 const directGroupUpdateAll = ref(false)
 const selectedDirectGroupUpdateChildIDs = ref<number[]>([])
 const directGroupUpdateRateEnabled = ref(true)
-const directGroupUpdateRate = ref(1)
+const directGroupUpdateRate = ref('1')
 const directGroupUpdateCanDelegateEnabled = ref(false)
 const directGroupUpdateCanDelegate = ref(false)
 const directGroupReclaimAll = ref(false)
@@ -1713,13 +1713,13 @@ function syncGroupDrafts(groups: AgentChildGroupDelegationOption[]) {
     if (!item.can_delegate) continue
     groupDrafts[item.group.id] = {
       assigned: item.assigned,
-      rate_multiplier: item.assigned ? item.child_rate_multiplier : item.effective_rate,
+      rate_multiplier: String(item.assigned ? item.child_rate_multiplier : item.effective_rate),
       can_delegate: item.assigned ? item.child_can_delegate : false,
     }
   }
   selectedGroupBatchIDs.value = []
   groupBatchAll.value = false
-  groupBatchRate.value = groups[0]?.effective_rate ?? 1
+  groupBatchRate.value = String(groups[0]?.effective_rate ?? 1)
   groupBatchCanDelegate.value = false
 }
 
@@ -1727,7 +1727,7 @@ function groupDraftFor(groupRate: AgentChildGroupDelegationOption) {
   if (!groupDrafts[groupRate.group.id]) {
     groupDrafts[groupRate.group.id] = {
       assigned: groupRate.assigned,
-      rate_multiplier: groupRate.assigned ? groupRate.child_rate_multiplier : groupRate.effective_rate,
+      rate_multiplier: String(groupRate.assigned ? groupRate.child_rate_multiplier : groupRate.effective_rate),
       can_delegate: groupRate.assigned ? groupRate.child_can_delegate : false,
     }
   }
@@ -1736,21 +1736,21 @@ function groupDraftFor(groupRate: AgentChildGroupDelegationOption) {
 
 function updateGroupRateDraft(groupID: number, rawValue: string) {
   groupDrafts[groupID] = {
-    ...(groupDrafts[groupID] || { assigned: true, rate_multiplier: 0, can_delegate: false }),
-    rate_multiplier: normalizedPositiveFloat(rawValue),
+    ...(groupDrafts[groupID] || { assigned: true, rate_multiplier: '', can_delegate: false }),
+    rate_multiplier: rawValue,
   }
 }
 
 function updateGroupAssignedDraft(groupID: number, assigned: boolean) {
   groupDrafts[groupID] = {
-    ...(groupDrafts[groupID] || { assigned: false, rate_multiplier: 0, can_delegate: false }),
+    ...(groupDrafts[groupID] || { assigned: false, rate_multiplier: '', can_delegate: false }),
     assigned,
   }
 }
 
 function updateGroupCanDelegateDraft(groupID: number, canDelegate: boolean) {
   groupDrafts[groupID] = {
-    ...(groupDrafts[groupID] || { assigned: true, rate_multiplier: 0, can_delegate: false }),
+    ...(groupDrafts[groupID] || { assigned: true, rate_multiplier: '', can_delegate: false }),
     can_delegate: canDelegate,
   }
 }
@@ -1968,7 +1968,7 @@ function syncDirectGroupUpdateGroups(groups: AgentGroupRate[]) {
     }))
   directGroupUpdateDialog.selectedGroupId = directGroupUpdateDialog.groups[0]?.group.id ?? 0
   const first = directGroupUpdateDialog.groups[0]
-  directGroupUpdateRate.value = first?.effective_rate ?? 1
+  directGroupUpdateRate.value = String(first?.effective_rate ?? 1)
   directGroupUpdateCanDelegate.value = false
 }
 
@@ -2064,7 +2064,7 @@ async function onDirectGroupUpdateGroupChange() {
   selectedDirectGroupUpdateChildIDs.value = []
   directGroupUpdateAll.value = false
   const groupRate = directGroupUpdateDialog.groups.find((item) => item.group.id === directGroupUpdateDialog.selectedGroupId)
-  directGroupUpdateRate.value = groupRate?.effective_rate ?? 1
+  directGroupUpdateRate.value = String(groupRate?.effective_rate ?? 1)
   directGroupUpdateCanDelegate.value = false
   await loadDirectGroupUpdateChildren()
 }
@@ -2243,14 +2243,15 @@ async function saveGroupDelegation(groupRate: AgentChildGroupDelegationOption) {
     await removeGroupDelegation(groupRate)
     return
   }
-  if (draft.rate_multiplier <= 0) {
+  const rateMultiplier = normalizedPositiveFloat(draft.rate_multiplier)
+  if (rateMultiplier <= 0) {
     appStore.showError(t('agentManagement.groups.invalidRate'))
     return
   }
   groupDialog.savingGroupId = groupRate.group.id
   try {
     await agentManagementAPI.setChildGroupDelegation(groupDialog.child.id, groupRate.group.id, {
-      rate_multiplier: draft.rate_multiplier,
+      rate_multiplier: rateMultiplier,
       can_delegate: draft.can_delegate,
     })
     appStore.showSuccess(t('agentManagement.groups.delegationSaved'))
