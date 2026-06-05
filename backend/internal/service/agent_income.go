@@ -52,7 +52,7 @@ func (r *AgentIncomeResolver) resolveFirstLevelAgentID(ctx context.Context, user
 		return nil
 	}
 	switch user.Role {
-	case RoleUser, "":
+	case RoleUser, RoleEnterprise, "":
 		return r.parentIfLevel1Agent(ctx, *user.ParentUserID)
 	case RoleEmployee:
 		if r.userRepo == nil {

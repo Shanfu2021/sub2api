@@ -316,6 +316,49 @@ func TestOpenAIGatewayServiceRecordUsage_CapturesDirectAgentIncomeSnapshot(t *te
 	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.2-0.1)/0.2, usageRepo.lastLog.AgentIncome, 1e-12)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_CapturesDirectEnterpriseAgentIncomeSnapshot(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	agentID := int64(1000)
+	enterpriseID := int64(1500)
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			agentID: {ID: agentID, Role: RoleAgentLevel1},
+		},
+	}
+	groupID := int64(10)
+	rateRepo := &openAIUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			enterpriseID: {groupID: 0.2},
+			agentID:      {groupID: 0.1},
+		},
+	}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "agent_income_direct_enterprise",
+			Usage:     OpenAIUsage{InputTokens: 1000000},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      3000,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &agentID},
+		Account: &Account{ID: 4000, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AgentOwnerUserID)
+	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
+	require.InDelta(t, 0.2, usageRepo.lastLog.AgentUserRateMultiplier, 1e-12)
+	require.InDelta(t, 0.1, usageRepo.lastLog.AgentCostRateMultiplier, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.2-0.1)/0.2, usageRepo.lastLog.AgentIncome, 1e-12)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_DeductsAgentIncomeWhenChildRateIsBelowCost(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	agentID := int64(1000)
