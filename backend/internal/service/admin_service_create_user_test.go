@@ -134,6 +134,29 @@ func TestAdminService_CreateUser_AssignsParentUserIDWhenProvided(t *testing.T) {
 	require.Equal(t, rootAdminID, *repo.created[0].ParentUserID)
 }
 
+func TestAdminService_CreateUser_DefaultsParentUserIDToRootAdmin(t *testing.T) {
+	rootAdminID := int64(1)
+	repo := &userRepoStub{
+		nextID: 15,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootAdminID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "owned-by-root-admin@test.com",
+		Password: "strong-pass",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootAdminID, *user.ParentUserID)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ParentUserID)
+	require.Equal(t, rootAdminID, *repo.created[0].ParentUserID)
+}
+
 func TestAdminService_CreateUser_EmailExists(t *testing.T) {
 	repo := &userRepoStub{createErr: ErrEmailExists}
 	svc := &adminServiceImpl{userRepo: repo}

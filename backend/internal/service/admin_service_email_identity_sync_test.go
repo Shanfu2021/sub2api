@@ -25,6 +25,7 @@ type replaceEmailCall struct {
 
 type emailSyncRepoStub struct {
 	user         *User
+	firstAdmin   *User
 	nextID       int64
 	updateCalls  int
 	created      []*User
@@ -57,7 +58,10 @@ func (s *emailSyncRepoStub) GetByEmail(_ context.Context, _ string) (*User, erro
 }
 
 func (s *emailSyncRepoStub) GetFirstAdmin(context.Context) (*User, error) {
-	return nil, fmt.Errorf("unexpected GetFirstAdmin call")
+	if s.firstAdmin != nil {
+		return s.firstAdmin, nil
+	}
+	return nil, ErrUserNotFound
 }
 
 func (s *emailSyncRepoStub) Update(_ context.Context, user *User) error {

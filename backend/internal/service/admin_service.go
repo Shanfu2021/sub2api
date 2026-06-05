@@ -694,12 +694,24 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		balance = s.settingService.GetDefaultBalance(ctx)
 	}
 
+	parentUserID := input.ParentUserID
+	if parentUserID == nil && s.userRepo != nil {
+		admin, err := s.userRepo.GetFirstAdmin(ctx)
+		if err != nil && !errors.Is(err, ErrUserNotFound) {
+			return nil, err
+		}
+		if admin != nil && admin.ID > 0 {
+			rootAdminID := admin.ID
+			parentUserID = &rootAdminID
+		}
+	}
+
 	user := &User{
 		Email:        input.Email,
 		Username:     input.Username,
 		Notes:        input.Notes,
 		Role:         RoleUser, // Always create as regular user, never admin
-		ParentUserID: input.ParentUserID,
+		ParentUserID: parentUserID,
 		Balance:      balance,
 		Concurrency:  input.Concurrency,
 		RPMLimit:     input.RPMLimit,
