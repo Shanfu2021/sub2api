@@ -1487,7 +1487,14 @@ func (s *AgentManagementService) ResolveInvitationParent(ctx context.Context, in
 	if err != nil {
 		return nil, err
 	}
-	if inviter.Role == RoleAdmin || isAgentManagerRole(inviter.Role) {
+	if inviter.Role == RoleAdmin {
+		rootAdmin, err := s.repo.GetRootAdmin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+		}
+		return &rootAdmin.ID, nil
+	}
+	if isAgentManagerRole(inviter.Role) {
 		return &inviter.ID, nil
 	}
 
@@ -1506,7 +1513,11 @@ func (s *AgentManagementService) ResolveInvitationParent(ctx context.Context, in
 			return &parent.ID, nil
 		}
 		if parent.Role == RoleAdmin {
-			return &parent.ID, nil
+			rootAdmin, err := s.repo.GetRootAdmin(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %v", ErrAgentManagementRootAdminNotPresent, err)
+			}
+			return &rootAdmin.ID, nil
 		}
 		parentID = parent.ParentUserID
 	}

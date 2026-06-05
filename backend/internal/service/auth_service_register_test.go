@@ -810,13 +810,15 @@ func TestRegisterWithAgentInvitationUsesAgentInviteDefaultQuota(t *testing.T) {
 
 func TestRegisterWithAdminInvitationUsesGlobalDefaultQuota(t *testing.T) {
 	rootID := int64(1)
+	secondAdminID := int64(2)
 	repo := &userRepoStub{
 		nextID: 106,
 		usersByEmail: map[string]*User{
-			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"admin@test.com":        {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+			"second-admin@test.com": {ID: secondAdminID, Email: "second-admin@test.com", Role: RoleAdmin, Status: StatusActive},
 		},
 	}
-	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"ADMINAFF": rootID}}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"ADMINAFF": secondAdminID}}
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled:                 "true",
 		SettingKeyInvitationCodeEnabled:               "true",
@@ -829,6 +831,7 @@ func TestRegisterWithAdminInvitationUsesGlobalDefaultQuota(t *testing.T) {
 	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
 	agentRepo := newAgentManagementRepoStub(
 		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: secondAdminID, Email: "second-admin@test.com", Role: RoleAdmin, Status: StatusActive},
 	)
 	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
 
@@ -836,6 +839,10 @@ func TestRegisterWithAdminInvitationUsesGlobalDefaultQuota(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user.ParentUserID)
 	require.Equal(t, rootID, *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: user.ID, inviterID: secondAdminID}}, affiliateRepo.bindCalls)
 	require.Equal(t, 6, user.Concurrency)
 	require.Equal(t, 60, user.RPMLimit)
 }
