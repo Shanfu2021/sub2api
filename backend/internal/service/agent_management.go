@@ -294,11 +294,15 @@ type AgentManagementRepository interface {
 	UpsertInviteGroupDefault(ctx context.Context, agentID int64, groupID int64, rateMultiplier float64) error
 	DeleteInviteGroupDefault(ctx context.Context, agentID int64, groupID int64) error
 	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
+	RemoveUserGroupAccessForAdminUpdate(ctx context.Context, userID int64, groupIDs []int64) ([]int64, error)
+	RaiseManagedGroupRateFloorForAdminUpdate(ctx context.Context, userID int64, groupID int64, minimumRate float64) ([]int64, error)
 	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
 
 type AgentUserDeletionCleanupRepository interface {
 	DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error)
+	RemoveUserGroupAccessForAdminUpdate(ctx context.Context, userID int64, groupIDs []int64) ([]int64, error)
+	RaiseManagedGroupRateFloorForAdminUpdate(ctx context.Context, userID int64, groupID int64, minimumRate float64) ([]int64, error)
 	RecalculateAgentQuota(ctx context.Context, agentID int64) error
 }
 

@@ -247,7 +247,18 @@ type agentUserDeletionCleanupRepoStub struct {
 	calls                []int64
 	affectedUserIDs      []int64
 	recalculatedAgentIDs []int64
-	err                  error
+	groupAccessCalls     []struct {
+		userID   int64
+		groupIDs []int64
+	}
+	raiseGroupRateFloorCalls []struct {
+		userID      int64
+		groupID     int64
+		minimumRate float64
+	}
+	groupAccessAffectedUserIDs []int64
+	rateFloorAffectedUserIDs   []int64
+	err                        error
 }
 
 func (s *agentUserDeletionCleanupRepoStub) DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error) {
@@ -260,6 +271,24 @@ func (s *agentUserDeletionCleanupRepoStub) DeleteAgentForAdminUserDeletion(ctx c
 func (s *agentUserDeletionCleanupRepoStub) RecalculateAgentQuota(_ context.Context, agentID int64) error {
 	s.recalculatedAgentIDs = append(s.recalculatedAgentIDs, agentID)
 	return s.err
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RemoveUserGroupAccessForAdminUpdate(_ context.Context, userID int64, groupIDs []int64) ([]int64, error) {
+	clonedGroupIDs := append([]int64(nil), groupIDs...)
+	s.groupAccessCalls = append(s.groupAccessCalls, struct {
+		userID   int64
+		groupIDs []int64
+	}{userID: userID, groupIDs: clonedGroupIDs})
+	return s.groupAccessAffectedUserIDs, s.err
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RaiseManagedGroupRateFloorForAdminUpdate(_ context.Context, userID int64, groupID int64, minimumRate float64) ([]int64, error) {
+	s.raiseGroupRateFloorCalls = append(s.raiseGroupRateFloorCalls, struct {
+		userID      int64
+		groupID     int64
+		minimumRate float64
+	}{userID: userID, groupID: groupID, minimumRate: minimumRate})
+	return s.rateFloorAffectedUserIDs, s.err
 }
 
 type enterpriseAdminCleanupRepoStub struct {

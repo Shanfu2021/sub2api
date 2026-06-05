@@ -554,6 +554,230 @@ func (r *agentManagementRepository) DeleteAgentForAdminUserDeletion(ctx context.
 	return int64Keys(affected), nil
 }
 
+func (r *agentManagementRepository) RemoveUserGroupAccessForAdminUpdate(ctx context.Context, userID int64, groupIDs []int64) ([]int64, error) {
+	if userID <= 0 {
+		return nil, nil
+	}
+	groupIDs = positiveUniqueInt64s(groupIDs)
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+WITH RECURSIVE subtree AS (
+  SELECT id, parent_user_id, role
+  FROM users
+  WHERE id = $1 AND deleted_at IS NULL
+  UNION ALL
+  SELECT u.id, u.parent_user_id, u.role
+  FROM users u
+  JOIN subtree parent ON u.parent_user_id = parent.id
+  WHERE u.deleted_at IS NULL
+),
+selected_groups AS (
+  SELECT unnest($2::bigint[]) AS group_id
+),
+deleted_parent_delegations AS (
+  DELETE FROM agent_group_delegations agd
+  USING selected_groups g
+  WHERE agd.child_user_id = $1
+    AND agd.group_id = g.group_id
+    AND agd.deleted_at IS NULL
+  RETURNING agd.manager_user_id, agd.child_user_id
+),
+deleted_descendant_delegations AS (
+  DELETE FROM agent_group_delegations agd
+  USING subtree child, selected_groups g
+  WHERE agd.child_user_id = child.id
+    AND agd.manager_user_id IN (SELECT id FROM subtree)
+    AND agd.group_id = g.group_id
+    AND agd.deleted_at IS NULL
+  RETURNING agd.manager_user_id, agd.child_user_id
+),
+deleted_defaults AS (
+  DELETE FROM agent_invite_group_defaults d
+  USING subtree s, selected_groups g
+  WHERE d.agent_user_id = s.id
+    AND d.group_id = g.group_id
+    AND d.deleted_at IS NULL
+  RETURNING d.agent_user_id
+),
+deleted_employee_defaults AS (
+  UPDATE enterprise_employee_group_defaults d
+  SET deleted_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
+  FROM subtree s, selected_groups g
+  WHERE d.enterprise_user_id = s.id
+    AND d.group_id = g.group_id
+    AND d.deleted_at IS NULL
+  RETURNING d.enterprise_user_id
+),
+deleted_allowed AS (
+  DELETE FROM user_allowed_groups uag
+  USING subtree s, selected_groups g
+  WHERE uag.user_id = s.id
+    AND uag.group_id = g.group_id
+  RETURNING uag.user_id
+),
+deleted_rate_rows AS (
+  DELETE FROM user_group_rate_multipliers ugr
+  USING subtree s, selected_groups g
+  WHERE ugr.user_id = s.id
+    AND ugr.group_id = g.group_id
+    AND ugr.rpm_override IS NULL
+  RETURNING ugr.user_id
+),
+updated_rates AS (
+  UPDATE user_group_rate_multipliers ugr
+  SET rate_multiplier = NULL,
+      updated_at = CURRENT_TIMESTAMP
+  FROM subtree s, selected_groups g
+  WHERE ugr.user_id = s.id
+    AND ugr.group_id = g.group_id
+    AND ugr.rpm_override IS NOT NULL
+    AND ugr.rate_multiplier IS NOT NULL
+  RETURNING ugr.user_id
+),
+affected AS (
+  SELECT id FROM subtree
+  UNION SELECT manager_user_id FROM deleted_parent_delegations
+  UNION SELECT child_user_id FROM deleted_parent_delegations
+  UNION SELECT manager_user_id FROM deleted_descendant_delegations
+  UNION SELECT child_user_id FROM deleted_descendant_delegations
+  UNION SELECT agent_user_id FROM deleted_defaults
+  UNION SELECT enterprise_user_id FROM deleted_employee_defaults
+  UNION SELECT user_id FROM deleted_allowed
+  UNION SELECT user_id FROM deleted_rate_rows
+  UNION SELECT user_id FROM updated_rates
+)
+SELECT DISTINCT id
+FROM affected
+WHERE id IS NOT NULL
+ORDER BY id`,
+		userID,
+		pq.Array(groupIDs),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	affectedUserIDs := make([]int64, 0)
+	for rows.Next() {
+		var affectedUserID int64
+		if err := rows.Scan(&affectedUserID); err != nil {
+			return nil, err
+		}
+		affectedUserIDs = append(affectedUserIDs, affectedUserID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return affectedUserIDs, nil
+}
+
+func (r *agentManagementRepository) RaiseManagedGroupRateFloorForAdminUpdate(ctx context.Context, userID int64, groupID int64, minimumRate float64) ([]int64, error) {
+	if userID <= 0 || groupID <= 0 || minimumRate <= 0 {
+		return nil, nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+	rows, err := exec.QueryContext(ctx, `
+WITH RECURSIVE subtree AS (
+  SELECT id, parent_user_id, role
+  FROM users
+  WHERE id = $1 AND deleted_at IS NULL
+  UNION ALL
+  SELECT u.id, u.parent_user_id, u.role
+  FROM users u
+  JOIN subtree parent ON u.parent_user_id = parent.id
+  WHERE u.deleted_at IS NULL
+),
+updated_delegations AS (
+  UPDATE agent_group_delegations agd
+  SET rate_multiplier = $3,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE agd.manager_user_id IN (SELECT id FROM subtree)
+    AND agd.group_id = $2
+    AND agd.deleted_at IS NULL
+    AND agd.rate_multiplier < $3
+  RETURNING agd.manager_user_id, agd.child_user_id
+),
+updated_invite_defaults AS (
+  UPDATE agent_invite_group_defaults d
+  SET rate_multiplier = $3,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE d.agent_user_id IN (SELECT id FROM subtree)
+    AND d.group_id = $2
+    AND d.deleted_at IS NULL
+    AND d.rate_multiplier < $3
+  RETURNING d.agent_user_id
+),
+updated_user_rates AS (
+  UPDATE user_group_rate_multipliers ugr
+  SET rate_multiplier = $3,
+      updated_at = CURRENT_TIMESTAMP
+  WHERE ugr.user_id IN (SELECT id FROM subtree)
+    AND ugr.group_id = $2
+    AND ugr.rate_multiplier IS NOT NULL
+    AND ugr.rate_multiplier < $3
+  RETURNING ugr.user_id
+),
+affected AS (
+  SELECT id FROM subtree
+  UNION SELECT manager_user_id FROM updated_delegations
+  UNION SELECT child_user_id FROM updated_delegations
+  UNION SELECT agent_user_id FROM updated_invite_defaults
+  UNION SELECT user_id FROM updated_user_rates
+)
+SELECT DISTINCT id
+FROM affected
+WHERE id IS NOT NULL
+ORDER BY id`,
+		userID,
+		groupID,
+		minimumRate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	affectedUserIDs := make([]int64, 0)
+	for rows.Next() {
+		var affectedUserID int64
+		if err := rows.Scan(&affectedUserID); err != nil {
+			return nil, err
+		}
+		affectedUserIDs = append(affectedUserIDs, affectedUserID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return affectedUserIDs, nil
+}
+
+func positiveUniqueInt64s(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	out := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
 func (r *agentManagementRepository) rehomeManagedGroupDelegations(ctx context.Context, exec sqlQueryExecutor, oldManagerID int64, newManagerID int64) error {
 	_, err := exec.ExecContext(ctx, `
 WITH source AS (

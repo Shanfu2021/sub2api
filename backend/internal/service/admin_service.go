@@ -773,6 +773,21 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldStatus := user.Status
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
+	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
+	oldGroupRates := cloneFloat64Map(user.GroupRates)
+	removedAllowedGroups := []int64(nil)
+	if input.AllowedGroups != nil {
+		removedAllowedGroups = removedGroupIDs(oldAllowedGroups, *input.AllowedGroups)
+	}
+	groupRates := cloneGroupRateInputs(input.GroupRates)
+	if len(removedAllowedGroups) > 0 {
+		if groupRates == nil {
+			groupRates = make(map[int64]*float64, len(removedAllowedGroups))
+		}
+		for _, groupID := range removedAllowedGroups {
+			groupRates[groupID] = nil
+		}
+	}
 
 	if input.Email != "" {
 		user.Email = input.Email
@@ -820,17 +835,45 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	// 同步用户专属分组倍率
-	if input.GroupRates != nil && s.userGroupRateRepo != nil {
-		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input.GroupRates); err != nil {
+	if groupRates != nil && s.userGroupRateRepo != nil {
+		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, groupRates); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to sync user group rates: user_id=%d err=%v", user.ID, err)
+		}
+	}
+
+	var affectedGroupAccessUserIDs []int64
+	if len(removedAllowedGroups) > 0 && s.agentDeletionCleanupRepo != nil {
+		affectedGroupAccessUserIDs, err = s.agentDeletionCleanupRepo.RemoveUserGroupAccessForAdminUpdate(ctx, user.ID, removedAllowedGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+	raisedRateFloorUserIDs := []int64(nil)
+	if len(groupRates) > 0 && s.agentDeletionCleanupRepo != nil && (user.Role == RoleAgentLevel1 || user.Role == RoleEnterprise) {
+		raisedRateFloorUserIDs, err = s.raiseManagedGroupRateFloorsForAdminUserUpdate(ctx, user, oldGroupRates, groupRates)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	if s.authCacheInvalidator != nil {
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// 不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit {
-			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || input.AllowedGroups != nil || groupRates != nil {
+			invalidateUserIDs := map[int64]struct{}{user.ID: {}}
+			for _, affectedUserID := range affectedGroupAccessUserIDs {
+				if affectedUserID > 0 {
+					invalidateUserIDs[affectedUserID] = struct{}{}
+				}
+			}
+			for _, affectedUserID := range raisedRateFloorUserIDs {
+				if affectedUserID > 0 {
+					invalidateUserIDs[affectedUserID] = struct{}{}
+				}
+			}
+			for affectedUserID := range invalidateUserIDs {
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, affectedUserID)
+			}
 		}
 	}
 
@@ -856,6 +899,100 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+func (s *adminServiceImpl) raiseManagedGroupRateFloorsForAdminUserUpdate(ctx context.Context, user *User, oldGroupRates map[int64]float64, groupRates map[int64]*float64) ([]int64, error) {
+	if s == nil || s.agentDeletionCleanupRepo == nil || user == nil || (user.Role != RoleAgentLevel1 && user.Role != RoleEnterprise) {
+		return nil, nil
+	}
+	affected := map[int64]struct{}{}
+	for groupID, rate := range groupRates {
+		if groupID <= 0 || rate == nil || *rate <= 0 {
+			continue
+		}
+		oldRate, hadOldRate := oldGroupRates[groupID]
+		if hadOldRate && oldRate >= *rate {
+			continue
+		}
+		affectedUserIDs, err := s.agentDeletionCleanupRepo.RaiseManagedGroupRateFloorForAdminUpdate(ctx, user.ID, groupID, *rate)
+		if err != nil {
+			return nil, err
+		}
+		for _, affectedUserID := range affectedUserIDs {
+			if affectedUserID > 0 {
+				affected[affectedUserID] = struct{}{}
+			}
+		}
+	}
+	return sortedInt64SetKeys(affected), nil
+}
+
+func removedGroupIDs(oldGroups []int64, nextGroups []int64) []int64 {
+	if len(oldGroups) == 0 {
+		return nil
+	}
+	next := make(map[int64]struct{}, len(nextGroups))
+	for _, groupID := range nextGroups {
+		if groupID > 0 {
+			next[groupID] = struct{}{}
+		}
+	}
+	seenRemoved := make(map[int64]struct{}, len(oldGroups))
+	removed := make([]int64, 0)
+	for _, groupID := range oldGroups {
+		if groupID <= 0 {
+			continue
+		}
+		if _, ok := next[groupID]; ok {
+			continue
+		}
+		if _, ok := seenRemoved[groupID]; ok {
+			continue
+		}
+		seenRemoved[groupID] = struct{}{}
+		removed = append(removed, groupID)
+	}
+	sort.Slice(removed, func(i, j int) bool { return removed[i] < removed[j] })
+	return removed
+}
+
+func cloneFloat64Map(values map[int64]float64) map[int64]float64 {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[int64]float64, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func sortedInt64SetKeys(values map[int64]struct{}) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func cloneGroupRateInputs(rates map[int64]*float64) map[int64]*float64 {
+	if rates == nil {
+		return nil
+	}
+	cloned := make(map[int64]*float64, len(rates))
+	for groupID, rate := range rates {
+		if rate == nil {
+			cloned[groupID] = nil
+			continue
+		}
+		value := *rate
+		cloned[groupID] = &value
+	}
+	return cloned
 }
 
 func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {

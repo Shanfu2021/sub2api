@@ -698,6 +698,17 @@ func (r *agentManagementRepoStub) DeleteAgentForAdminUserDeletion(_ context.Cont
 	return affected, nil
 }
 
+func (r *agentManagementRepoStub) RemoveUserGroupAccessForAdminUpdate(_ context.Context, userID int64, groupIDs []int64) ([]int64, error) {
+	return []int64{userID}, nil
+}
+
+func (r *agentManagementRepoStub) RaiseManagedGroupRateFloorForAdminUpdate(_ context.Context, userID int64, groupID int64, minimumRate float64) ([]int64, error) {
+	if err := r.RaiseManagedGroupRateFloor(context.Background(), userID, groupID, minimumRate); err != nil {
+		return nil, err
+	}
+	return []int64{userID}, nil
+}
+
 func (r *agentManagementRepoStub) RecalculateAgentQuota(context.Context, int64) error {
 	return nil
 }
