@@ -285,6 +285,33 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 
+func TestAPIKeyService_SnapshotRoundTrip_PreservesUserParentForAgentIncome(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	parentID := int64(6)
+	apiKey := &APIKey{
+		ID:     1,
+		UserID: 7,
+		Key:    "k-agent-income",
+		Status: StatusActive,
+		User: &User{
+			ID:           7,
+			Status:       StatusActive,
+			Role:         RoleEmployee,
+			ParentUserID: &parentID,
+			Balance:      10,
+			Concurrency:  3,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+
+	require.NotNil(t, roundTrip)
+	require.NotNil(t, roundTrip.User)
+	require.NotNil(t, roundTrip.User.ParentUserID)
+	require.Equal(t, parentID, *roundTrip.User.ParentUserID)
+}
+
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {
 	cache := &authCacheStub{}
 	var repoCalls int32

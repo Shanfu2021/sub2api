@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 12 // v12: reload snapshots for agent allocation/effective group rates
+const apiKeyAuthSnapshotVersion = 13 // v13: include parent_user_id for agent income attribution
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -225,6 +225,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
 			Role:                       apiKey.User.Role,
+			ParentUserID:               apiKey.User.ParentUserID,
 			Balance:                    apiKey.User.Balance,
 			Concurrency:                effectiveConcurrency,
 			Email:                      apiKey.User.Email,
@@ -305,6 +306,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ID:                         snapshot.User.ID,
 			Status:                     snapshot.User.Status,
 			Role:                       snapshot.User.Role,
+			ParentUserID:               snapshot.User.ParentUserID,
 			Balance:                    snapshot.User.Balance,
 			Concurrency:                snapshot.User.Concurrency,
 			Email:                      snapshot.User.Email,
