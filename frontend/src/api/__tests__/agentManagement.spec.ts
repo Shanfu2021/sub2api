@@ -202,13 +202,55 @@ describe('agent management api', () => {
   })
 
   it('updates direct children group delegations in batch by child kind', async () => {
-    const response = { kind: 'enterprises', group_ids: [7, 8], all: false, updated_children: 3 }
-    const payload = { group_ids: [7, 8], all: false, rate_multiplier: 3.2, can_delegate: true }
+    const response = { kind: 'enterprises', group_ids: [7, 8], all: false, child_ids: [12], all_children: false, updated_children: 3 }
+    const payload = { group_ids: [7, 8], all: false, child_ids: [12], all_children: false, rate_multiplier: 3.2, can_delegate: true }
     put.mockResolvedValue({ data: response })
 
     await expect(agentManagementAPI.setDirectChildrenGroupDelegationsBatch('enterprises', payload)).resolves.toEqual(response)
 
     expect(put).toHaveBeenCalledWith('/agent-management/direct-enterprises/groups/batch', payload)
+  })
+
+  it('loads direct children that already have a selected group', async () => {
+    const response = { items: [], pagination: { page: 1, page_size: 20, total: 0, pages: 1 } }
+    const query = { group_id: 7, search: 'alice', page: 1, page_size: 20 }
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.listDirectChildrenWithGroupDelegation('users', query)).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/direct-users/groups/assigned', { params: query })
+  })
+
+  it('loads direct children missing any selected group for deployment candidates', async () => {
+    const response = { items: [], pagination: { page: 1, page_size: 20, total: 0, pages: 1 } }
+    const query = { group_ids: [7, 8], search: 'alice', page: 1, page_size: 20 }
+    get.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.listDirectChildrenWithoutGroupDelegation('users', query)).resolves.toEqual(response)
+
+    expect(get).toHaveBeenCalledWith('/agent-management/direct-users/groups/unassigned', {
+      params: { group_ids: '7,8', search: 'alice', page: 1, page_size: 20 },
+    })
+  })
+
+  it('updates existing direct children group delegations without creating missing groups', async () => {
+    const response = { kind: 'users', group_id: 7, requested_child_ids: [12], all: false, updated_children: 1, skipped_children: 0 }
+    const payload = { group_id: 7, child_ids: [12], all: false, rate_multiplier: 2.4 }
+    put.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.updateDirectChildrenExistingGroupDelegations('users', payload)).resolves.toEqual(response)
+
+    expect(put).toHaveBeenCalledWith('/agent-management/direct-users/groups/existing', payload)
+  })
+
+  it('reclaims direct children group delegations by child kind', async () => {
+    const response = { kind: 'enterprises', group_id: 7, requested_child_ids: [12], all: false, removed_children: 1, skipped_children: 0 }
+    const payload = { group_id: 7, child_ids: [12], all: false }
+    post.mockResolvedValue({ data: response })
+
+    await expect(agentManagementAPI.reclaimDirectChildrenGroupDelegations('enterprises', payload)).resolves.toEqual(response)
+
+    expect(post).toHaveBeenCalledWith('/agent-management/direct-enterprises/groups/reclaim', payload)
   })
 
   it('updates invite default groups in batch', async () => {

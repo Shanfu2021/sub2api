@@ -45,6 +45,24 @@
               <Icon name="grid" size="sm" />
               <span>{{ t('agentManagement.groups.directBatchDeploy') }}</span>
             </button>
+            <button
+              data-test="open-direct-group-update"
+              class="btn btn-secondary px-3"
+              :disabled="loading"
+              @click="openDirectGroupUpdateDialog"
+            >
+              <Icon name="cog" size="sm" />
+              <span>{{ t('agentManagement.groups.directBatchUpdate') }}</span>
+            </button>
+            <button
+              data-test="open-direct-group-reclaim"
+              class="btn btn-secondary px-3 text-red-600 dark:text-red-400"
+              :disabled="loading"
+              @click="openDirectGroupReclaimDialog"
+            >
+              <Icon name="trash" size="sm" />
+              <span>{{ t('agentManagement.groups.directBatchReclaim') }}</span>
+            </button>
             <span
               v-if="isAdminUnlimitedCapacity"
               class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200"
@@ -473,7 +491,7 @@
 
         <div v-else class="space-y-4">
           <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/40">
-            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+            <div class="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
               <div class="flex flex-wrap items-center gap-3">
                 <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
                   <input
@@ -524,7 +542,7 @@
             </div>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-2">
+          <div class="grid gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700 sm:grid-cols-2">
             <label
               v-for="groupRate in directGroupBatchDialog.groups"
               :key="groupRate.group.id"
@@ -545,6 +563,430 @@
                 </span>
               </span>
             </label>
+          </div>
+
+          <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+            <div class="mb-3 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+              <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('agentManagement.groups.deploySearch') }}</span>
+                <input
+                  v-model="directGroupBatchDialog.searchDraft"
+                  data-test="direct-group-batch-search"
+                  class="input h-9"
+                  type="search"
+                  :placeholder="t('common.search')"
+                  @keyup.enter="applyDirectGroupBatchSearch"
+                />
+              </label>
+              <button
+                data-test="direct-group-batch-search-submit"
+                class="btn btn-secondary h-9 px-3"
+                type="button"
+                :disabled="directGroupBatchDialog.childrenLoading || !directGroupBatchHasGroupSelection"
+                @click="applyDirectGroupBatchSearch"
+              >
+                <Icon name="search" size="sm" />
+                <span>{{ t('common.search') }}</span>
+              </button>
+            </div>
+
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                <input
+                  data-test="direct-group-batch-all-children"
+                  class="checkbox"
+                  type="checkbox"
+                  :checked="directGroupBatchAllChildren"
+                  :disabled="!directGroupBatchHasGroupSelection"
+                  @change="setDirectGroupBatchAllChildren(($event.target as HTMLInputElement).checked)"
+                />
+                <span>{{ t('agentManagement.groups.batchAllDeployableChildren') }}</span>
+              </label>
+              <span class="text-sm text-gray-500 dark:text-dark-400">
+                {{ t('agentManagement.groups.updateSelectedChildren', { count: selectedDirectGroupBatchChildIDs.length }) }}
+              </span>
+            </div>
+
+            <div
+              v-if="!directGroupBatchHasGroupSelection"
+              class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+            >
+              {{ t('agentManagement.groups.selectGroupBeforeChildren') }}
+            </div>
+            <div v-else-if="directGroupBatchDialog.childrenLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+              {{ t('common.loading') }}
+            </div>
+            <div
+              v-else-if="directGroupBatchDialog.children.length === 0"
+              class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+            >
+              {{ t('agentManagement.groups.emptyDeployableChildren') }}
+            </div>
+            <div v-else class="max-h-72 space-y-2 overflow-y-auto pr-1">
+              <label
+                v-for="child in directGroupBatchDialog.children"
+                :key="child.id"
+                class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700"
+              >
+                <input
+                  :data-test="`direct-group-batch-child-${child.id}`"
+                  class="checkbox"
+                  type="checkbox"
+                  :checked="selectedDirectGroupBatchChildIDs.includes(child.id)"
+                  :disabled="directGroupBatchAllChildren"
+                  @change="updateDirectGroupBatchChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ child.email }}</span>
+                  <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">{{ child.username || '-' }}</span>
+                </span>
+              </label>
+            </div>
+
+            <Pagination
+              v-if="directGroupBatchDialog.pagination.total > directGroupBatchDialog.pagination.page_size"
+              :page="directGroupBatchDialog.pagination.page"
+              :total="directGroupBatchDialog.pagination.total"
+              :page-size="directGroupBatchDialog.pagination.page_size"
+              :show-page-size-selector="false"
+              @update:page="changeDirectGroupBatchPage"
+              @update:page-size="changeDirectGroupBatchPageSize"
+            />
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="directGroupUpdateDialog.show"
+      :title="t('agentManagement.groups.directUpdateTitle')"
+      width="wide"
+      @close="closeDirectGroupUpdateDialog"
+    >
+      <div class="space-y-4" data-test="direct-group-update-modal">
+        <div v-if="directGroupUpdateDialog.loading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+
+        <div
+          v-else-if="directGroupUpdateDialog.groups.length === 0"
+          class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+        >
+          {{ t('agentManagement.groups.emptyDelegable') }}
+        </div>
+
+        <div v-else class="space-y-4">
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/40">
+            <div class="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_auto] lg:items-end">
+              <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('agentManagement.groups.updateGroup') }}</span>
+                <select
+                  v-model.number="directGroupUpdateDialog.selectedGroupId"
+                  data-test="direct-group-update-group"
+                  class="input h-9"
+                  @change="onDirectGroupUpdateGroupChange"
+                >
+                  <option
+                    v-for="groupRate in directGroupUpdateDialog.groups"
+                    :key="groupRate.group.id"
+                    :value="groupRate.group.id"
+                  >
+                    {{ groupRate.group.name }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('agentManagement.groups.updateSearch') }}</span>
+                <input
+                  v-model="directGroupUpdateDialog.searchDraft"
+                  data-test="direct-group-update-search"
+                  class="input h-9"
+                  type="search"
+                  :placeholder="t('common.search')"
+                  @keyup.enter="applyDirectGroupUpdateSearch"
+                />
+              </label>
+
+              <button
+                data-test="direct-group-update-search-submit"
+                class="btn btn-secondary h-9 px-3"
+                type="button"
+                :disabled="directGroupUpdateDialog.childrenLoading"
+                @click="applyDirectGroupUpdateSearch"
+              >
+                <Icon name="search" size="sm" />
+                <span>{{ t('common.search') }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+            <div class="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1fr)]">
+              <div class="space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                    <input
+                      data-test="direct-group-update-all"
+                      class="checkbox"
+                      type="checkbox"
+                      :checked="directGroupUpdateAll"
+                      @change="setDirectGroupUpdateAll(($event.target as HTMLInputElement).checked)"
+                    />
+                    <span>{{ t('agentManagement.groups.updateAllAssigned') }}</span>
+                  </label>
+                  <span class="text-sm text-gray-500 dark:text-dark-400">
+                    {{ t('agentManagement.groups.updateSelectedChildren', { count: selectedDirectGroupUpdateChildIDs.length }) }}
+                  </span>
+                </div>
+
+                <div v-if="directGroupUpdateDialog.childrenLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+                  {{ t('common.loading') }}
+                </div>
+                <div
+                  v-else-if="directGroupUpdateDialog.children.length === 0"
+                  class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+                >
+                  {{ t('agentManagement.groups.emptyAssignedChildren') }}
+                </div>
+                <div v-else class="max-h-80 space-y-2 overflow-y-auto pr-1">
+                  <label
+                    v-for="child in directGroupUpdateDialog.children"
+                    :key="child.id"
+                    class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700"
+                  >
+                    <input
+                      :data-test="`direct-group-update-child-${child.id}`"
+                      class="checkbox"
+                      type="checkbox"
+                      :checked="selectedDirectGroupUpdateChildIDs.includes(child.id)"
+                      :disabled="directGroupUpdateAll"
+                      @change="updateDirectGroupUpdateChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ child.email }}</span>
+                      <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
+                        {{ child.username || '-' }}
+                      </span>
+                    </span>
+                    <span class="text-xs font-medium text-gray-600 dark:text-dark-300">
+                      {{ t('agentManagement.groups.currentRate') }}: {{ currentDirectGroupUpdateChildRate(child) }}
+                    </span>
+                  </label>
+                </div>
+
+                <Pagination
+                  v-if="directGroupUpdateDialog.pagination.total > directGroupUpdateDialog.pagination.page_size"
+                  :page="directGroupUpdateDialog.pagination.page"
+                  :total="directGroupUpdateDialog.pagination.total"
+                  :page-size="directGroupUpdateDialog.pagination.page_size"
+                  :show-page-size-selector="false"
+                  @update:page="changeDirectGroupUpdatePage"
+                  @update:page-size="changeDirectGroupUpdatePageSize"
+                />
+              </div>
+
+              <div class="space-y-3 rounded-md bg-gray-50 p-3 dark:bg-dark-900/40">
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                  <input
+                    v-model="directGroupUpdateRateEnabled"
+                    data-test="direct-group-update-rate-enabled"
+                    class="checkbox"
+                    type="checkbox"
+                  />
+                  <span>{{ t('agentManagement.groups.updateRateEnabled') }}</span>
+                </label>
+                <input
+                  v-model.number="directGroupUpdateRate"
+                  data-test="direct-group-update-rate"
+                  class="input h-9"
+                  type="number"
+                  min="0.000001"
+                  step="0.000001"
+                  :disabled="!directGroupUpdateRateEnabled"
+                />
+
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                  <input
+                    v-model="directGroupUpdateCanDelegateEnabled"
+                    data-test="direct-group-update-can-delegate-enabled"
+                    class="checkbox"
+                    type="checkbox"
+                  />
+                  <span>{{ t('agentManagement.groups.updateCanDelegateEnabled') }}</span>
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-dark-300">
+                  <input
+                    v-model="directGroupUpdateCanDelegate"
+                    data-test="direct-group-update-can-delegate"
+                    class="checkbox"
+                    type="checkbox"
+                    :disabled="!directGroupUpdateCanDelegateEnabled"
+                  />
+                  <span>{{ t('agentManagement.groups.allowChildDelegate') }}</span>
+                </label>
+
+                <div class="flex justify-end gap-2 pt-2">
+                  <button class="btn btn-secondary px-3" type="button" @click="closeDirectGroupUpdateDialog">
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    data-test="apply-direct-group-update"
+                    class="btn btn-primary px-3"
+                    type="button"
+                    :disabled="directGroupUpdateDialog.saving"
+                    @click="applyDirectGroupUpdate"
+                  >
+                    <Icon name="check" size="sm" />
+                    <span>{{ t('agentManagement.groups.applyExistingUpdate') }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="directGroupReclaimDialog.show"
+      :title="t('agentManagement.groups.directReclaimTitle')"
+      width="wide"
+      @close="closeDirectGroupReclaimDialog"
+    >
+      <div class="space-y-4" data-test="direct-group-reclaim-modal">
+        <div v-if="directGroupReclaimDialog.loading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+
+        <div
+          v-else-if="directGroupReclaimDialog.groups.length === 0"
+          class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+        >
+          {{ t('agentManagement.groups.emptyDelegable') }}
+        </div>
+
+        <div v-else class="space-y-4">
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/40">
+            <div class="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_auto] lg:items-end">
+              <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('agentManagement.groups.reclaimGroup') }}</span>
+                <select
+                  v-model.number="directGroupReclaimDialog.selectedGroupId"
+                  data-test="direct-group-reclaim-group"
+                  class="input h-9"
+                  @change="onDirectGroupReclaimGroupChange"
+                >
+                  <option
+                    v-for="groupRate in directGroupReclaimDialog.groups"
+                    :key="groupRate.group.id"
+                    :value="groupRate.group.id"
+                  >
+                    {{ groupRate.group.name }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="flex flex-col gap-1 text-xs text-gray-500 dark:text-dark-400">
+                <span>{{ t('agentManagement.groups.reclaimSearch') }}</span>
+                <input
+                  v-model="directGroupReclaimDialog.searchDraft"
+                  data-test="direct-group-reclaim-search"
+                  class="input h-9"
+                  type="search"
+                  :placeholder="t('common.search')"
+                  @keyup.enter="applyDirectGroupReclaimSearch"
+                />
+              </label>
+
+              <button
+                data-test="direct-group-reclaim-search-submit"
+                class="btn btn-secondary h-9 px-3"
+                type="button"
+                :disabled="directGroupReclaimDialog.childrenLoading"
+                @click="applyDirectGroupReclaimSearch"
+              >
+                <Icon name="search" size="sm" />
+                <span>{{ t('common.search') }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-dark-200">
+                <input
+                  data-test="direct-group-reclaim-all"
+                  class="checkbox"
+                  type="checkbox"
+                  :checked="directGroupReclaimAll"
+                  @change="setDirectGroupReclaimAll(($event.target as HTMLInputElement).checked)"
+                />
+                <span>{{ t('agentManagement.groups.reclaimAllAssigned') }}</span>
+              </label>
+              <span class="text-sm text-gray-500 dark:text-dark-400">
+                {{ t('agentManagement.groups.updateSelectedChildren', { count: selectedDirectGroupReclaimChildIDs.length }) }}
+              </span>
+            </div>
+
+            <div v-if="directGroupReclaimDialog.childrenLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+              {{ t('common.loading') }}
+            </div>
+            <div
+              v-else-if="directGroupReclaimDialog.children.length === 0"
+              class="rounded-md border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400"
+            >
+              {{ t('agentManagement.groups.emptyAssignedChildren') }}
+            </div>
+            <div v-else class="max-h-80 space-y-2 overflow-y-auto pr-1">
+              <label
+                v-for="child in directGroupReclaimDialog.children"
+                :key="child.id"
+                class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 dark:border-dark-700"
+              >
+                <input
+                  :data-test="`direct-group-reclaim-child-${child.id}`"
+                  class="checkbox"
+                  type="checkbox"
+                  :checked="selectedDirectGroupReclaimChildIDs.includes(child.id)"
+                  :disabled="directGroupReclaimAll"
+                  @change="updateDirectGroupReclaimChildSelection(child.id, ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-semibold text-gray-900 dark:text-white">{{ child.email }}</span>
+                  <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">{{ child.username || '-' }}</span>
+                </span>
+                <span class="text-xs font-medium text-gray-600 dark:text-dark-300">
+                  {{ t('agentManagement.groups.currentRate') }}: {{ currentDirectGroupReclaimChildRate(child) }}
+                </span>
+              </label>
+            </div>
+
+            <Pagination
+              v-if="directGroupReclaimDialog.pagination.total > directGroupReclaimDialog.pagination.page_size"
+              :page="directGroupReclaimDialog.pagination.page"
+              :total="directGroupReclaimDialog.pagination.total"
+              :page-size="directGroupReclaimDialog.pagination.page_size"
+              :show-page-size-selector="false"
+              @update:page="changeDirectGroupReclaimPage"
+              @update:page-size="changeDirectGroupReclaimPageSize"
+            />
+
+            <div class="flex justify-end gap-2 pt-4">
+              <button class="btn btn-secondary px-3" type="button" @click="closeDirectGroupReclaimDialog">
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                data-test="apply-direct-group-reclaim"
+                class="btn btn-primary px-3"
+                type="button"
+                :disabled="directGroupReclaimDialog.saving"
+                @click="applyDirectGroupReclaim"
+              >
+                <Icon name="trash" size="sm" />
+                <span>{{ t('agentManagement.groups.applyReclaim') }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -643,12 +1085,68 @@ const directGroupBatchDialog = reactive<{
   show: boolean
   loading: boolean
   saving: boolean
+  childrenLoading: boolean
   groups: AgentChildGroupDelegationOption[]
+  children: AgentManagedUser[]
+  searchDraft: string
+  search: string
+  pagination: { total: number; page: number; page_size: number; pages: number }
 }>({
   show: false,
   loading: false,
   saving: false,
+  childrenLoading: false,
   groups: [],
+  children: [],
+  searchDraft: '',
+  search: '',
+  pagination: { total: 0, page: 1, page_size: 20, pages: 1 },
+})
+const directGroupUpdateDialog = reactive<{
+  show: boolean
+  loading: boolean
+  saving: boolean
+  childrenLoading: boolean
+  groups: AgentChildGroupDelegationOption[]
+  selectedGroupId: number
+  children: AgentManagedUser[]
+  searchDraft: string
+  search: string
+  pagination: { total: number; page: number; page_size: number; pages: number }
+}>({
+  show: false,
+  loading: false,
+  saving: false,
+  childrenLoading: false,
+  groups: [],
+  selectedGroupId: 0,
+  children: [],
+  searchDraft: '',
+  search: '',
+  pagination: { total: 0, page: 1, page_size: 20, pages: 1 },
+})
+const directGroupReclaimDialog = reactive<{
+  show: boolean
+  loading: boolean
+  saving: boolean
+  childrenLoading: boolean
+  groups: AgentChildGroupDelegationOption[]
+  selectedGroupId: number
+  children: AgentManagedUser[]
+  searchDraft: string
+  search: string
+  pagination: { total: number; page: number; page_size: number; pages: number }
+}>({
+  show: false,
+  loading: false,
+  saving: false,
+  childrenLoading: false,
+  groups: [],
+  selectedGroupId: 0,
+  children: [],
+  searchDraft: '',
+  search: '',
+  pagination: { total: 0, page: 1, page_size: 20, pages: 1 },
 })
 const groupDrafts = reactive<Record<number, { assigned: boolean; rate_multiplier: number; can_delegate: boolean }>>({})
 const groupBatchAll = ref(false)
@@ -656,10 +1154,20 @@ const groupBatchRate = ref(1)
 const groupBatchCanDelegate = ref(false)
 const groupBatchSaving = ref(false)
 const selectedGroupBatchIDs = ref<number[]>([])
+const directGroupBatchAllChildren = ref(true)
+const selectedDirectGroupBatchChildIDs = ref<number[]>([])
 const directGroupBatchAll = ref(false)
 const directGroupBatchRate = ref(1)
 const directGroupBatchCanDelegate = ref(false)
 const selectedDirectGroupBatchIDs = ref<number[]>([])
+const directGroupUpdateAll = ref(false)
+const selectedDirectGroupUpdateChildIDs = ref<number[]>([])
+const directGroupUpdateRateEnabled = ref(true)
+const directGroupUpdateRate = ref(1)
+const directGroupUpdateCanDelegateEnabled = ref(false)
+const directGroupUpdateCanDelegate = ref(false)
+const directGroupReclaimAll = ref(false)
+const selectedDirectGroupReclaimChildIDs = ref<number[]>([])
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('common.email') },
@@ -722,13 +1230,28 @@ const remainingConcurrencyText = computed(() => allocation.value?.unlimited_conc
 const remainingRpmText = computed(() => allocation.value?.unlimited_rpm ? t('common.unlimited') : String(allocation.value?.remaining_rpm ?? '-'))
 const groupDialogTitle = computed(() => t('agentManagement.groups.manageTitle', { email: groupDialog.child?.email || '' }))
 const directChildKind = computed<AgentDirectChildKind>(() => props.kind)
+const directGroupBatchSelectedGroupIDs = computed(() => directGroupBatchAll.value
+  ? directGroupBatchDialog.groups.map((item) => item.group.id)
+  : selectedDirectGroupBatchIDs.value
+)
+const directGroupBatchHasGroupSelection = computed(() => directGroupBatchSelectedGroupIDs.value.length > 0)
+
+function paginationFromResult(result: AgentDirectChildrenResponse) {
+  const source = result.pagination || {}
+  return {
+    total: Number(source.total ?? source.Total ?? result.items.length),
+    page: Number(source.page ?? source.Page ?? 1),
+    page_size: Number(source.page_size ?? source.PageSize ?? 20),
+    pages: Number(source.pages ?? source.Pages ?? 1),
+  }
+}
 
 function extractPagination(result: AgentDirectChildrenResponse) {
-  const source = result.pagination || {}
-  pagination.total = Number(source.total ?? source.Total ?? result.items.length)
-  pagination.page = Number(source.page ?? source.Page ?? 1)
-  pagination.page_size = Number(source.page_size ?? source.PageSize ?? 20)
-  pagination.pages = Number(source.pages ?? source.Pages ?? 1)
+  const next = paginationFromResult(result)
+  pagination.total = next.total
+  pagination.page = next.page
+  pagination.page_size = next.page_size
+  pagination.pages = next.pages
 }
 
 function syncDrafts(items: AgentManagedUser[]) {
@@ -1116,16 +1639,31 @@ function syncDirectGroupBatchGroups(groups: AgentGroupRate[]) {
   directGroupBatchAll.value = false
   directGroupBatchRate.value = directGroupBatchDialog.groups[0]?.effective_rate ?? 1
   directGroupBatchCanDelegate.value = false
+  directGroupBatchDialog.children = []
+  directGroupBatchDialog.searchDraft = ''
+  directGroupBatchDialog.search = ''
+  directGroupBatchDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
 }
 
-function setDirectGroupBatchAll(all: boolean) {
+async function setDirectGroupBatchAll(all: boolean) {
   directGroupBatchAll.value = all
   if (all) {
     selectedDirectGroupBatchIDs.value = []
   }
+  selectedDirectGroupBatchChildIDs.value = []
+  directGroupBatchAllChildren.value = true
+  directGroupBatchDialog.pagination.page = 1
+  await loadDirectGroupBatchChildren()
 }
 
-function updateDirectGroupBatchSelection(groupID: number, selected: boolean) {
+function setDirectGroupBatchAllChildren(all: boolean) {
+  directGroupBatchAllChildren.value = all
+  if (all) {
+    selectedDirectGroupBatchChildIDs.value = []
+  }
+}
+
+async function updateDirectGroupBatchSelection(groupID: number, selected: boolean) {
   const next = new Set(selectedDirectGroupBatchIDs.value)
   if (selected) {
     next.add(groupID)
@@ -1133,12 +1671,37 @@ function updateDirectGroupBatchSelection(groupID: number, selected: boolean) {
     next.delete(groupID)
   }
   selectedDirectGroupBatchIDs.value = Array.from(next)
+  selectedDirectGroupBatchChildIDs.value = []
+  directGroupBatchAllChildren.value = true
+  directGroupBatchDialog.pagination.page = 1
+  const groupRate = directGroupBatchDialog.groups.find((item) => item.group.id === groupID)
+  if (selected && groupRate) {
+    directGroupBatchRate.value = groupRate.effective_rate
+  }
+  await loadDirectGroupBatchChildren()
+}
+
+function updateDirectGroupBatchChildSelection(childID: number, selected: boolean) {
+  const next = new Set(selectedDirectGroupBatchChildIDs.value)
+  if (selected) {
+    next.add(childID)
+  } else {
+    next.delete(childID)
+  }
+  selectedDirectGroupBatchChildIDs.value = Array.from(next)
 }
 
 async function openDirectGroupBatchDialog() {
   directGroupBatchDialog.show = true
   directGroupBatchDialog.loading = true
+  directGroupBatchDialog.childrenLoading = false
   directGroupBatchDialog.groups = []
+  directGroupBatchDialog.children = []
+  directGroupBatchDialog.searchDraft = ''
+  directGroupBatchDialog.search = ''
+  directGroupBatchDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
+  directGroupBatchAllChildren.value = true
+  selectedDirectGroupBatchChildIDs.value = []
   try {
     syncDirectGroupBatchGroups(await agentManagementAPI.listGroups())
   } catch (error) {
@@ -1152,9 +1715,316 @@ function closeDirectGroupBatchDialog() {
   directGroupBatchDialog.show = false
   directGroupBatchDialog.loading = false
   directGroupBatchDialog.saving = false
+  directGroupBatchDialog.childrenLoading = false
   directGroupBatchDialog.groups = []
+  directGroupBatchDialog.children = []
+  directGroupBatchDialog.searchDraft = ''
+  directGroupBatchDialog.search = ''
+  directGroupBatchDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
   selectedDirectGroupBatchIDs.value = []
+  selectedDirectGroupBatchChildIDs.value = []
   directGroupBatchAll.value = false
+  directGroupBatchAllChildren.value = true
+}
+
+async function applyDirectGroupBatchSearch() {
+  directGroupBatchDialog.search = directGroupBatchDialog.searchDraft.trim()
+  directGroupBatchDialog.pagination.page = 1
+  selectedDirectGroupBatchChildIDs.value = []
+  directGroupBatchAllChildren.value = true
+  await loadDirectGroupBatchChildren()
+}
+
+async function changeDirectGroupBatchPage(page: number) {
+  directGroupBatchDialog.pagination.page = page
+  selectedDirectGroupBatchChildIDs.value = []
+  directGroupBatchAllChildren.value = true
+  await loadDirectGroupBatchChildren()
+}
+
+async function changeDirectGroupBatchPageSize(pageSize: number) {
+  directGroupBatchDialog.pagination.page_size = pageSize
+  directGroupBatchDialog.pagination.page = 1
+  selectedDirectGroupBatchChildIDs.value = []
+  directGroupBatchAllChildren.value = true
+  await loadDirectGroupBatchChildren()
+}
+
+async function loadDirectGroupBatchChildren() {
+  const groupIDs = directGroupBatchSelectedGroupIDs.value
+  if (groupIDs.length === 0) {
+    directGroupBatchDialog.children = []
+    directGroupBatchDialog.pagination = { total: 0, page: 1, page_size: directGroupBatchDialog.pagination.page_size, pages: 1 }
+    return
+  }
+  directGroupBatchDialog.childrenLoading = true
+  try {
+    const result = await agentManagementAPI.listDirectChildrenWithoutGroupDelegation(directChildKind.value, {
+      group_ids: groupIDs,
+      ...(directGroupBatchDialog.search ? { search: directGroupBatchDialog.search } : {}),
+      page: directGroupBatchDialog.pagination.page,
+      page_size: directGroupBatchDialog.pagination.page_size,
+    })
+    directGroupBatchDialog.children = result.items
+    directGroupBatchDialog.pagination = paginationFromResult(result)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    directGroupBatchDialog.childrenLoading = false
+  }
+}
+
+function syncDirectGroupUpdateGroups(groups: AgentGroupRate[]) {
+  directGroupUpdateDialog.groups = groups
+    .filter((item) => item.can_delegate && item.group.is_exclusive)
+    .map((item) => ({
+      ...item,
+      assigned: false,
+      child_rate_multiplier: item.effective_rate,
+      child_can_delegate: false,
+    }))
+  directGroupUpdateDialog.selectedGroupId = directGroupUpdateDialog.groups[0]?.group.id ?? 0
+  const first = directGroupUpdateDialog.groups[0]
+  directGroupUpdateRate.value = first?.effective_rate ?? 1
+  directGroupUpdateCanDelegate.value = false
+}
+
+function syncDirectGroupReclaimGroups(groups: AgentGroupRate[]) {
+  directGroupReclaimDialog.groups = groups
+    .filter((item) => item.can_delegate && item.group.is_exclusive)
+    .map((item) => ({
+      ...item,
+      assigned: false,
+      child_rate_multiplier: item.effective_rate,
+      child_can_delegate: false,
+    }))
+  directGroupReclaimDialog.selectedGroupId = directGroupReclaimDialog.groups[0]?.group.id ?? 0
+}
+
+async function openDirectGroupUpdateDialog() {
+  directGroupUpdateDialog.show = true
+  directGroupUpdateDialog.loading = true
+  directGroupUpdateDialog.childrenLoading = false
+  directGroupUpdateDialog.groups = []
+  directGroupUpdateDialog.children = []
+  directGroupUpdateDialog.searchDraft = ''
+  directGroupUpdateDialog.search = ''
+  directGroupUpdateDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
+  selectedDirectGroupUpdateChildIDs.value = []
+  directGroupUpdateAll.value = false
+  directGroupUpdateRateEnabled.value = true
+  directGroupUpdateCanDelegateEnabled.value = false
+  try {
+    syncDirectGroupUpdateGroups(await agentManagementAPI.listGroups())
+    if (directGroupUpdateDialog.selectedGroupId > 0) {
+      await loadDirectGroupUpdateChildren()
+    }
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    directGroupUpdateDialog.loading = false
+  }
+}
+
+async function openDirectGroupReclaimDialog() {
+  directGroupReclaimDialog.show = true
+  directGroupReclaimDialog.loading = true
+  directGroupReclaimDialog.childrenLoading = false
+  directGroupReclaimDialog.groups = []
+  directGroupReclaimDialog.children = []
+  directGroupReclaimDialog.searchDraft = ''
+  directGroupReclaimDialog.search = ''
+  directGroupReclaimDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
+  selectedDirectGroupReclaimChildIDs.value = []
+  directGroupReclaimAll.value = false
+  try {
+    syncDirectGroupReclaimGroups(await agentManagementAPI.listGroups())
+    if (directGroupReclaimDialog.selectedGroupId > 0) {
+      await loadDirectGroupReclaimChildren()
+    }
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    directGroupReclaimDialog.loading = false
+  }
+}
+
+function closeDirectGroupUpdateDialog() {
+  directGroupUpdateDialog.show = false
+  directGroupUpdateDialog.loading = false
+  directGroupUpdateDialog.saving = false
+  directGroupUpdateDialog.childrenLoading = false
+  directGroupUpdateDialog.groups = []
+  directGroupUpdateDialog.children = []
+  directGroupUpdateDialog.selectedGroupId = 0
+  selectedDirectGroupUpdateChildIDs.value = []
+  directGroupUpdateAll.value = false
+}
+
+function closeDirectGroupReclaimDialog() {
+  directGroupReclaimDialog.show = false
+  directGroupReclaimDialog.loading = false
+  directGroupReclaimDialog.saving = false
+  directGroupReclaimDialog.childrenLoading = false
+  directGroupReclaimDialog.groups = []
+  directGroupReclaimDialog.children = []
+  directGroupReclaimDialog.selectedGroupId = 0
+  directGroupReclaimDialog.searchDraft = ''
+  directGroupReclaimDialog.search = ''
+  directGroupReclaimDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
+  selectedDirectGroupReclaimChildIDs.value = []
+  directGroupReclaimAll.value = false
+}
+
+async function onDirectGroupUpdateGroupChange() {
+  directGroupUpdateDialog.pagination.page = 1
+  selectedDirectGroupUpdateChildIDs.value = []
+  directGroupUpdateAll.value = false
+  const groupRate = directGroupUpdateDialog.groups.find((item) => item.group.id === directGroupUpdateDialog.selectedGroupId)
+  directGroupUpdateRate.value = groupRate?.effective_rate ?? 1
+  directGroupUpdateCanDelegate.value = false
+  await loadDirectGroupUpdateChildren()
+}
+
+async function onDirectGroupReclaimGroupChange() {
+  directGroupReclaimDialog.pagination.page = 1
+  selectedDirectGroupReclaimChildIDs.value = []
+  directGroupReclaimAll.value = false
+  await loadDirectGroupReclaimChildren()
+}
+
+async function applyDirectGroupUpdateSearch() {
+  directGroupUpdateDialog.search = directGroupUpdateDialog.searchDraft.trim()
+  directGroupUpdateDialog.pagination.page = 1
+  selectedDirectGroupUpdateChildIDs.value = []
+  directGroupUpdateAll.value = false
+  await loadDirectGroupUpdateChildren()
+}
+
+async function applyDirectGroupReclaimSearch() {
+  directGroupReclaimDialog.search = directGroupReclaimDialog.searchDraft.trim()
+  directGroupReclaimDialog.pagination.page = 1
+  selectedDirectGroupReclaimChildIDs.value = []
+  directGroupReclaimAll.value = false
+  await loadDirectGroupReclaimChildren()
+}
+
+async function changeDirectGroupUpdatePage(page: number) {
+  directGroupUpdateDialog.pagination.page = page
+  selectedDirectGroupUpdateChildIDs.value = []
+  directGroupUpdateAll.value = false
+  await loadDirectGroupUpdateChildren()
+}
+
+async function changeDirectGroupReclaimPage(page: number) {
+  directGroupReclaimDialog.pagination.page = page
+  selectedDirectGroupReclaimChildIDs.value = []
+  directGroupReclaimAll.value = false
+  await loadDirectGroupReclaimChildren()
+}
+
+async function changeDirectGroupUpdatePageSize(pageSize: number) {
+  directGroupUpdateDialog.pagination.page_size = pageSize
+  directGroupUpdateDialog.pagination.page = 1
+  selectedDirectGroupUpdateChildIDs.value = []
+  directGroupUpdateAll.value = false
+  await loadDirectGroupUpdateChildren()
+}
+
+async function changeDirectGroupReclaimPageSize(pageSize: number) {
+  directGroupReclaimDialog.pagination.page_size = pageSize
+  directGroupReclaimDialog.pagination.page = 1
+  selectedDirectGroupReclaimChildIDs.value = []
+  directGroupReclaimAll.value = false
+  await loadDirectGroupReclaimChildren()
+}
+
+async function loadDirectGroupUpdateChildren() {
+  if (directGroupUpdateDialog.selectedGroupId <= 0) return
+  directGroupUpdateDialog.childrenLoading = true
+  try {
+    const result = await agentManagementAPI.listDirectChildrenWithGroupDelegation(directChildKind.value, {
+      group_id: directGroupUpdateDialog.selectedGroupId,
+      ...(directGroupUpdateDialog.search ? { search: directGroupUpdateDialog.search } : {}),
+      page: directGroupUpdateDialog.pagination.page,
+      page_size: directGroupUpdateDialog.pagination.page_size,
+    })
+    directGroupUpdateDialog.children = result.items
+    directGroupUpdateDialog.pagination = paginationFromResult(result)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    directGroupUpdateDialog.childrenLoading = false
+  }
+}
+
+async function loadDirectGroupReclaimChildren() {
+  if (directGroupReclaimDialog.selectedGroupId <= 0) return
+  directGroupReclaimDialog.childrenLoading = true
+  try {
+    const result = await agentManagementAPI.listDirectChildrenWithGroupDelegation(directChildKind.value, {
+      group_id: directGroupReclaimDialog.selectedGroupId,
+      ...(directGroupReclaimDialog.search ? { search: directGroupReclaimDialog.search } : {}),
+      page: directGroupReclaimDialog.pagination.page,
+      page_size: directGroupReclaimDialog.pagination.page_size,
+    })
+    directGroupReclaimDialog.children = result.items
+    directGroupReclaimDialog.pagination = paginationFromResult(result)
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
+  } finally {
+    directGroupReclaimDialog.childrenLoading = false
+  }
+}
+
+function setDirectGroupUpdateAll(all: boolean) {
+  directGroupUpdateAll.value = all
+  if (all) {
+    selectedDirectGroupUpdateChildIDs.value = []
+  }
+}
+
+function setDirectGroupReclaimAll(all: boolean) {
+  directGroupReclaimAll.value = all
+  if (all) {
+    selectedDirectGroupReclaimChildIDs.value = []
+  }
+}
+
+function updateDirectGroupUpdateChildSelection(childID: number, selected: boolean) {
+  const next = new Set(selectedDirectGroupUpdateChildIDs.value)
+  if (selected) {
+    next.add(childID)
+  } else {
+    next.delete(childID)
+  }
+  selectedDirectGroupUpdateChildIDs.value = Array.from(next)
+}
+
+function updateDirectGroupReclaimChildSelection(childID: number, selected: boolean) {
+  const next = new Set(selectedDirectGroupReclaimChildIDs.value)
+  if (selected) {
+    next.add(childID)
+  } else {
+    next.delete(childID)
+  }
+  selectedDirectGroupReclaimChildIDs.value = Array.from(next)
+}
+
+function currentDirectGroupUpdateChildRate(child: AgentManagedUser): string {
+  const rate = child.group_rates?.[directGroupUpdateDialog.selectedGroupId]
+  if (rate == null) {
+    return '-'
+  }
+  return String(rate)
+}
+
+function currentDirectGroupReclaimChildRate(child: AgentManagedUser): string {
+  const rate = child.group_rates?.[directGroupReclaimDialog.selectedGroupId]
+  if (rate == null) {
+    return '-'
+  }
+  return String(rate)
 }
 
 async function openGroupDialog(child: AgentManagedUser) {
@@ -1262,12 +2132,18 @@ async function applyDirectGroupBatch() {
     appStore.showError(t('agentManagement.groups.batchSelectionRequired'))
     return
   }
+  if (!directGroupBatchAllChildren.value && selectedDirectGroupBatchChildIDs.value.length === 0) {
+    appStore.showError(t('agentManagement.groups.childSelectionRequired'))
+    return
+  }
 
   directGroupBatchDialog.saving = true
   try {
     await agentManagementAPI.setDirectChildrenGroupDelegationsBatch(directChildKind.value, {
       group_ids: directGroupBatchAll.value ? [] : selectedDirectGroupBatchIDs.value,
       all: directGroupBatchAll.value,
+      child_ids: directGroupBatchAllChildren.value ? [] : selectedDirectGroupBatchChildIDs.value,
+      all_children: directGroupBatchAllChildren.value,
       rate_multiplier: rateMultiplier,
       can_delegate: directGroupBatchCanDelegate.value,
     })
@@ -1278,6 +2154,92 @@ async function applyDirectGroupBatch() {
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.directBatchFailed'))
   } finally {
     directGroupBatchDialog.saving = false
+  }
+}
+
+async function applyDirectGroupUpdate() {
+  if (directGroupUpdateDialog.selectedGroupId <= 0) {
+    appStore.showError(t('agentManagement.groups.updateGroupRequired'))
+    return
+  }
+  if (!directGroupUpdateAll.value && selectedDirectGroupUpdateChildIDs.value.length === 0) {
+    appStore.showError(t('agentManagement.groups.childSelectionRequired'))
+    return
+  }
+  if (!directGroupUpdateRateEnabled.value && !directGroupUpdateCanDelegateEnabled.value) {
+    appStore.showError(t('agentManagement.groups.updateFieldRequired'))
+    return
+  }
+
+  const payload: {
+    group_id: number
+    child_ids: number[]
+    all: boolean
+    rate_multiplier?: number
+    can_delegate?: boolean
+  } = {
+    group_id: directGroupUpdateDialog.selectedGroupId,
+    child_ids: directGroupUpdateAll.value ? [] : selectedDirectGroupUpdateChildIDs.value,
+    all: directGroupUpdateAll.value,
+  }
+
+  if (directGroupUpdateRateEnabled.value) {
+    const rateMultiplier = normalizedPositiveFloat(directGroupUpdateRate.value)
+    if (rateMultiplier <= 0) {
+      appStore.showError(t('agentManagement.groups.invalidRate'))
+      return
+    }
+    payload.rate_multiplier = rateMultiplier
+  }
+  if (directGroupUpdateCanDelegateEnabled.value) {
+    payload.can_delegate = directGroupUpdateCanDelegate.value
+  }
+
+  directGroupUpdateDialog.saving = true
+  try {
+    const result = await agentManagementAPI.updateDirectChildrenExistingGroupDelegations(directChildKind.value, payload)
+    appStore.showSuccess(t('agentManagement.groups.directUpdateSaved', {
+      updated: result.updated_children,
+      skipped: result.skipped_children,
+    }))
+    await loadDirectGroupUpdateChildren()
+    await loadData()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.directUpdateFailed'))
+  } finally {
+    directGroupUpdateDialog.saving = false
+  }
+}
+
+async function applyDirectGroupReclaim() {
+  if (directGroupReclaimDialog.selectedGroupId <= 0) {
+    appStore.showError(t('agentManagement.groups.reclaimGroupRequired'))
+    return
+  }
+  if (!directGroupReclaimAll.value && selectedDirectGroupReclaimChildIDs.value.length === 0) {
+    appStore.showError(t('agentManagement.groups.childSelectionRequired'))
+    return
+  }
+
+  directGroupReclaimDialog.saving = true
+  try {
+    const result = await agentManagementAPI.reclaimDirectChildrenGroupDelegations(directChildKind.value, {
+      group_id: directGroupReclaimDialog.selectedGroupId,
+      child_ids: directGroupReclaimAll.value ? [] : selectedDirectGroupReclaimChildIDs.value,
+      all: directGroupReclaimAll.value,
+    })
+    appStore.showSuccess(t('agentManagement.groups.directReclaimSaved', {
+      removed: result.removed_children,
+      skipped: result.skipped_children,
+    }))
+    selectedDirectGroupReclaimChildIDs.value = []
+    directGroupReclaimAll.value = false
+    await loadDirectGroupReclaimChildren()
+    await loadData()
+  } catch (error) {
+    appStore.showError((error as { message?: string }).message || t('agentManagement.groups.directReclaimFailed'))
+  } finally {
+    directGroupReclaimDialog.saving = false
   }
 }
 

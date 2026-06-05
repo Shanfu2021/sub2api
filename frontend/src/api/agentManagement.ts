@@ -4,7 +4,14 @@ import type {
   AgentAdminTreeResponse,
   AgentChildGroupDelegationOption,
   AgentDirectChildKind,
+  AgentDirectChildrenGroupDelegationBatchRequest,
+  AgentDirectChildrenGroupDelegationUpdateRequest,
+  AgentDirectChildrenGroupDelegationUpdateResponse,
+  AgentDirectChildrenGroupQuery,
+  AgentDirectChildrenGroupsQuery,
   AgentDirectChildrenGroupDelegationBatchResponse,
+  AgentDirectChildrenGroupDelegationReclaimRequest,
+  AgentDirectChildrenGroupDelegationReclaimResponse,
   AgentDirectChildrenResponse,
   AgentGroupDelegationBatchRequest,
   AgentGroupDelegationBatchResponse,
@@ -60,6 +67,28 @@ export async function listDirectAgents(query: AgentDirectChildrenQuery = {}): Pr
 
 export async function listDirectEnterprises(query: AgentDirectChildrenQuery = {}): Promise<AgentDirectChildrenResponse> {
   const { data } = await apiClient.get<AgentDirectChildrenResponse>(`${BASE_PATH}/direct-enterprises`, { params: query })
+  return data
+}
+
+export async function listDirectChildrenWithGroupDelegation(
+  kind: AgentDirectChildKind,
+  query: AgentDirectChildrenGroupQuery
+): Promise<AgentDirectChildrenResponse> {
+  const { data } = await apiClient.get<AgentDirectChildrenResponse>(
+    `${BASE_PATH}/${DIRECT_CHILD_KIND_PATH[kind]}/groups/assigned`,
+    { params: query }
+  )
+  return data
+}
+
+export async function listDirectChildrenWithoutGroupDelegation(
+  kind: AgentDirectChildKind,
+  query: AgentDirectChildrenGroupsQuery
+): Promise<AgentDirectChildrenResponse> {
+  const { data } = await apiClient.get<AgentDirectChildrenResponse>(
+    `${BASE_PATH}/${DIRECT_CHILD_KIND_PATH[kind]}/groups/unassigned`,
+    { params: { ...query, group_ids: query.group_ids.join(',') } }
+  )
   return data
 }
 
@@ -160,10 +189,32 @@ export async function setChildGroupDelegationsBatch(
 
 export async function setDirectChildrenGroupDelegationsBatch(
   kind: AgentDirectChildKind,
-  payload: AgentGroupDelegationBatchRequest
+  payload: AgentDirectChildrenGroupDelegationBatchRequest
 ): Promise<AgentDirectChildrenGroupDelegationBatchResponse> {
   const { data } = await apiClient.put<AgentDirectChildrenGroupDelegationBatchResponse>(
     `${BASE_PATH}/${DIRECT_CHILD_KIND_PATH[kind]}/groups/batch`,
+    payload
+  )
+  return data
+}
+
+export async function updateDirectChildrenExistingGroupDelegations(
+  kind: AgentDirectChildKind,
+  payload: AgentDirectChildrenGroupDelegationUpdateRequest
+): Promise<AgentDirectChildrenGroupDelegationUpdateResponse> {
+  const { data } = await apiClient.put<AgentDirectChildrenGroupDelegationUpdateResponse>(
+    `${BASE_PATH}/${DIRECT_CHILD_KIND_PATH[kind]}/groups/existing`,
+    payload
+  )
+  return data
+}
+
+export async function reclaimDirectChildrenGroupDelegations(
+  kind: AgentDirectChildKind,
+  payload: AgentDirectChildrenGroupDelegationReclaimRequest
+): Promise<AgentDirectChildrenGroupDelegationReclaimResponse> {
+  const { data } = await apiClient.post<AgentDirectChildrenGroupDelegationReclaimResponse>(
+    `${BASE_PATH}/${DIRECT_CHILD_KIND_PATH[kind]}/groups/reclaim`,
     payload
   )
   return data
@@ -214,6 +265,8 @@ export const agentManagementAPI = {
   listDirectUsers,
   listDirectAgents,
   listDirectEnterprises,
+  listDirectChildrenWithGroupDelegation,
+  listDirectChildrenWithoutGroupDelegation,
   getAdminAgentTree,
   getStructure,
   listUsage,
@@ -230,6 +283,8 @@ export const agentManagementAPI = {
   setChildGroupDelegation,
   setChildGroupDelegationsBatch,
   setDirectChildrenGroupDelegationsBatch,
+  updateDirectChildrenExistingGroupDelegations,
+  reclaimDirectChildrenGroupDelegations,
   setAgentIncome,
   removeChildGroupDelegation,
   setInviteGroupDefault,

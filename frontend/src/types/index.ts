@@ -264,6 +264,7 @@ export interface AgentManagedUser {
   pool_concurrency: number
   pool_rpm: number
   agent_income?: number
+  group_rates?: Record<number, number>
   invite_default_concurrency: number
   invite_default_rpm: number
   status: 'active' | 'disabled'
@@ -385,6 +386,39 @@ export interface AgentGroupDelegationBatchRequest extends AgentGroupDelegationRe
   all: boolean
 }
 
+export interface AgentDirectChildrenGroupDelegationBatchRequest extends AgentGroupDelegationBatchRequest {
+  child_ids: number[]
+  all_children: boolean
+}
+
+export interface AgentDirectChildrenGroupQuery {
+  group_id: number
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export interface AgentDirectChildrenGroupsQuery {
+  group_ids: number[]
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export interface AgentDirectChildrenGroupDelegationUpdateRequest {
+  group_id: number
+  child_ids: number[]
+  all: boolean
+  rate_multiplier?: number
+  can_delegate?: boolean
+}
+
+export interface AgentDirectChildrenGroupDelegationReclaimRequest {
+  group_id: number
+  child_ids: number[]
+  all: boolean
+}
+
 export interface AgentInviteGroupDefaultRequest {
   rate_multiplier: number
 }
@@ -416,7 +450,27 @@ export interface AgentDirectChildrenGroupDelegationBatchResponse {
   kind: AgentDirectChildKind
   group_ids: number[]
   all: boolean
+  child_ids?: number[]
+  all_children?: boolean
   updated_children: number
+}
+
+export interface AgentDirectChildrenGroupDelegationUpdateResponse {
+  kind: AgentDirectChildKind
+  group_id: number
+  requested_child_ids: number[]
+  all: boolean
+  updated_children: number
+  skipped_children: number
+}
+
+export interface AgentDirectChildrenGroupDelegationReclaimResponse {
+  kind: AgentDirectChildKind
+  group_id: number
+  requested_child_ids: number[]
+  all: boolean
+  removed_children: number
+  skipped_children: number
 }
 
 export interface AgentInviteGroupDefaultResponse {

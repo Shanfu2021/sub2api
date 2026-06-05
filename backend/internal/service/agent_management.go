@@ -141,6 +141,13 @@ type DirectChildrenQuery struct {
 	Search     string
 }
 
+type DirectChildrenGroupQuery struct {
+	Pagination pagination.PaginationParams
+	Search     string
+	GroupID    int64
+	GroupIDs   []int64
+}
+
 type AgentManagementSummary struct {
 	Allocation     AllocationSummary          `json:"allocation"`
 	InviteDefaults *AgentInviteDefaultsUpdate `json:"invite_defaults,omitempty"`
@@ -191,6 +198,47 @@ type ChildGroupDelegationBatchInput struct {
 	All            bool    `json:"all"`
 	RateMultiplier float64 `json:"rate_multiplier"`
 	CanDelegate    bool    `json:"can_delegate"`
+}
+
+type DirectChildrenGroupDelegationBatchInput struct {
+	GroupIDs       []int64 `json:"group_ids"`
+	All            bool    `json:"all"`
+	ChildIDs       []int64 `json:"child_ids"`
+	AllChildren    *bool   `json:"all_children"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+	CanDelegate    bool    `json:"can_delegate"`
+}
+
+type DirectChildrenGroupDelegationUpdateInput struct {
+	GroupID        int64    `json:"group_id"`
+	ChildIDs       []int64  `json:"child_ids"`
+	All            bool     `json:"all"`
+	RateMultiplier *float64 `json:"rate_multiplier,omitempty"`
+	CanDelegate    *bool    `json:"can_delegate,omitempty"`
+}
+
+type DirectChildrenGroupDelegationUpdateResult struct {
+	Kind              DirectChildKind `json:"kind"`
+	GroupID           int64           `json:"group_id"`
+	RequestedChildIDs []int64         `json:"requested_child_ids"`
+	All               bool            `json:"all"`
+	UpdatedChildren   int             `json:"updated_children"`
+	SkippedChildren   int             `json:"skipped_children"`
+}
+
+type DirectChildrenGroupDelegationReclaimInput struct {
+	GroupID  int64   `json:"group_id"`
+	ChildIDs []int64 `json:"child_ids"`
+	All      bool    `json:"all"`
+}
+
+type DirectChildrenGroupDelegationReclaimResult struct {
+	Kind              DirectChildKind `json:"kind"`
+	GroupID           int64           `json:"group_id"`
+	RequestedChildIDs []int64         `json:"requested_child_ids"`
+	All               bool            `json:"all"`
+	RemovedChildren   int             `json:"removed_children"`
+	SkippedChildren   int             `json:"skipped_children"`
 }
 
 type AgentInviteGroupDefault struct {
@@ -1093,11 +1141,26 @@ func (s *AgentManagementService) SetChildGroupDelegationsBatch(ctx context.Conte
 	if input.RateMultiplier <= 0 {
 		return ErrAgentManagementInvalidGroupRate
 	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	child, err := s.requireDirectChild(ctx, actor, childID)
+	if err != nil {
+		return err
+	}
 	groupIDs, err := s.resolveChildGroupDelegationBatchGroupIDs(ctx, actorID, childID, input.GroupIDs, input.All)
 	if err != nil {
 		return err
 	}
 	for _, groupID := range groupIDs {
+		existing, err := s.repo.GetGroupDelegation(ctx, actor.ID, child.ID, groupID)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			continue
+		}
 		if err := s.SetChildGroupDelegation(ctx, actorID, childID, groupID, ChildGroupDelegationInput{
 			RateMultiplier: input.RateMultiplier,
 			CanDelegate:    input.CanDelegate,
@@ -1108,7 +1171,7 @@ func (s *AgentManagementService) SetChildGroupDelegationsBatch(ctx context.Conte
 	return nil
 }
 
-func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind DirectChildKind, input ChildGroupDelegationBatchInput) (int, error) {
+func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind DirectChildKind, input DirectChildrenGroupDelegationBatchInput) (int, error) {
 	if input.RateMultiplier <= 0 {
 		return 0, ErrAgentManagementInvalidGroupRate
 	}
@@ -1128,17 +1191,291 @@ func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx cont
 	if err != nil {
 		return 0, err
 	}
+	allChildren := input.AllChildren == nil || *input.AllChildren
+	if !allChildren && len(input.ChildIDs) == 0 {
+		return 0, ErrAgentManagementInvalidGroupSelection
+	}
+	if !allChildren {
+		selected := map[int64]struct{}{}
+		for _, id := range input.ChildIDs {
+			if id > 0 {
+				selected[id] = struct{}{}
+			}
+		}
+		filtered := children[:0]
+		for i := range children {
+			if _, ok := selected[children[i].ID]; ok {
+				filtered = append(filtered, children[i])
+			}
+		}
+		children = filtered
+	}
+	updatedChildren := 0
 	for i := range children {
+		childUpdated := false
 		for _, groupID := range groupIDs {
+			existing, err := s.repo.GetGroupDelegation(ctx, actor.ID, children[i].ID, groupID)
+			if err != nil {
+				return 0, err
+			}
+			if existing != nil {
+				continue
+			}
 			if err := s.SetChildGroupDelegation(ctx, actor.ID, children[i].ID, groupID, ChildGroupDelegationInput{
 				RateMultiplier: input.RateMultiplier,
 				CanDelegate:    input.CanDelegate,
 			}); err != nil {
 				return 0, err
 			}
+			childUpdated = true
+		}
+		if childUpdated {
+			updatedChildren++
 		}
 	}
-	return len(children), nil
+	return updatedChildren, nil
+}
+
+func (s *AgentManagementService) ListDirectChildrenWithGroupDelegation(ctx context.Context, actorID int64, kind DirectChildKind, query DirectChildrenGroupQuery) (*DirectChildrenResult, error) {
+	if query.GroupID <= 0 {
+		return nil, ErrAgentManagementInvalidGroup
+	}
+	return s.listDirectChildrenByGroupDelegationState(ctx, actorID, kind, query, func(managerID int64, child User) (bool, map[int64]float64, error) {
+		existing, err := s.repo.GetGroupDelegation(ctx, managerID, child.ID, query.GroupID)
+		if err != nil {
+			return false, nil, err
+		}
+		if existing == nil {
+			return false, nil, nil
+		}
+		return true, map[int64]float64{query.GroupID: existing.RateMultiplier}, nil
+	})
+}
+
+func (s *AgentManagementService) ListDirectChildrenWithoutGroupDelegation(ctx context.Context, actorID int64, kind DirectChildKind, query DirectChildrenGroupQuery) (*DirectChildrenResult, error) {
+	groupIDs, err := normalizeBatchGroupIDs(append(query.GroupIDs, query.GroupID))
+	if err != nil {
+		return nil, err
+	}
+	query.GroupIDs = groupIDs
+	return s.listDirectChildrenByGroupDelegationState(ctx, actorID, kind, query, func(managerID int64, child User) (bool, map[int64]float64, error) {
+		assigned := map[int64]float64{}
+		for _, groupID := range groupIDs {
+			existing, err := s.repo.GetGroupDelegation(ctx, managerID, child.ID, groupID)
+			if err != nil {
+				return false, nil, err
+			}
+			if existing == nil {
+				return true, nil, nil
+			}
+			assigned[groupID] = existing.RateMultiplier
+		}
+		return false, assigned, nil
+	})
+}
+
+func (s *AgentManagementService) listDirectChildrenByGroupDelegationState(ctx context.Context, actorID int64, kind DirectChildKind, query DirectChildrenGroupQuery, include func(int64, User) (bool, map[int64]float64, error)) (*DirectChildrenResult, error) {
+	if query.Pagination.PageSize == 0 {
+		query.Pagination = pagination.DefaultPagination()
+	}
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := rolesForDirectChildKind(kind)
+	if err != nil {
+		return nil, err
+	}
+	allChildren, err := s.listAllDirectChildrenForRoles(ctx, actor.ID, roles)
+	if err != nil {
+		return nil, err
+	}
+	search := strings.TrimSpace(strings.ToLower(query.Search))
+	filtered := make([]User, 0, len(allChildren))
+	for i := range allChildren {
+		child := allChildren[i]
+		if search != "" {
+			email := strings.ToLower(child.Email)
+			username := strings.ToLower(child.Username)
+			if !strings.Contains(email, search) && !strings.Contains(username, search) {
+				continue
+			}
+		}
+		matched, groupRates, err := include(actor.ID, child)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			continue
+		}
+		if len(groupRates) > 0 {
+			child.GroupRates = groupRates
+		}
+		filtered = append(filtered, child)
+	}
+	if err := s.populateProfileBackedUsers(ctx, filtered); err != nil {
+		return nil, err
+	}
+	if err := s.populateAgentIncomeTotals(ctx, filtered); err != nil {
+		return nil, err
+	}
+	page := query.Pagination.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := query.Pagination.PageSize
+	if pageSize <= 0 {
+		pageSize = pagination.DefaultPagination().PageSize
+	}
+	start := (page - 1) * pageSize
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	end := start + pageSize
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	items := append([]User(nil), filtered[start:end]...)
+	pages := 0
+	if len(filtered) > 0 {
+		pages = len(filtered) / pageSize
+		if len(filtered)%pageSize > 0 {
+			pages++
+		}
+	}
+	return &DirectChildrenResult{
+		Users:      items,
+		Pagination: &pagination.PaginationResult{Total: int64(len(filtered)), Page: page, PageSize: pageSize, Pages: pages},
+	}, nil
+}
+
+func (s *AgentManagementService) UpdateDirectChildrenExistingGroupDelegations(ctx context.Context, actorID int64, kind DirectChildKind, input DirectChildrenGroupDelegationUpdateInput) (*DirectChildrenGroupDelegationUpdateResult, error) {
+	if input.GroupID <= 0 {
+		return nil, ErrAgentManagementInvalidGroup
+	}
+	if input.RateMultiplier == nil && input.CanDelegate == nil {
+		return nil, ErrAgentManagementInvalidGroupSelection
+	}
+	if input.RateMultiplier != nil && *input.RateMultiplier <= 0 {
+		return nil, ErrAgentManagementInvalidGroupRate
+	}
+	if !input.All && len(input.ChildIDs) == 0 {
+		return nil, ErrAgentManagementInvalidGroupSelection
+	}
+
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := rolesForDirectChildKind(kind)
+	if err != nil {
+		return nil, err
+	}
+	children, err := s.listAllDirectChildrenForRoles(ctx, actor.ID, roles)
+	if err != nil {
+		return nil, err
+	}
+
+	selected := map[int64]struct{}{}
+	for _, id := range input.ChildIDs {
+		if id > 0 {
+			selected[id] = struct{}{}
+		}
+	}
+
+	result := &DirectChildrenGroupDelegationUpdateResult{
+		Kind:              kind,
+		GroupID:           input.GroupID,
+		RequestedChildIDs: append([]int64(nil), input.ChildIDs...),
+		All:               input.All,
+	}
+	for i := range children {
+		if !input.All {
+			if _, ok := selected[children[i].ID]; !ok {
+				continue
+			}
+		}
+		existing, err := s.repo.GetGroupDelegation(ctx, actor.ID, children[i].ID, input.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			result.SkippedChildren++
+			continue
+		}
+		rate := existing.RateMultiplier
+		if input.RateMultiplier != nil {
+			rate = *input.RateMultiplier
+		}
+		canDelegate := existing.CanDelegate
+		if input.CanDelegate != nil {
+			canDelegate = *input.CanDelegate
+		}
+		if err := s.SetChildGroupDelegation(ctx, actor.ID, children[i].ID, input.GroupID, ChildGroupDelegationInput{
+			RateMultiplier: rate,
+			CanDelegate:    canDelegate,
+		}); err != nil {
+			return nil, err
+		}
+		result.UpdatedChildren++
+	}
+	return result, nil
+}
+
+func (s *AgentManagementService) RemoveDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind DirectChildKind, input DirectChildrenGroupDelegationReclaimInput) (*DirectChildrenGroupDelegationReclaimResult, error) {
+	if input.GroupID <= 0 {
+		return nil, ErrAgentManagementInvalidGroup
+	}
+	if !input.All && len(input.ChildIDs) == 0 {
+		return nil, ErrAgentManagementInvalidGroupSelection
+	}
+
+	actor, err := s.requireManager(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	roles, err := rolesForDirectChildKind(kind)
+	if err != nil {
+		return nil, err
+	}
+	children, err := s.listAllDirectChildrenForRoles(ctx, actor.ID, roles)
+	if err != nil {
+		return nil, err
+	}
+
+	selected := map[int64]struct{}{}
+	for _, id := range input.ChildIDs {
+		if id > 0 {
+			selected[id] = struct{}{}
+		}
+	}
+
+	result := &DirectChildrenGroupDelegationReclaimResult{
+		Kind:              kind,
+		GroupID:           input.GroupID,
+		RequestedChildIDs: append([]int64(nil), input.ChildIDs...),
+		All:               input.All,
+	}
+	for i := range children {
+		if !input.All {
+			if _, ok := selected[children[i].ID]; !ok {
+				continue
+			}
+		}
+		existing, err := s.repo.GetGroupDelegation(ctx, actor.ID, children[i].ID, input.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			result.SkippedChildren++
+			continue
+		}
+		if err := s.RemoveChildGroupDelegation(ctx, actor.ID, children[i].ID, input.GroupID); err != nil {
+			return nil, err
+		}
+		result.RemovedChildren++
+	}
+	return result, nil
 }
 
 func (s *AgentManagementService) RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error {

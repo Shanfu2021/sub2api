@@ -2666,11 +2666,12 @@ func TestSetChildGroupDelegationsBatchAppliesSelectedGroups(t *testing.T) {
 	require.ElementsMatch(t, []int64{20, 30}, repo.users[directUserID].AllowedGroups)
 }
 
-func TestSetDirectChildrenGroupDelegationsBatchAppliesToAllChildrenOfKindOnly(t *testing.T) {
+func TestSetDirectChildrenGroupDelegationsBatchDeploysMissingGroupsOnlyForKind(t *testing.T) {
 	rootID := int64(1)
 	userAID := int64(2)
 	userBID := int64(3)
 	agentID := int64(4)
+	selectedChildrenOnly := false
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: userAID, Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
@@ -2689,27 +2690,177 @@ func TestSetDirectChildrenGroupDelegationsBatchAppliesToAllChildrenOfKindOnly(t 
 	)
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
 
-	updated, err := svc.SetDirectChildrenGroupDelegationsBatch(context.Background(), rootID, DirectChildKindUsers, ChildGroupDelegationBatchInput{
+	updated, err := svc.SetDirectChildrenGroupDelegationsBatch(context.Background(), rootID, DirectChildKindUsers, DirectChildrenGroupDelegationBatchInput{
 		GroupIDs:       []int64{20},
+		ChildIDs:       []int64{userAID, userBID},
+		AllChildren:    &selectedChildrenOnly,
 		RateMultiplier: 2.0,
 		CanDelegate:    false,
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, 2, updated)
-	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, rootID, userAID, 20).rateMultiplier)
+	require.Equal(t, 1, updated)
+	require.Equal(t, 1.2, mustFindAgentManagementDelegation(t, repo, rootID, userAID, 20).rateMultiplier)
 	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, rootID, userBID, 20).rateMultiplier)
 	require.Equal(t, 1.3, mustFindAgentManagementDelegation(t, repo, rootID, userAID, 30).rateMultiplier)
 	require.Equal(t, 1.4, mustFindAgentManagementDelegation(t, repo, rootID, agentID, 20).rateMultiplier)
 	require.ElementsMatch(t, []int64{20}, repo.users[userBID].AllowedGroups)
 }
 
-func TestSetDirectChildrenGroupDelegationsBatchRaisesEnterpriseEmployeeFloor(t *testing.T) {
+func TestListDirectChildrenWithGroupDelegationReturnsOnlyAssignedChildrenOfKind(t *testing.T) {
+	rootID := int64(1)
+	userAID := int64(2)
+	userBID := int64(3)
+	agentID := int64(4)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: userAID, Email: "alpha@example.test", Username: "alpha", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: userBID, Email: "beta@example.test", Username: "beta", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@example.test", Username: "agent", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: userAID, groupID: groupID, rateMultiplier: 1.2, canDelegate: false},
+		{managerID: rootID, childID: agentID, groupID: groupID, rateMultiplier: 1.4, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.ListDirectChildrenWithGroupDelegation(context.Background(), rootID, DirectChildKindUsers, DirectChildrenGroupQuery{
+		GroupID: groupID,
+		Search:  "alp",
+		Pagination: pagination.PaginationParams{
+			Page:     1,
+			PageSize: 20,
+		},
+	})
+	require.NoError(t, err)
+
+	require.Len(t, result.Users, 1)
+	require.Equal(t, userAID, result.Users[0].ID)
+	require.Equal(t, 1.2, result.Users[0].GroupRates[groupID])
+	require.Equal(t, int64(1), result.Pagination.Total)
+}
+
+func TestListDirectChildrenWithoutGroupDelegationReturnsChildrenMissingAnySelectedGroup(t *testing.T) {
+	rootID := int64(1)
+	userAllGroupsID := int64(2)
+	userMissingOneID := int64(3)
+	userMissingAllID := int64(4)
+	agentID := int64(5)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: userAllGroupsID, Email: "alpha@example.test", Username: "alpha", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: userMissingOneID, Email: "beta@example.test", Username: "beta", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: userMissingAllID, Email: "gamma@example.test", Username: "gamma", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@example.test", Username: "agent", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: userAllGroupsID, groupID: 20, rateMultiplier: 1.2, canDelegate: false},
+		{managerID: rootID, childID: userAllGroupsID, groupID: 30, rateMultiplier: 1.3, canDelegate: false},
+		{managerID: rootID, childID: userMissingOneID, groupID: 20, rateMultiplier: 1.2, canDelegate: false},
+		{managerID: rootID, childID: agentID, groupID: 20, rateMultiplier: 1.4, canDelegate: true},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	svc := NewAgentManagementService(repo, userRepo, nil, nil)
+
+	result, err := svc.ListDirectChildrenWithoutGroupDelegation(context.Background(), rootID, DirectChildKindUsers, DirectChildrenGroupQuery{
+		GroupIDs: []int64{20, 30},
+		Pagination: pagination.PaginationParams{
+			Page:     1,
+			PageSize: 20,
+		},
+	})
+	require.NoError(t, err)
+
+	require.Len(t, result.Users, 2)
+	require.Equal(t, []int64{userMissingOneID, userMissingAllID}, []int64{result.Users[0].ID, result.Users[1].ID})
+	require.Equal(t, int64(2), result.Pagination.Total)
+}
+
+func TestUpdateDirectChildrenExistingGroupDelegationsOnlyUpdatesAssignedChildren(t *testing.T) {
+	rootID := int64(1)
+	userAID := int64(2)
+	userBID := int64(3)
+	groupID := int64(20)
+	rate := 2.0
+	canDelegate := true
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: userAID, Role: RoleUser, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: userBID, Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: userAID, groupID: groupID, rateMultiplier: 1.2, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, nil)
+
+	result, err := svc.UpdateDirectChildrenExistingGroupDelegations(context.Background(), rootID, DirectChildKindUsers, DirectChildrenGroupDelegationUpdateInput{
+		GroupID:        groupID,
+		All:            true,
+		RateMultiplier: &rate,
+		CanDelegate:    &canDelegate,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, DirectChildKindUsers, result.Kind)
+	require.Equal(t, 1, result.UpdatedChildren)
+	require.Equal(t, 1, result.SkippedChildren)
+	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, rootID, userAID, groupID).rateMultiplier)
+	require.True(t, mustFindAgentManagementDelegation(t, repo, rootID, userAID, groupID).canDelegate)
+	missing, err := repo.GetGroupDelegation(context.Background(), rootID, userBID, groupID)
+	require.NoError(t, err)
+	require.Nil(t, missing)
+	require.Empty(t, repo.users[userBID].AllowedGroups)
+}
+
+func TestUpdateDirectChildrenExistingGroupDelegationsTriggersExistingRateFloorCascade(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	directUserID := int64(3)
+	groupID := int64(20)
+	rate := 2.0
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: directUserID, Role: RoleUser, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: level1ID, childID: directUserID, groupID: groupID, rateMultiplier: 1.7, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
+
+	result, err := svc.UpdateDirectChildrenExistingGroupDelegations(context.Background(), rootID, DirectChildKindAgents, DirectChildrenGroupDelegationUpdateInput{
+		GroupID:        groupID,
+		ChildIDs:       []int64{level1ID},
+		RateMultiplier: &rate,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, result.UpdatedChildren)
+	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, rootID, level1ID, groupID).rateMultiplier)
+	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, level1ID, directUserID, groupID).rateMultiplier)
+	require.Equal(t, []struct {
+		agentID     int64
+		groupID     int64
+		minimumRate float64
+	}{{agentID: level1ID, groupID: groupID, minimumRate: 2.0}}, repo.raiseGroupRateFloors)
+	require.ElementsMatch(t, []int64{level1ID, directUserID}, invalidator.userIDs)
+}
+
+func TestUpdateDirectChildrenExistingGroupDelegationsRaisesEnterpriseEmployeeFloor(t *testing.T) {
 	rootID := int64(1)
 	level1ID := int64(2)
 	enterpriseID := int64(3)
 	employeeID := int64(4)
 	groupID := int64(20)
+	rate := 2.0
 	repo := newAgentManagementRepoStub(
 		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
 		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
@@ -2726,14 +2877,14 @@ func TestSetDirectChildrenGroupDelegationsBatchRaisesEnterpriseEmployeeFloor(t *
 	groupRepo := newAgentManagementGroupRepoStub(Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive})
 	svc := NewAgentManagementService(repo, userRepo, groupRepo, invalidator)
 
-	updated, err := svc.SetDirectChildrenGroupDelegationsBatch(context.Background(), level1ID, DirectChildKindEnterprises, ChildGroupDelegationBatchInput{
-		GroupIDs:       []int64{groupID},
-		RateMultiplier: 2.0,
-		CanDelegate:    true,
+	result, err := svc.UpdateDirectChildrenExistingGroupDelegations(context.Background(), level1ID, DirectChildKindEnterprises, DirectChildrenGroupDelegationUpdateInput{
+		GroupID:        groupID,
+		ChildIDs:       []int64{enterpriseID},
+		RateMultiplier: &rate,
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, 1, updated)
+	require.Equal(t, 1, result.UpdatedChildren)
 	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, level1ID, enterpriseID, groupID).rateMultiplier)
 	require.Equal(t, 2.0, mustFindAgentManagementDelegation(t, repo, enterpriseID, employeeID, groupID).rateMultiplier)
 	require.Equal(t, []struct {
@@ -2741,6 +2892,56 @@ func TestSetDirectChildrenGroupDelegationsBatchRaisesEnterpriseEmployeeFloor(t *
 		groupID     int64
 		minimumRate float64
 	}{{agentID: enterpriseID, groupID: groupID, minimumRate: 2.0}}, repo.raiseGroupRateFloors)
+	require.ElementsMatch(t, []int64{enterpriseID, employeeID}, invalidator.userIDs)
+}
+
+func TestRemoveDirectChildrenGroupDelegationsBatchRemovesAssignedChildrenAndCascades(t *testing.T) {
+	rootID := int64(1)
+	level1ID := int64(2)
+	enterpriseID := int64(3)
+	employeeID := int64(4)
+	missingEnterpriseID := int64(5)
+	groupID := int64(20)
+	repo := newAgentManagementRepoStub(
+		&User{ID: rootID, Role: RoleAdmin, Status: StatusActive},
+		&User{ID: level1ID, Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &level1ID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: employeeID, Role: RoleEmployee, ParentUserID: &enterpriseID, AllowedGroups: []int64{groupID}, Status: StatusActive},
+		&User{ID: missingEnterpriseID, Role: RoleEnterprise, ParentUserID: &level1ID, Status: StatusActive},
+	)
+	repo.groupDelegations = []agentGroupDelegationRecord{
+		{managerID: rootID, childID: level1ID, groupID: groupID, rateMultiplier: 1.5, canDelegate: true},
+		{managerID: level1ID, childID: enterpriseID, groupID: groupID, rateMultiplier: 1.6, canDelegate: true},
+		{managerID: enterpriseID, childID: employeeID, groupID: groupID, rateMultiplier: 1.7, canDelegate: false},
+	}
+	userRepo := &agentManagementUserRepoStub{users: repo.users}
+	rateRepo := &agentManagementUserGroupRateRepoStub{rates: map[int64]map[int64]float64{
+		enterpriseID: {groupID: 1.6},
+		employeeID:   {groupID: 1.7},
+	}}
+	invalidator := &agentManagementAuthInvalidatorStub{}
+	svc := NewAgentManagementService(repo, userRepo, nil, invalidator)
+	svc.SetUserGroupRateRepository(rateRepo)
+
+	result, err := svc.RemoveDirectChildrenGroupDelegationsBatch(context.Background(), level1ID, DirectChildKindEnterprises, DirectChildrenGroupDelegationReclaimInput{
+		GroupID: groupID,
+		All:     true,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, DirectChildKindEnterprises, result.Kind)
+	require.Equal(t, 1, result.RemovedChildren)
+	require.Equal(t, 1, result.SkippedChildren)
+	enterpriseDelegation, err := repo.GetGroupDelegation(context.Background(), level1ID, enterpriseID, groupID)
+	require.NoError(t, err)
+	require.Nil(t, enterpriseDelegation)
+	employeeDelegation, err := repo.GetGroupDelegation(context.Background(), enterpriseID, employeeID, groupID)
+	require.NoError(t, err)
+	require.Nil(t, employeeDelegation)
+	require.Empty(t, repo.users[enterpriseID].AllowedGroups)
+	require.Empty(t, repo.users[employeeID].AllowedGroups)
+	require.NotContains(t, rateRepo.rates[enterpriseID], groupID)
+	require.NotContains(t, rateRepo.rates[employeeID], groupID)
 	require.ElementsMatch(t, []int64{enterpriseID, employeeID}, invalidator.userIDs)
 }
 

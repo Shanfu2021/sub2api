@@ -46,7 +46,23 @@ type fakeAgentManagementService struct {
 	setDirectBatchCalls           int
 	setDirectBatchActor           int64
 	setDirectBatchKind            service.DirectChildKind
-	setDirectBatchInput           service.ChildGroupDelegationBatchInput
+	setDirectBatchInput           service.DirectChildrenGroupDelegationBatchInput
+	listDirectWithGroupCalls      int
+	listDirectWithGroupActor      int64
+	listDirectWithGroupKind       service.DirectChildKind
+	listDirectWithGroupQuery      service.DirectChildrenGroupQuery
+	listDirectWithoutGroupCalls   int
+	listDirectWithoutGroupActor   int64
+	listDirectWithoutGroupKind    service.DirectChildKind
+	listDirectWithoutGroupQuery   service.DirectChildrenGroupQuery
+	updateDirectExistingCalls     int
+	updateDirectExistingActor     int64
+	updateDirectExistingKind      service.DirectChildKind
+	updateDirectExistingInput     service.DirectChildrenGroupDelegationUpdateInput
+	reclaimDirectGroupCalls       int
+	reclaimDirectGroupActor       int64
+	reclaimDirectGroupKind        service.DirectChildKind
+	reclaimDirectGroupInput       service.DirectChildrenGroupDelegationReclaimInput
 	setAgentIncomeCalls           int
 	setAgentIncomeActor           int64
 	setAgentIncomeChildID         int64
@@ -94,6 +110,45 @@ func (s *fakeAgentManagementService) ListDirectEnterprises(context.Context, int6
 
 func (s *fakeAgentManagementService) ListDirectEnterprisesWithQuery(context.Context, int64, service.DirectChildrenQuery) (*service.DirectChildrenResult, error) {
 	return &service.DirectChildrenResult{}, nil
+}
+
+func (s *fakeAgentManagementService) ListDirectChildrenWithGroupDelegation(_ context.Context, actorID int64, kind service.DirectChildKind, query service.DirectChildrenGroupQuery) (*service.DirectChildrenResult, error) {
+	s.listDirectWithGroupCalls++
+	s.listDirectWithGroupActor = actorID
+	s.listDirectWithGroupKind = kind
+	s.listDirectWithGroupQuery = query
+	return &service.DirectChildrenResult{
+		Users: []service.User{
+			{
+				ID:         12,
+				Email:      "assigned@example.test",
+				Username:   "assigned",
+				Role:       service.RoleUser,
+				Status:     service.StatusActive,
+				GroupRates: map[int64]float64{query.GroupID: 2.4},
+			},
+		},
+		Pagination: &pagination.PaginationResult{Total: 1, Page: query.Pagination.Page, PageSize: query.Pagination.PageSize, Pages: 1},
+	}, nil
+}
+
+func (s *fakeAgentManagementService) ListDirectChildrenWithoutGroupDelegation(_ context.Context, actorID int64, kind service.DirectChildKind, query service.DirectChildrenGroupQuery) (*service.DirectChildrenResult, error) {
+	s.listDirectWithoutGroupCalls++
+	s.listDirectWithoutGroupActor = actorID
+	s.listDirectWithoutGroupKind = kind
+	s.listDirectWithoutGroupQuery = query
+	return &service.DirectChildrenResult{
+		Users: []service.User{
+			{
+				ID:       13,
+				Email:    "missing@example.test",
+				Username: "missing",
+				Role:     service.RoleUser,
+				Status:   service.StatusActive,
+			},
+		},
+		Pagination: &pagination.PaginationResult{Total: 1, Page: query.Pagination.Page, PageSize: query.Pagination.PageSize, Pages: 1},
+	}, nil
 }
 
 func (s *fakeAgentManagementService) GetSummary(context.Context, int64) (*service.AgentManagementSummary, error) {
@@ -299,12 +354,42 @@ func (s *fakeAgentManagementService) SetChildGroupDelegationsBatch(context.Conte
 	return nil
 }
 
-func (s *fakeAgentManagementService) SetDirectChildrenGroupDelegationsBatch(_ context.Context, actorID int64, kind service.DirectChildKind, input service.ChildGroupDelegationBatchInput) (int, error) {
+func (s *fakeAgentManagementService) SetDirectChildrenGroupDelegationsBatch(_ context.Context, actorID int64, kind service.DirectChildKind, input service.DirectChildrenGroupDelegationBatchInput) (int, error) {
 	s.setDirectBatchCalls++
 	s.setDirectBatchActor = actorID
 	s.setDirectBatchKind = kind
 	s.setDirectBatchInput = input
 	return 3, nil
+}
+
+func (s *fakeAgentManagementService) UpdateDirectChildrenExistingGroupDelegations(_ context.Context, actorID int64, kind service.DirectChildKind, input service.DirectChildrenGroupDelegationUpdateInput) (*service.DirectChildrenGroupDelegationUpdateResult, error) {
+	s.updateDirectExistingCalls++
+	s.updateDirectExistingActor = actorID
+	s.updateDirectExistingKind = kind
+	s.updateDirectExistingInput = input
+	return &service.DirectChildrenGroupDelegationUpdateResult{
+		Kind:              kind,
+		GroupID:           input.GroupID,
+		RequestedChildIDs: append([]int64(nil), input.ChildIDs...),
+		All:               input.All,
+		UpdatedChildren:   2,
+		SkippedChildren:   1,
+	}, nil
+}
+
+func (s *fakeAgentManagementService) RemoveDirectChildrenGroupDelegationsBatch(_ context.Context, actorID int64, kind service.DirectChildKind, input service.DirectChildrenGroupDelegationReclaimInput) (*service.DirectChildrenGroupDelegationReclaimResult, error) {
+	s.reclaimDirectGroupCalls++
+	s.reclaimDirectGroupActor = actorID
+	s.reclaimDirectGroupKind = kind
+	s.reclaimDirectGroupInput = input
+	return &service.DirectChildrenGroupDelegationReclaimResult{
+		Kind:              kind,
+		GroupID:           input.GroupID,
+		RequestedChildIDs: append([]int64(nil), input.ChildIDs...),
+		All:               input.All,
+		RemovedChildren:   2,
+		SkippedChildren:   1,
+	}, nil
 }
 
 func (s *fakeAgentManagementService) SetAgentIncome(_ context.Context, actorID int64, childID int64, input service.AgentIncomeSetInput) (*service.User, error) {
@@ -363,9 +448,17 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 		c.Next()
 	})
 	r.GET("/direct-users", h.ListDirectUsers)
+	r.GET("/direct-users/groups/assigned", h.ListDirectUsersWithGroup)
+	r.GET("/direct-users/groups/unassigned", h.ListDirectUsersWithoutGroup)
 	r.PUT("/direct-users/groups/batch", h.SetDirectUsersGroupDelegationsBatch)
+	r.PUT("/direct-users/groups/existing", h.UpdateDirectUsersExistingGroupDelegations)
+	r.POST("/direct-users/groups/reclaim", h.ReclaimDirectUsersGroupDelegations)
 	r.PUT("/direct-agents/groups/batch", h.SetDirectAgentsGroupDelegationsBatch)
+	r.PUT("/direct-agents/groups/existing", h.UpdateDirectAgentsExistingGroupDelegations)
+	r.POST("/direct-agents/groups/reclaim", h.ReclaimDirectAgentsGroupDelegations)
 	r.PUT("/direct-enterprises/groups/batch", h.SetDirectEnterprisesGroupDelegationsBatch)
+	r.PUT("/direct-enterprises/groups/existing", h.UpdateDirectEnterprisesExistingGroupDelegations)
+	r.POST("/direct-enterprises/groups/reclaim", h.ReclaimDirectEnterprisesGroupDelegations)
 	r.PUT("/children/:id/allocation", h.UpdateAllocation)
 	r.PUT("/children/:id/agent-income", h.SetAgentIncome)
 	r.POST("/children/:id/upgrade", h.UpgradeDirectUser)
@@ -388,6 +481,8 @@ func TestAgentManagementHandlerSetsDirectChildrenGroupDelegationsBatch(t *testin
 	req := httptest.NewRequest(http.MethodPut, "/direct-enterprises/groups/batch", strings.NewReader(`{
 		"group_ids": [20, 30],
 		"all": false,
+		"child_ids": [12, 13],
+		"all_children": false,
 		"rate_multiplier": 2.4,
 		"can_delegate": true
 	}`))
@@ -401,6 +496,9 @@ func TestAgentManagementHandlerSetsDirectChildrenGroupDelegationsBatch(t *testin
 	require.Equal(t, service.DirectChildKindEnterprises, svc.setDirectBatchKind)
 	require.Equal(t, []int64{20, 30}, svc.setDirectBatchInput.GroupIDs)
 	require.False(t, svc.setDirectBatchInput.All)
+	require.Equal(t, []int64{12, 13}, svc.setDirectBatchInput.ChildIDs)
+	require.NotNil(t, svc.setDirectBatchInput.AllChildren)
+	require.False(t, *svc.setDirectBatchInput.AllChildren)
 	require.InDelta(t, 2.4, svc.setDirectBatchInput.RateMultiplier, 1e-12)
 	require.True(t, svc.setDirectBatchInput.CanDelegate)
 	var body struct {
@@ -416,6 +514,99 @@ func TestAgentManagementHandlerSetsDirectChildrenGroupDelegationsBatch(t *testin
 	require.Equal(t, "enterprises", body.Data.Kind)
 	require.Equal(t, []int64{20, 30}, body.Data.GroupIDs)
 	require.Equal(t, 3, body.Data.UpdatedChildren)
+}
+
+func TestAgentManagementHandlerListsDirectChildrenWithAssignedGroup(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/direct-users/groups/assigned?group_id=20&page=2&page_size=10&search=assigned", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listDirectWithGroupCalls)
+	require.Equal(t, int64(42), svc.listDirectWithGroupActor)
+	require.Equal(t, service.DirectChildKindUsers, svc.listDirectWithGroupKind)
+	require.Equal(t, int64(20), svc.listDirectWithGroupQuery.GroupID)
+	require.Equal(t, "assigned", svc.listDirectWithGroupQuery.Search)
+	require.Equal(t, 2, svc.listDirectWithGroupQuery.Pagination.Page)
+	require.Equal(t, 10, svc.listDirectWithGroupQuery.Pagination.PageSize)
+	require.Contains(t, rec.Body.String(), `"assigned@example.test"`)
+	require.Contains(t, rec.Body.String(), `"group_rates":{"20":2.4}`)
+}
+
+func TestAgentManagementHandlerListsDirectChildrenWithoutSelectedGroups(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/direct-users/groups/unassigned?group_ids=20,30&page=2&page_size=10&search=missing", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.listDirectWithoutGroupCalls)
+	require.Equal(t, int64(42), svc.listDirectWithoutGroupActor)
+	require.Equal(t, service.DirectChildKindUsers, svc.listDirectWithoutGroupKind)
+	require.Equal(t, []int64{20, 30}, svc.listDirectWithoutGroupQuery.GroupIDs)
+	require.Equal(t, "missing", svc.listDirectWithoutGroupQuery.Search)
+	require.Equal(t, 2, svc.listDirectWithoutGroupQuery.Pagination.Page)
+	require.Equal(t, 10, svc.listDirectWithoutGroupQuery.Pagination.PageSize)
+	require.Contains(t, rec.Body.String(), `"missing@example.test"`)
+}
+
+func TestAgentManagementHandlerUpdatesDirectChildrenExistingGroupDelegations(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPut, "/direct-users/groups/existing", strings.NewReader(`{
+		"group_id": 20,
+		"child_ids": [12, 13],
+		"all": false,
+		"rate_multiplier": 2.4,
+		"can_delegate": true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.updateDirectExistingCalls)
+	require.Equal(t, int64(42), svc.updateDirectExistingActor)
+	require.Equal(t, service.DirectChildKindUsers, svc.updateDirectExistingKind)
+	require.Equal(t, int64(20), svc.updateDirectExistingInput.GroupID)
+	require.Equal(t, []int64{12, 13}, svc.updateDirectExistingInput.ChildIDs)
+	require.False(t, svc.updateDirectExistingInput.All)
+	require.NotNil(t, svc.updateDirectExistingInput.RateMultiplier)
+	require.InDelta(t, 2.4, *svc.updateDirectExistingInput.RateMultiplier, 1e-12)
+	require.NotNil(t, svc.updateDirectExistingInput.CanDelegate)
+	require.True(t, *svc.updateDirectExistingInput.CanDelegate)
+	require.Contains(t, rec.Body.String(), `"updated_children":2`)
+	require.Contains(t, rec.Body.String(), `"skipped_children":1`)
+}
+
+func TestAgentManagementHandlerReclaimsDirectChildrenGroupDelegations(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/direct-enterprises/groups/reclaim", strings.NewReader(`{
+		"group_id": 20,
+		"child_ids": [12, 13],
+		"all": false
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, svc.reclaimDirectGroupCalls)
+	require.Equal(t, int64(42), svc.reclaimDirectGroupActor)
+	require.Equal(t, service.DirectChildKindEnterprises, svc.reclaimDirectGroupKind)
+	require.Equal(t, int64(20), svc.reclaimDirectGroupInput.GroupID)
+	require.Equal(t, []int64{12, 13}, svc.reclaimDirectGroupInput.ChildIDs)
+	require.False(t, svc.reclaimDirectGroupInput.All)
+	require.Contains(t, rec.Body.String(), `"removed_children":2`)
+	require.Contains(t, rec.Body.String(), `"skipped_children":1`)
 }
 
 func TestAgentManagementHandlerSetsAgentIncome(t *testing.T) {

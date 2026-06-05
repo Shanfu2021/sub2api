@@ -27,6 +27,8 @@ type agentManagementService interface {
 	ListDirectAgentsWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
 	ListDirectEnterprises(ctx context.Context, actorID int64) (*service.DirectChildrenResult, error)
 	ListDirectEnterprisesWithQuery(ctx context.Context, actorID int64, query service.DirectChildrenQuery) (*service.DirectChildrenResult, error)
+	ListDirectChildrenWithGroupDelegation(ctx context.Context, actorID int64, kind service.DirectChildKind, query service.DirectChildrenGroupQuery) (*service.DirectChildrenResult, error)
+	ListDirectChildrenWithoutGroupDelegation(ctx context.Context, actorID int64, kind service.DirectChildKind, query service.DirectChildrenGroupQuery) (*service.DirectChildrenResult, error)
 	GetAdminAgentTree(ctx context.Context, actorID int64) (*service.AdminAgentTreeResult, error)
 	GetSubordinateStructure(ctx context.Context, actorID int64, ownerID *int64) (*service.SubordinateStructureResult, error)
 	ListAgentUsage(ctx context.Context, actorID int64, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error)
@@ -42,7 +44,9 @@ type agentManagementService interface {
 	ListChildGroupDelegationOptions(ctx context.Context, actorID int64, childID int64) ([]service.ChildGroupDelegationOption, error)
 	SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input service.ChildGroupDelegationInput) error
 	SetChildGroupDelegationsBatch(ctx context.Context, actorID int64, childID int64, input service.ChildGroupDelegationBatchInput) error
-	SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind service.DirectChildKind, input service.ChildGroupDelegationBatchInput) (int, error)
+	SetDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind service.DirectChildKind, input service.DirectChildrenGroupDelegationBatchInput) (int, error)
+	UpdateDirectChildrenExistingGroupDelegations(ctx context.Context, actorID int64, kind service.DirectChildKind, input service.DirectChildrenGroupDelegationUpdateInput) (*service.DirectChildrenGroupDelegationUpdateResult, error)
+	RemoveDirectChildrenGroupDelegationsBatch(ctx context.Context, actorID int64, kind service.DirectChildKind, input service.DirectChildrenGroupDelegationReclaimInput) (*service.DirectChildrenGroupDelegationReclaimResult, error)
 	SetAgentIncome(ctx context.Context, actorID int64, childID int64, input service.AgentIncomeSetInput) (*service.User, error)
 	RemoveChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64) error
 	ListInviteGroupDefaultOptions(ctx context.Context, actorID int64) ([]service.ChildGroupDelegationOption, error)
@@ -86,6 +90,95 @@ func (h *AgentManagementHandler) ListDirectAgents(c *gin.Context) {
 
 func (h *AgentManagementHandler) ListDirectEnterprises(c *gin.Context) {
 	h.listDirectChildren(c, h.service.ListDirectEnterprisesWithQuery)
+}
+
+func (h *AgentManagementHandler) ListDirectUsersWithGroup(c *gin.Context) {
+	h.listDirectChildrenWithGroup(c, service.DirectChildKindUsers)
+}
+
+func (h *AgentManagementHandler) ListDirectUsersWithoutGroup(c *gin.Context) {
+	h.listDirectChildrenWithoutGroup(c, service.DirectChildKindUsers)
+}
+
+func (h *AgentManagementHandler) ListDirectAgentsWithGroup(c *gin.Context) {
+	h.listDirectChildrenWithGroup(c, service.DirectChildKindAgents)
+}
+
+func (h *AgentManagementHandler) ListDirectAgentsWithoutGroup(c *gin.Context) {
+	h.listDirectChildrenWithoutGroup(c, service.DirectChildKindAgents)
+}
+
+func (h *AgentManagementHandler) ListDirectEnterprisesWithGroup(c *gin.Context) {
+	h.listDirectChildrenWithGroup(c, service.DirectChildKindEnterprises)
+}
+
+func (h *AgentManagementHandler) ListDirectEnterprisesWithoutGroup(c *gin.Context) {
+	h.listDirectChildrenWithoutGroup(c, service.DirectChildKindEnterprises)
+}
+
+func (h *AgentManagementHandler) listDirectChildrenWithGroup(c *gin.Context, kind service.DirectChildKind) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	groupID, err := strconv.ParseInt(strings.TrimSpace(c.Query("group_id")), 10, 64)
+	if err != nil || groupID <= 0 {
+		response.BadRequest(c, "Invalid group_id")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	result, err := h.service.ListDirectChildrenWithGroupDelegation(c.Request.Context(), actorID, kind, service.DirectChildrenGroupQuery{
+		GroupID: groupID,
+		Search:  normalizedQuerySearch(c.Query("search")),
+		Pagination: pagination.PaginationParams{
+			Page:     page,
+			PageSize: pageSize,
+		},
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	users := make([]agentManagedUserResponse, 0, len(result.Users))
+	for i := range result.Users {
+		users = append(users, agentManagedUserFromService(&result.Users[i]))
+	}
+	response.Success(c, gin.H{
+		"items":      users,
+		"pagination": result.Pagination,
+	})
+}
+
+func (h *AgentManagementHandler) listDirectChildrenWithoutGroup(c *gin.Context, kind service.DirectChildKind) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	groupIDs, ok := parseGroupIDsQuery(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	result, err := h.service.ListDirectChildrenWithoutGroupDelegation(c.Request.Context(), actorID, kind, service.DirectChildrenGroupQuery{
+		GroupIDs: groupIDs,
+		Search:   normalizedQuerySearch(c.Query("search")),
+		Pagination: pagination.PaginationParams{
+			Page:     page,
+			PageSize: pageSize,
+		},
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	users := make([]agentManagedUserResponse, 0, len(result.Users))
+	for i := range result.Users {
+		users = append(users, agentManagedUserFromService(&result.Users[i]))
+	}
+	response.Success(c, gin.H{
+		"items":      users,
+		"pagination": result.Pagination,
+	})
 }
 
 func (h *AgentManagementHandler) AdminAgentTree(c *gin.Context) {
@@ -396,12 +489,36 @@ func (h *AgentManagementHandler) SetDirectEnterprisesGroupDelegationsBatch(c *gi
 	h.setDirectChildrenGroupDelegationsBatch(c, service.DirectChildKindEnterprises)
 }
 
+func (h *AgentManagementHandler) UpdateDirectUsersExistingGroupDelegations(c *gin.Context) {
+	h.updateDirectChildrenExistingGroupDelegations(c, service.DirectChildKindUsers)
+}
+
+func (h *AgentManagementHandler) UpdateDirectAgentsExistingGroupDelegations(c *gin.Context) {
+	h.updateDirectChildrenExistingGroupDelegations(c, service.DirectChildKindAgents)
+}
+
+func (h *AgentManagementHandler) UpdateDirectEnterprisesExistingGroupDelegations(c *gin.Context) {
+	h.updateDirectChildrenExistingGroupDelegations(c, service.DirectChildKindEnterprises)
+}
+
+func (h *AgentManagementHandler) ReclaimDirectUsersGroupDelegations(c *gin.Context) {
+	h.reclaimDirectChildrenGroupDelegations(c, service.DirectChildKindUsers)
+}
+
+func (h *AgentManagementHandler) ReclaimDirectAgentsGroupDelegations(c *gin.Context) {
+	h.reclaimDirectChildrenGroupDelegations(c, service.DirectChildKindAgents)
+}
+
+func (h *AgentManagementHandler) ReclaimDirectEnterprisesGroupDelegations(c *gin.Context) {
+	h.reclaimDirectChildrenGroupDelegations(c, service.DirectChildKindEnterprises)
+}
+
 func (h *AgentManagementHandler) setDirectChildrenGroupDelegationsBatch(c *gin.Context, kind service.DirectChildKind) {
 	actorID, ok := currentActorID(c)
 	if !ok {
 		return
 	}
-	var req service.ChildGroupDelegationBatchInput
+	var req service.DirectChildrenGroupDelegationBatchInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
@@ -411,7 +528,47 @@ func (h *AgentManagementHandler) setDirectChildrenGroupDelegationsBatch(c *gin.C
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"kind": kind, "group_ids": req.GroupIDs, "all": req.All, "updated_children": updated})
+	allChildren := true
+	if req.AllChildren != nil {
+		allChildren = *req.AllChildren
+	}
+	response.Success(c, gin.H{"kind": kind, "group_ids": req.GroupIDs, "all": req.All, "child_ids": req.ChildIDs, "all_children": allChildren, "updated_children": updated})
+}
+
+func (h *AgentManagementHandler) updateDirectChildrenExistingGroupDelegations(c *gin.Context, kind service.DirectChildKind) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var req service.DirectChildrenGroupDelegationUpdateInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.service.UpdateDirectChildrenExistingGroupDelegations(c.Request.Context(), actorID, kind, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *AgentManagementHandler) reclaimDirectChildrenGroupDelegations(c *gin.Context, kind service.DirectChildKind) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var req service.DirectChildrenGroupDelegationReclaimInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	result, err := h.service.RemoveDirectChildrenGroupDelegationsBatch(c.Request.Context(), actorID, kind, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 func (h *AgentManagementHandler) SetAgentIncome(c *gin.Context) {
@@ -584,6 +741,39 @@ func parsePositiveID(c *gin.Context, name string, message string) (int64, bool) 
 	return id, true
 }
 
+func parseGroupIDsQuery(c *gin.Context) ([]int64, bool) {
+	rawValues := make([]string, 0, 2)
+	if raw := strings.TrimSpace(c.Query("group_ids")); raw != "" {
+		rawValues = append(rawValues, strings.Split(raw, ",")...)
+	}
+	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
+		rawValues = append(rawValues, raw)
+	}
+	seen := map[int64]struct{}{}
+	out := make([]int64, 0, len(rawValues))
+	for _, raw := range rawValues {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid group_ids")
+			return nil, false
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		response.BadRequest(c, "Invalid group_ids")
+		return nil, false
+	}
+	return out, true
+}
+
 func bindAllocationUpdate(c *gin.Context) (service.AllocationUpdate, bool) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -752,24 +942,25 @@ func parseAgentUsageTimeRange(c *gin.Context, withDefaultPeriod bool) (*time.Tim
 }
 
 type agentManagedUserResponse struct {
-	ID                       int64   `json:"id"`
-	Email                    string  `json:"email"`
-	Username                 string  `json:"username"`
-	Role                     string  `json:"role"`
-	ParentUserID             *int64  `json:"parent_user_id,omitempty"`
-	Balance                  float64 `json:"balance"`
-	Concurrency              int     `json:"concurrency"`
-	RPMLimit                 int     `json:"rpm_limit"`
-	AllocatedConcurrency     int     `json:"allocated_concurrency"`
-	AllocatedRPM             int     `json:"allocated_rpm"`
-	PoolConcurrency          int     `json:"pool_concurrency"`
-	PoolRPM                  int     `json:"pool_rpm"`
-	InviteDefaultConcurrency int     `json:"invite_default_concurrency"`
-	InviteDefaultRPM         int     `json:"invite_default_rpm"`
-	AgentIncome              float64 `json:"agent_income"`
-	Status                   string  `json:"status"`
-	CreatedAt                string  `json:"created_at"`
-	UpdatedAt                string  `json:"updated_at"`
+	ID                       int64             `json:"id"`
+	Email                    string            `json:"email"`
+	Username                 string            `json:"username"`
+	Role                     string            `json:"role"`
+	ParentUserID             *int64            `json:"parent_user_id,omitempty"`
+	Balance                  float64           `json:"balance"`
+	Concurrency              int               `json:"concurrency"`
+	RPMLimit                 int               `json:"rpm_limit"`
+	AllocatedConcurrency     int               `json:"allocated_concurrency"`
+	AllocatedRPM             int               `json:"allocated_rpm"`
+	PoolConcurrency          int               `json:"pool_concurrency"`
+	PoolRPM                  int               `json:"pool_rpm"`
+	InviteDefaultConcurrency int               `json:"invite_default_concurrency"`
+	InviteDefaultRPM         int               `json:"invite_default_rpm"`
+	AgentIncome              float64           `json:"agent_income"`
+	Status                   string            `json:"status"`
+	GroupRates               map[int64]float64 `json:"group_rates,omitempty"`
+	CreatedAt                string            `json:"created_at"`
+	UpdatedAt                string            `json:"updated_at"`
 }
 
 type agentGroupRateResponse struct {
@@ -841,6 +1032,7 @@ func agentManagedUserFromService(u *service.User) agentManagedUserResponse {
 		InviteDefaultRPM:         inviteDefaultRPM,
 		AgentIncome:              u.AgentIncome,
 		Status:                   u.Status,
+		GroupRates:               u.GroupRates,
 		CreatedAt:                u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:                u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
