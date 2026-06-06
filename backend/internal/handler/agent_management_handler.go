@@ -245,22 +245,16 @@ func (h *AgentManagementHandler) ListUsage(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	type agentUsageLogResponse struct {
-		dto.UsageLog
-		Account *dto.AccountSummary `json:"account,omitempty"`
-	}
-	out := make([]agentUsageLogResponse, 0, len(records))
+	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
 		item := dto.UsageLogFromService(&records[i])
 		if item == nil {
 			continue
 		}
 		item.UpstreamEndpoint = nil
+		item.AccountID = 0
 		item.APIKey = nil
-		out = append(out, agentUsageLogResponse{
-			UsageLog: *item,
-			Account:  dto.AccountSummaryFromService(records[i].Account),
-		})
+		out = append(out, *item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }

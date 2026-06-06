@@ -271,6 +271,18 @@ func (s *fakeAgentManagementService) ListAgentUsageUsers(context.Context, int64)
 	return []service.User{{ID: 20, Email: "user@example.test", Role: service.RoleUser}}, nil
 }
 
+func (s *fakeAgentManagementService) SearchAgentUsageUsers(context.Context, int64, string, int) ([]service.User, error) {
+	return []service.User{}, nil
+}
+
+func (s *fakeAgentManagementService) SearchAgentUsageAPIKeys(context.Context, int64, int64, string, int) ([]service.AgentUsageAPIKeySummary, error) {
+	return []service.AgentUsageAPIKeySummary{}, nil
+}
+
+func (s *fakeAgentManagementService) SearchAgentUsageAccounts(context.Context, int64, string, int) ([]service.AgentUsageAccountSummary, error) {
+	return []service.AgentUsageAccountSummary{}, nil
+}
+
 func (s *fakeAgentManagementService) CreateDirectUser(_ context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error) {
 	s.createDirectUserCalls++
 	s.createActorID = actorID
