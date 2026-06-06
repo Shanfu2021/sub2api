@@ -81,7 +81,7 @@
                   <input
                     type="number"
                     step="0.001"
-                    min="0.001"
+                    min="0"
                     :value="config.customRate ?? ''"
                     @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
                     :placeholder="String(config.defaultRate)"
@@ -139,7 +139,7 @@
                   <input
                     type="number"
                     step="0.001"
-                    min="0.001"
+                    min="0"
                     :value="config.customRate ?? ''"
                     @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
                     :placeholder="String(config.defaultRate)"
@@ -270,7 +270,7 @@ const updateCustomRate = (groupId: number, value: string) => {
       config.customRate = null
     } else {
       const numValue = parseFloat(value)
-      config.customRate = isNaN(numValue) ? null : numValue
+      config.customRate = Number.isFinite(numValue) && numValue >= 0 ? numValue : null
     }
   }
 }

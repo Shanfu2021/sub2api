@@ -419,7 +419,7 @@
                     data-test="group-batch-rate"
                     class="input h-9 w-28"
                     type="number"
-                    min="0.000001"
+                    min="0"
                     step="0.000001"
                   />
                 </label>
@@ -495,7 +495,7 @@
                     :data-test="`group-rate-${groupRate.group.id}`"
                     class="input h-9"
                     type="number"
-                    min="0.000001"
+                    min="0"
                     step="0.000001"
                     :disabled="!groupDraftFor(groupRate).assigned"
                     :value="groupDraftFor(groupRate).rate_multiplier"
@@ -861,7 +861,7 @@
                   data-test="direct-group-update-rate"
                   class="input h-9"
                   type="number"
-                  min="0.000001"
+                  min="0"
                   step="0.000001"
                   :disabled="!directGroupUpdateRateEnabled"
                 />
@@ -1087,11 +1087,14 @@ import AgentDirectUserCreateModal from '@/components/agent/AgentDirectUserCreate
 import Icon from '@/components/icons/Icon.vue'
 
 type ChildKind = 'users' | 'agents' | 'enterprises'
+type DirectGroupSelectionLoader = (page: number, pageSize: number) => Promise<AgentDirectChildrenResponse>
 
 const props = defineProps<{
   kind: ChildKind
   title: string
 }>()
+
+const FULL_SELECTION_PAGE_SIZE = 1000
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1227,18 +1230,15 @@ const groupBatchRate = ref('1')
 const groupBatchCanDelegate = ref(false)
 const groupBatchSaving = ref(false)
 const selectedGroupBatchIDs = ref<number[]>([])
-const directGroupBatchAllChildren = ref(true)
 const selectedDirectGroupBatchChildIDs = ref<number[]>([])
 const directGroupBatchAll = ref(false)
 const directGroupBatchCanDelegate = ref(false)
 const selectedDirectGroupBatchIDs = ref<number[]>([])
-const directGroupUpdateAll = ref(false)
 const selectedDirectGroupUpdateChildIDs = ref<number[]>([])
 const directGroupUpdateRateEnabled = ref(true)
 const directGroupUpdateRate = ref('1')
 const directGroupUpdateCanDelegateEnabled = ref(false)
 const directGroupUpdateCanDelegate = ref(false)
-const directGroupReclaimAll = ref(false)
 const selectedDirectGroupReclaimChildIDs = ref<number[]>([])
 
 const columns = computed<Column[]>(() => [
@@ -1317,38 +1317,20 @@ const directGroupBatchAllChecked = computed(() => isAllVisibleSelected(
   directGroupBatchDialog.groups.map((item) => item.group.id),
   directGroupBatchAll.value
 ))
-const directGroupBatchVisibleChildIDs = computed(() => directGroupBatchDialog.children.map((child) => child.id))
-const directGroupBatchChildSelectedCount = computed(() => mergeSelectedIDs(
+const directGroupBatchChildSelectedCount = computed(() => selectedDirectGroupBatchChildIDs.value.length)
+const directGroupBatchAllChildrenChecked = computed(() => isFullSelectionChecked(
   selectedDirectGroupBatchChildIDs.value,
-  directGroupBatchVisibleChildIDs.value,
-  directGroupBatchAllChildren.value
-).length)
-const directGroupBatchAllChildrenChecked = computed(() => isAllVisibleSelected(
-  selectedDirectGroupBatchChildIDs.value,
-  directGroupBatchVisibleChildIDs.value,
-  directGroupBatchAllChildren.value
+  directGroupBatchDialog.pagination.total
 ))
-const directGroupUpdateVisibleChildIDs = computed(() => directGroupUpdateDialog.children.map((child) => child.id))
-const directGroupUpdateSelectedCount = computed(() => mergeSelectedIDs(
+const directGroupUpdateSelectedCount = computed(() => selectedDirectGroupUpdateChildIDs.value.length)
+const directGroupUpdateAllChecked = computed(() => isFullSelectionChecked(
   selectedDirectGroupUpdateChildIDs.value,
-  directGroupUpdateVisibleChildIDs.value,
-  directGroupUpdateAll.value
-).length)
-const directGroupUpdateAllChecked = computed(() => isAllVisibleSelected(
-  selectedDirectGroupUpdateChildIDs.value,
-  directGroupUpdateVisibleChildIDs.value,
-  directGroupUpdateAll.value
+  directGroupUpdateDialog.pagination.total
 ))
-const directGroupReclaimVisibleChildIDs = computed(() => directGroupReclaimDialog.children.map((child) => child.id))
-const directGroupReclaimSelectedCount = computed(() => mergeSelectedIDs(
+const directGroupReclaimSelectedCount = computed(() => selectedDirectGroupReclaimChildIDs.value.length)
+const directGroupReclaimAllChecked = computed(() => isFullSelectionChecked(
   selectedDirectGroupReclaimChildIDs.value,
-  directGroupReclaimVisibleChildIDs.value,
-  directGroupReclaimAll.value
-).length)
-const directGroupReclaimAllChecked = computed(() => isAllVisibleSelected(
-  selectedDirectGroupReclaimChildIDs.value,
-  directGroupReclaimVisibleChildIDs.value,
-  directGroupReclaimAll.value
+  directGroupReclaimDialog.pagination.total
 ))
 
 function paginationFromResult(result: AgentDirectChildrenResponse) {
@@ -1469,10 +1451,10 @@ function normalizedNonNegative(value: unknown): number {
   return Math.max(0, Number.parseInt(String(value ?? '0'), 10) || 0)
 }
 
-function normalizedPositiveFloat(value: unknown): number {
+function normalizedNonNegativeFloat(value: unknown): number {
   const parsed = Number.parseFloat(String(value ?? '0'))
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return Number.NaN
   }
   return parsed
 }
@@ -1790,6 +1772,55 @@ function isAllVisibleSelected(selectedIDs: number[], visibleIDs: number[], allFl
   return visibleIDs.every((id) => selected.has(id))
 }
 
+function uniquePositiveIDs(ids: number[]): number[] {
+  return Array.from(new Set(ids.filter((id) => id > 0)))
+}
+
+function isFullSelectionChecked(selectedIDs: number[], total: number): boolean {
+  return total > 0 && uniquePositiveIDs(selectedIDs).length === total
+}
+
+function updateExplicitIDSelection(target: { value: number[] }, id: number, selected: boolean) {
+  const next = new Set(uniquePositiveIDs(target.value))
+  if (selected) {
+    next.add(id)
+  } else {
+    next.delete(id)
+  }
+  target.value = Array.from(next)
+}
+
+function isExplicitIDSelected(selectedIDs: number[], id: number): boolean {
+  return selectedIDs.includes(id)
+}
+
+async function fetchAllDirectGroupChildIDs(loadPage: DirectGroupSelectionLoader): Promise<number[]> {
+  const ids: number[] = []
+  let page = 1
+  let total = 0
+  let pages = 1
+  do {
+    const result = await loadPage(page, FULL_SELECTION_PAGE_SIZE)
+    ids.push(...result.items.map((child) => child.id))
+    const pagination = paginationFromResult(result)
+    total = pagination.total
+    pages = pagination.pages
+    if (result.items.length === 0) {
+      break
+    }
+    page += 1
+  } while (uniquePositiveIDs(ids).length < total && page <= pages)
+  return uniquePositiveIDs(ids)
+}
+
+async function setExplicitFullSelection(target: { value: number[] }, checked: boolean, loadPage: DirectGroupSelectionLoader) {
+  if (!checked) {
+    target.value = []
+    return
+  }
+  target.value = await fetchAllDirectGroupChildIDs(loadPage)
+}
+
 function setGroupBatchAll(all: boolean) {
   setAllVisibleIDs(selectedGroupBatchIDs, groupDialogGroupIDs.value, groupBatchAll, all)
 }
@@ -1823,13 +1854,12 @@ function syncDirectGroupBatchGroups(groups: AgentGroupRate[]) {
 async function setDirectGroupBatchAll(all: boolean) {
   setAllVisibleIDs(selectedDirectGroupBatchIDs, directGroupBatchDialog.groups.map((item) => item.group.id), directGroupBatchAll, all)
   selectedDirectGroupBatchChildIDs.value = []
-  directGroupBatchAllChildren.value = true
   directGroupBatchDialog.pagination.page = 1
   await loadDirectGroupBatchChildren()
 }
 
-function setDirectGroupBatchAllChildren(all: boolean) {
-  setAllVisibleIDs(selectedDirectGroupBatchChildIDs, directGroupBatchVisibleChildIDs.value, directGroupBatchAllChildren, all)
+async function setDirectGroupBatchAllChildren(all: boolean) {
+  await setExplicitFullSelection(selectedDirectGroupBatchChildIDs, all, loadDirectGroupBatchSelectionPage)
 }
 
 async function updateDirectGroupBatchSelection(groupID: number, selected: boolean) {
@@ -1841,13 +1871,12 @@ async function updateDirectGroupBatchSelection(groupID: number, selected: boolea
     selected
   )
   selectedDirectGroupBatchChildIDs.value = []
-  directGroupBatchAllChildren.value = true
   directGroupBatchDialog.pagination.page = 1
   await loadDirectGroupBatchChildren()
 }
 
 function updateDirectGroupBatchChildSelection(childID: number, selected: boolean) {
-  updateVisibleSelection(selectedDirectGroupBatchChildIDs, directGroupBatchVisibleChildIDs.value, directGroupBatchAllChildren, childID, selected)
+  updateExplicitIDSelection(selectedDirectGroupBatchChildIDs, childID, selected)
 }
 
 function isDirectGroupBatchSelected(groupID: number): boolean {
@@ -1860,15 +1889,15 @@ function isDirectGroupBatchSelected(groupID: number): boolean {
 }
 
 function isDirectGroupBatchChildSelected(childID: number): boolean {
-  return isIDSelected(selectedDirectGroupBatchChildIDs.value, directGroupBatchVisibleChildIDs.value, directGroupBatchAllChildren.value, childID)
+  return isExplicitIDSelected(selectedDirectGroupBatchChildIDs.value, childID)
 }
 
 function isDirectGroupUpdateChildSelected(childID: number): boolean {
-  return isIDSelected(selectedDirectGroupUpdateChildIDs.value, directGroupUpdateVisibleChildIDs.value, directGroupUpdateAll.value, childID)
+  return isExplicitIDSelected(selectedDirectGroupUpdateChildIDs.value, childID)
 }
 
 function isDirectGroupReclaimChildSelected(childID: number): boolean {
-  return isIDSelected(selectedDirectGroupReclaimChildIDs.value, directGroupReclaimVisibleChildIDs.value, directGroupReclaimAll.value, childID)
+  return isExplicitIDSelected(selectedDirectGroupReclaimChildIDs.value, childID)
 }
 
 async function openDirectGroupBatchDialog() {
@@ -1880,7 +1909,6 @@ async function openDirectGroupBatchDialog() {
   directGroupBatchDialog.searchDraft = ''
   directGroupBatchDialog.search = ''
   directGroupBatchDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
-  directGroupBatchAllChildren.value = true
   selectedDirectGroupBatchChildIDs.value = []
   try {
     syncDirectGroupBatchGroups(await agentManagementAPI.listGroups())
@@ -1904,29 +1932,23 @@ function closeDirectGroupBatchDialog() {
   selectedDirectGroupBatchIDs.value = []
   selectedDirectGroupBatchChildIDs.value = []
   directGroupBatchAll.value = false
-  directGroupBatchAllChildren.value = true
 }
 
 async function applyDirectGroupBatchSearch() {
   directGroupBatchDialog.search = directGroupBatchDialog.searchDraft.trim()
   directGroupBatchDialog.pagination.page = 1
   selectedDirectGroupBatchChildIDs.value = []
-  directGroupBatchAllChildren.value = true
   await loadDirectGroupBatchChildren()
 }
 
 async function changeDirectGroupBatchPage(page: number) {
   directGroupBatchDialog.pagination.page = page
-  selectedDirectGroupBatchChildIDs.value = []
-  directGroupBatchAllChildren.value = true
   await loadDirectGroupBatchChildren()
 }
 
 async function changeDirectGroupBatchPageSize(pageSize: number) {
   directGroupBatchDialog.pagination.page_size = pageSize
   directGroupBatchDialog.pagination.page = 1
-  selectedDirectGroupBatchChildIDs.value = []
-  directGroupBatchAllChildren.value = true
   await loadDirectGroupBatchChildren()
 }
 
@@ -1947,14 +1969,27 @@ async function loadDirectGroupBatchChildren() {
     })
     directGroupBatchDialog.children = result.items
     directGroupBatchDialog.pagination = paginationFromResult(result)
-    if (directGroupBatchAllChildren.value) {
-      selectedDirectGroupBatchChildIDs.value = [...directGroupBatchVisibleChildIDs.value]
-    }
   } catch (error) {
     appStore.showError((error as { message?: string }).message || t('agentManagement.groups.loadFailed'))
   } finally {
     directGroupBatchDialog.childrenLoading = false
   }
+}
+
+function loadDirectGroupBatchSelectionPage(page: number, pageSize: number): Promise<AgentDirectChildrenResponse> {
+  const groupIDs = directGroupBatchSelectedGroupIDs.value
+  if (groupIDs.length === 0) {
+    return Promise.resolve({
+      items: [],
+      pagination: { total: 0, page, page_size: pageSize, pages: 0 },
+    })
+  }
+  return agentManagementAPI.listDirectChildrenWithoutGroupDelegation(directChildKind.value, {
+    group_ids: groupIDs,
+    ...(directGroupBatchDialog.search ? { search: directGroupBatchDialog.search } : {}),
+    page,
+    page_size: pageSize,
+  })
 }
 
 function syncDirectGroupUpdateGroups(groups: AgentGroupRate[]) {
@@ -1994,7 +2029,6 @@ async function openDirectGroupUpdateDialog() {
   directGroupUpdateDialog.search = ''
   directGroupUpdateDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
   selectedDirectGroupUpdateChildIDs.value = []
-  directGroupUpdateAll.value = false
   directGroupUpdateRateEnabled.value = true
   directGroupUpdateCanDelegateEnabled.value = false
   try {
@@ -2019,7 +2053,6 @@ async function openDirectGroupReclaimDialog() {
   directGroupReclaimDialog.search = ''
   directGroupReclaimDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
   selectedDirectGroupReclaimChildIDs.value = []
-  directGroupReclaimAll.value = false
   try {
     syncDirectGroupReclaimGroups(await agentManagementAPI.listGroups())
     if (directGroupReclaimDialog.selectedGroupId > 0) {
@@ -2041,7 +2074,6 @@ function closeDirectGroupUpdateDialog() {
   directGroupUpdateDialog.children = []
   directGroupUpdateDialog.selectedGroupId = 0
   selectedDirectGroupUpdateChildIDs.value = []
-  directGroupUpdateAll.value = false
 }
 
 function closeDirectGroupReclaimDialog() {
@@ -2056,13 +2088,11 @@ function closeDirectGroupReclaimDialog() {
   directGroupReclaimDialog.search = ''
   directGroupReclaimDialog.pagination = { total: 0, page: 1, page_size: 20, pages: 1 }
   selectedDirectGroupReclaimChildIDs.value = []
-  directGroupReclaimAll.value = false
 }
 
 async function onDirectGroupUpdateGroupChange() {
   directGroupUpdateDialog.pagination.page = 1
   selectedDirectGroupUpdateChildIDs.value = []
-  directGroupUpdateAll.value = false
   const groupRate = directGroupUpdateDialog.groups.find((item) => item.group.id === directGroupUpdateDialog.selectedGroupId)
   directGroupUpdateRate.value = String(groupRate?.effective_rate ?? 1)
   directGroupUpdateCanDelegate.value = false
@@ -2072,7 +2102,6 @@ async function onDirectGroupUpdateGroupChange() {
 async function onDirectGroupReclaimGroupChange() {
   directGroupReclaimDialog.pagination.page = 1
   selectedDirectGroupReclaimChildIDs.value = []
-  directGroupReclaimAll.value = false
   await loadDirectGroupReclaimChildren()
 }
 
@@ -2080,7 +2109,6 @@ async function applyDirectGroupUpdateSearch() {
   directGroupUpdateDialog.search = directGroupUpdateDialog.searchDraft.trim()
   directGroupUpdateDialog.pagination.page = 1
   selectedDirectGroupUpdateChildIDs.value = []
-  directGroupUpdateAll.value = false
   await loadDirectGroupUpdateChildren()
 }
 
@@ -2088,37 +2116,28 @@ async function applyDirectGroupReclaimSearch() {
   directGroupReclaimDialog.search = directGroupReclaimDialog.searchDraft.trim()
   directGroupReclaimDialog.pagination.page = 1
   selectedDirectGroupReclaimChildIDs.value = []
-  directGroupReclaimAll.value = false
   await loadDirectGroupReclaimChildren()
 }
 
 async function changeDirectGroupUpdatePage(page: number) {
   directGroupUpdateDialog.pagination.page = page
-  selectedDirectGroupUpdateChildIDs.value = []
-  directGroupUpdateAll.value = false
   await loadDirectGroupUpdateChildren()
 }
 
 async function changeDirectGroupReclaimPage(page: number) {
   directGroupReclaimDialog.pagination.page = page
-  selectedDirectGroupReclaimChildIDs.value = []
-  directGroupReclaimAll.value = false
   await loadDirectGroupReclaimChildren()
 }
 
 async function changeDirectGroupUpdatePageSize(pageSize: number) {
   directGroupUpdateDialog.pagination.page_size = pageSize
   directGroupUpdateDialog.pagination.page = 1
-  selectedDirectGroupUpdateChildIDs.value = []
-  directGroupUpdateAll.value = false
   await loadDirectGroupUpdateChildren()
 }
 
 async function changeDirectGroupReclaimPageSize(pageSize: number) {
   directGroupReclaimDialog.pagination.page_size = pageSize
   directGroupReclaimDialog.pagination.page = 1
-  selectedDirectGroupReclaimChildIDs.value = []
-  directGroupReclaimAll.value = false
   await loadDirectGroupReclaimChildren()
 }
 
@@ -2160,38 +2179,50 @@ async function loadDirectGroupReclaimChildren() {
   }
 }
 
-function setDirectGroupUpdateAll(all: boolean) {
-  directGroupUpdateAll.value = all
-  if (all) {
-    selectedDirectGroupUpdateChildIDs.value = []
+function loadDirectGroupUpdateSelectionPage(page: number, pageSize: number): Promise<AgentDirectChildrenResponse> {
+  if (directGroupUpdateDialog.selectedGroupId <= 0) {
+    return Promise.resolve({
+      items: [],
+      pagination: { total: 0, page, page_size: pageSize, pages: 0 },
+    })
   }
+  return agentManagementAPI.listDirectChildrenWithGroupDelegation(directChildKind.value, {
+    group_id: directGroupUpdateDialog.selectedGroupId,
+    ...(directGroupUpdateDialog.search ? { search: directGroupUpdateDialog.search } : {}),
+    page,
+    page_size: pageSize,
+  })
 }
 
-function setDirectGroupReclaimAll(all: boolean) {
-  directGroupReclaimAll.value = all
-  if (all) {
-    selectedDirectGroupReclaimChildIDs.value = []
+function loadDirectGroupReclaimSelectionPage(page: number, pageSize: number): Promise<AgentDirectChildrenResponse> {
+  if (directGroupReclaimDialog.selectedGroupId <= 0) {
+    return Promise.resolve({
+      items: [],
+      pagination: { total: 0, page, page_size: pageSize, pages: 0 },
+    })
   }
+  return agentManagementAPI.listDirectChildrenWithGroupDelegation(directChildKind.value, {
+    group_id: directGroupReclaimDialog.selectedGroupId,
+    ...(directGroupReclaimDialog.search ? { search: directGroupReclaimDialog.search } : {}),
+    page,
+    page_size: pageSize,
+  })
+}
+
+async function setDirectGroupUpdateAll(all: boolean) {
+  await setExplicitFullSelection(selectedDirectGroupUpdateChildIDs, all, loadDirectGroupUpdateSelectionPage)
+}
+
+async function setDirectGroupReclaimAll(all: boolean) {
+  await setExplicitFullSelection(selectedDirectGroupReclaimChildIDs, all, loadDirectGroupReclaimSelectionPage)
 }
 
 function updateDirectGroupUpdateChildSelection(childID: number, selected: boolean) {
-  const next = new Set(selectedDirectGroupUpdateChildIDs.value)
-  if (selected) {
-    next.add(childID)
-  } else {
-    next.delete(childID)
-  }
-  selectedDirectGroupUpdateChildIDs.value = Array.from(next)
+  updateExplicitIDSelection(selectedDirectGroupUpdateChildIDs, childID, selected)
 }
 
 function updateDirectGroupReclaimChildSelection(childID: number, selected: boolean) {
-  const next = new Set(selectedDirectGroupReclaimChildIDs.value)
-  if (selected) {
-    next.add(childID)
-  } else {
-    next.delete(childID)
-  }
-  selectedDirectGroupReclaimChildIDs.value = Array.from(next)
+  updateExplicitIDSelection(selectedDirectGroupReclaimChildIDs, childID, selected)
 }
 
 function currentDirectGroupUpdateChildRate(child: AgentManagedUser): string {
@@ -2243,8 +2274,8 @@ async function saveGroupDelegation(groupRate: AgentChildGroupDelegationOption) {
     await removeGroupDelegation(groupRate)
     return
   }
-  const rateMultiplier = normalizedPositiveFloat(draft.rate_multiplier)
-  if (rateMultiplier <= 0) {
+  const rateMultiplier = normalizedNonNegativeFloat(draft.rate_multiplier)
+  if (!Number.isFinite(rateMultiplier)) {
     appStore.showError(t('agentManagement.groups.invalidRate'))
     return
   }
@@ -2277,8 +2308,8 @@ async function removeGroupDelegation(groupRate: AgentChildGroupDelegationOption)
 
 async function applyGroupDelegationBatch() {
   if (!groupDialog.child) return
-  const rateMultiplier = normalizedPositiveFloat(groupBatchRate.value)
-  if (rateMultiplier <= 0) {
+  const rateMultiplier = normalizedNonNegativeFloat(groupBatchRate.value)
+  if (!Number.isFinite(rateMultiplier)) {
     appStore.showError(t('agentManagement.groups.invalidRate'))
     return
   }
@@ -2311,7 +2342,7 @@ async function applyDirectGroupBatch() {
     appStore.showError(t('agentManagement.groups.batchSelectionRequired'))
     return
   }
-  if (!directGroupBatchAllChildren.value && selectedDirectGroupBatchChildIDs.value.length === 0) {
+  if (selectedDirectGroupBatchChildIDs.value.length === 0) {
     appStore.showError(t('agentManagement.groups.childSelectionRequired'))
     return
   }
@@ -2321,8 +2352,8 @@ async function applyDirectGroupBatch() {
     await agentManagementAPI.setDirectChildrenGroupDelegationsBatch(directChildKind.value, {
       group_ids: directGroupBatchAll.value ? [] : selectedDirectGroupBatchIDs.value,
       all: directGroupBatchAll.value,
-      child_ids: directGroupBatchAllChildren.value ? [] : selectedDirectGroupBatchChildIDs.value,
-      all_children: directGroupBatchAllChildren.value,
+      child_ids: selectedDirectGroupBatchChildIDs.value,
+      all_children: false,
       can_delegate: directGroupBatchCanDelegate.value,
     })
     appStore.showSuccess(t('agentManagement.groups.directBatchSaved'))
@@ -2340,7 +2371,7 @@ async function applyDirectGroupUpdate() {
     appStore.showError(t('agentManagement.groups.updateGroupRequired'))
     return
   }
-  if (!directGroupUpdateAll.value && selectedDirectGroupUpdateChildIDs.value.length === 0) {
+  if (selectedDirectGroupUpdateChildIDs.value.length === 0) {
     appStore.showError(t('agentManagement.groups.childSelectionRequired'))
     return
   }
@@ -2357,13 +2388,13 @@ async function applyDirectGroupUpdate() {
     can_delegate?: boolean
   } = {
     group_id: directGroupUpdateDialog.selectedGroupId,
-    child_ids: directGroupUpdateAll.value ? [] : selectedDirectGroupUpdateChildIDs.value,
-    all: directGroupUpdateAll.value,
+    child_ids: selectedDirectGroupUpdateChildIDs.value,
+    all: false,
   }
 
   if (directGroupUpdateRateEnabled.value) {
-    const rateMultiplier = normalizedPositiveFloat(directGroupUpdateRate.value)
-    if (rateMultiplier <= 0) {
+    const rateMultiplier = normalizedNonNegativeFloat(directGroupUpdateRate.value)
+    if (!Number.isFinite(rateMultiplier)) {
       appStore.showError(t('agentManagement.groups.invalidRate'))
       return
     }
@@ -2394,7 +2425,7 @@ async function applyDirectGroupReclaim() {
     appStore.showError(t('agentManagement.groups.reclaimGroupRequired'))
     return
   }
-  if (!directGroupReclaimAll.value && selectedDirectGroupReclaimChildIDs.value.length === 0) {
+  if (selectedDirectGroupReclaimChildIDs.value.length === 0) {
     appStore.showError(t('agentManagement.groups.childSelectionRequired'))
     return
   }
@@ -2403,15 +2434,14 @@ async function applyDirectGroupReclaim() {
   try {
     const result = await agentManagementAPI.reclaimDirectChildrenGroupDelegations(directChildKind.value, {
       group_id: directGroupReclaimDialog.selectedGroupId,
-      child_ids: directGroupReclaimAll.value ? [] : selectedDirectGroupReclaimChildIDs.value,
-      all: directGroupReclaimAll.value,
+      child_ids: selectedDirectGroupReclaimChildIDs.value,
+      all: false,
     })
     appStore.showSuccess(t('agentManagement.groups.directReclaimSaved', {
       removed: result.removed_children,
       skipped: result.skipped_children,
     }))
     selectedDirectGroupReclaimChildIDs.value = []
-    directGroupReclaimAll.value = false
     await loadDirectGroupReclaimChildren()
     await loadData()
   } catch (error) {

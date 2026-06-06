@@ -34,6 +34,9 @@ type agentManagementService interface {
 	ListAgentUsage(ctx context.Context, actorID int64, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error)
 	GetAgentUsageStats(ctx context.Context, actorID int64, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error)
 	ListAgentUsageUsers(ctx context.Context, actorID int64) ([]service.User, error)
+	SearchAgentUsageUsers(ctx context.Context, actorID int64, keyword string, limit int) ([]service.User, error)
+	SearchAgentUsageAPIKeys(ctx context.Context, actorID int64, userID int64, keyword string, limit int) ([]service.AgentUsageAPIKeySummary, error)
+	SearchAgentUsageAccounts(ctx context.Context, actorID int64, keyword string, limit int) ([]service.AgentUsageAccountSummary, error)
 	GetSummary(ctx context.Context, actorID int64) (*service.AgentManagementSummary, error)
 	CreateDirectUser(ctx context.Context, actorID int64, input service.CreateDirectUserInput) (*service.User, error)
 	UpdateAllocation(ctx context.Context, actorID int64, childID int64, req service.AllocationUpdate) (*service.AllocationSummary, error)
@@ -242,16 +245,22 @@ func (h *AgentManagementHandler) ListUsage(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	out := make([]dto.UsageLog, 0, len(records))
+	type agentUsageLogResponse struct {
+		dto.UsageLog
+		Account *dto.AccountSummary `json:"account,omitempty"`
+	}
+	out := make([]agentUsageLogResponse, 0, len(records))
 	for i := range records {
 		item := dto.UsageLogFromService(&records[i])
 		if item == nil {
 			continue
 		}
-		item.AccountID = 0
 		item.UpstreamEndpoint = nil
 		item.APIKey = nil
-		out = append(out, *item)
+		out = append(out, agentUsageLogResponse{
+			UsageLog: *item,
+			Account:  dto.AccountSummaryFromService(records[i].Account),
+		})
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -288,6 +297,67 @@ func (h *AgentManagementHandler) ListUsageUsers(c *gin.Context) {
 		out = append(out, agentManagedUserFromService(&users[i]))
 	}
 	response.Success(c, out)
+}
+
+func (h *AgentManagementHandler) SearchUsageUsers(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	users, err := h.service.SearchAgentUsageUsers(c.Request.Context(), actorID, c.Query("q"), 30)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	type simpleUser struct {
+		ID      int64  `json:"id"`
+		Email   string `json:"email"`
+		Deleted bool   `json:"deleted"`
+	}
+	out := make([]simpleUser, 0, len(users))
+	for i := range users {
+		out = append(out, simpleUser{
+			ID:      users[i].ID,
+			Email:   users[i].Email,
+			Deleted: users[i].DeletedAt != nil,
+		})
+	}
+	response.Success(c, out)
+}
+
+func (h *AgentManagementHandler) SearchUsageAPIKeys(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	var userID int64
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		userID = id
+	}
+	keys, err := h.service.SearchAgentUsageAPIKeys(c.Request.Context(), actorID, userID, c.Query("q"), 30)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, keys)
+}
+
+func (h *AgentManagementHandler) SearchUsageAccounts(c *gin.Context) {
+	actorID, ok := currentActorID(c)
+	if !ok {
+		return
+	}
+	accounts, err := h.service.SearchAgentUsageAccounts(c.Request.Context(), actorID, c.Query("q"), 30)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, accounts)
 }
 
 func (h *AgentManagementHandler) CreateDirectUser(c *gin.Context) {
@@ -850,7 +920,7 @@ func bindCreateDirectUser(c *gin.Context) (service.CreateDirectUserInput, bool) 
 }
 
 func parseAgentUsageFilters(c *gin.Context, withDefaultPeriod bool) (usagestats.UsageLogFilters, bool) {
-	var userID, apiKeyID, groupID int64
+	var userID, apiKeyID, accountID, groupID int64
 	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || id <= 0 {
@@ -866,6 +936,14 @@ func parseAgentUsageFilters(c *gin.Context, withDefaultPeriod bool) (usagestats.
 			return usagestats.UsageLogFilters{}, false
 		}
 		apiKeyID = id
+	}
+	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid account_id")
+			return usagestats.UsageLogFilters{}, false
+		}
+		accountID = id
 	}
 	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)
@@ -914,6 +992,7 @@ func parseAgentUsageFilters(c *gin.Context, withDefaultPeriod bool) (usagestats.
 	return usagestats.UsageLogFilters{
 		UserID:      userID,
 		APIKeyID:    apiKeyID,
+		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       c.Query("model"),
 		RequestType: requestType,

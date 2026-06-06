@@ -105,6 +105,19 @@ func TestEffectiveGroupRatePrefersUserRateOverDirectDelegation(t *testing.T) {
 	require.Equal(t, 0, repo.delegatedCalls)
 }
 
+func TestEffectiveGroupRateUsesExplicitZeroUserRate(t *testing.T) {
+	zeroRate := 0.0
+	delegatedRate := 2.2
+	repo := &userGroupRateResolverRepoStub{rate: &zeroRate, delegationRate: &delegatedRate}
+	resolver := newUserGroupRateResolver(repo, nil, time.Minute, nil, "service.test")
+
+	got := resolver.Resolve(context.Background(), 101, 202, 1.0)
+
+	require.Equal(t, 0.0, got)
+	require.Equal(t, 1, repo.calls)
+	require.Equal(t, 0, repo.delegatedCalls)
+}
+
 func TestEffectiveGroupRateFallsBackToDirectDelegation(t *testing.T) {
 	delegatedRate := 2.2
 	repo := &userGroupRateResolverRepoStub{delegationRate: &delegatedRate}

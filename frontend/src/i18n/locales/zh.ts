@@ -781,7 +781,7 @@ export default {
       inviteDefaultGroupRemoved: '默认传播分组已移除',
       inviteDefaultGroupFailed: '保存默认传播分组失败',
       inviteDefaultGroupRemoveFailed: '移除默认传播分组失败',
-      invalidRate: '倍率必须大于 0',
+      invalidRate: '倍率必须大于等于 0',
       batchSelectionRequired: '请选择至少一个分组，或勾选全部分组',
       childSelectionRequired: '请选择至少一个直属下级，或勾选全部直属下级',
       updateGroupRequired: '请选择要修改的分组',

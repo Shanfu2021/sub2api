@@ -162,6 +162,17 @@ const DataTableStub = {
     </div>
   `,
 }
+const PaginationStub = {
+  name: 'Pagination',
+  props: ['page', 'total', 'pageSize'],
+  emits: ['update:page', 'update:page-size'],
+  template: `
+    <div data-test="pagination-stub">
+      <button data-test="pagination-next" @click="$emit('update:page', page + 1)">next</button>
+      <button data-test="pagination-prev" @click="$emit('update:page', page - 1)">prev</button>
+    </div>
+  `,
+}
 const ConfirmDialogStub = {
   props: ['show', 'title', 'message', 'confirmText', 'danger'],
   emits: ['confirm', 'cancel'],
@@ -273,6 +284,13 @@ function makeChildrenResponse(items: AgentManagedUser[]): AgentDirectChildrenRes
     items,
     pagination: { total: items.length, page: 1, page_size: 20, pages: 1 },
   }
+}
+
+function makePagedChildrenResponse(
+  items: AgentManagedUser[],
+  pagination: { total: number; page: number; page_size: number; pages: number }
+): AgentDirectChildrenResponse {
+  return { items, pagination }
 }
 
 function makeAdminTreeResponse(): AgentAdminTreeResponse {
@@ -469,7 +487,7 @@ function mountAgentView(component: unknown, role: UserRole = 'admin') {
         DataTable: DataTableStub,
         UsageStatsCards: true,
         UsageTable: DataTableStub,
-        Pagination: true,
+        Pagination: PaginationStub,
         ConfirmDialog: ConfirmDialogStub,
         BaseDialog: { template: '<div v-if="show"><slot /><slot name="footer" /></div>', props: ['show'] },
         Select: true,
@@ -651,13 +669,10 @@ describe('agent management pages', () => {
     const wrapper = mountAgentView(AgentUsageView, 'agent_level1')
     await flushPromises()
 
-    expect(listUsageUsers).toHaveBeenCalled()
     expect(listUsage).toHaveBeenCalled()
     expect(getUsageStats).toHaveBeenCalled()
     expect(wrapper.text()).toContain('agentManagement.usage.title')
-    expect(wrapper.text()).toContain('agent-user@example.com')
     expect(wrapper.text()).not.toContain('admin.usage.cleanup.button')
-    expect(wrapper.text()).not.toContain('usage.exportExcel')
   })
 
   it('renders direct child balance as read-only context', async () => {
@@ -1059,6 +1074,24 @@ describe('agent management pages', () => {
     })
   })
 
+  it('saves explicit zero child group rates', async () => {
+    const wrapper = mountAgentView(DirectUsersView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-groups-12"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="group-rate-7"]').setValue('0.0')
+    await wrapper.get('[data-test="save-group-7"]').trigger('click')
+    await flushPromises()
+
+    expect(setChildGroupDelegation).toHaveBeenCalledWith(12, 7, {
+      rate_multiplier: 0,
+      can_delegate: false,
+    })
+    expect(showError).not.toHaveBeenCalledWith('agentManagement.groups.invalidRate')
+  })
+
   it('reclaims a group when it is unchecked and saved', async () => {
     const wrapper = mountAgentView(DirectAgentsView, 'agent_level1')
     await flushPromises()
@@ -1128,7 +1161,7 @@ describe('agent management pages', () => {
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.batchDelegationSaved')
   })
 
-  it('batch deploys selected groups to all direct agents on the current management page', async () => {
+  it('batch deploys selected groups to explicitly selected direct agents', async () => {
     listGroups.mockResolvedValue([
       makeAgentGroupRate(),
       makeAgentGroupRate({
@@ -1137,6 +1170,10 @@ describe('agent management pages', () => {
         can_delegate: true,
       }),
     ])
+    listDirectChildrenWithoutGroupDelegation.mockResolvedValue(makeChildrenResponse([
+      makeChild({ id: 12, email: 'alpha@example.com', role: 'agent_level1' }),
+      makeChild({ id: 13, email: 'beta@example.com', role: 'agent_level1' }),
+    ]))
     const wrapper = mountAgentView(DirectAgentsView, 'admin')
     await flushPromises()
 
@@ -1146,20 +1183,22 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="direct-group-batch-select-8"]').setValue(true)
     expect(wrapper.find('[data-test="direct-group-batch-rate"]').exists()).toBe(false)
     await wrapper.get('[data-test="direct-group-batch-can-delegate"]').setValue(true)
+    await wrapper.get('[data-test="direct-group-batch-all-children"]').setValue(true)
+    await flushPromises()
     await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
     await flushPromises()
 
     expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('agents', {
       group_ids: [7, 8],
       all: false,
-      child_ids: [],
-      all_children: true,
+      child_ids: [12, 13],
+      all_children: false,
       can_delegate: true,
     })
     expect(showSuccess).toHaveBeenCalledWith('agentManagement.groups.directBatchSaved')
   })
 
-  it('batch deploys all groups to direct enterprises on the current management page', async () => {
+  it('batch deploys all groups to explicitly selected direct enterprises', async () => {
     const wrapper = mountAgentView(DirectEnterprisesView, 'agent_level1')
     await flushPromises()
 
@@ -1167,19 +1206,21 @@ describe('agent management pages', () => {
     await flushPromises()
     await wrapper.get('[data-test="direct-group-batch-all"]').setValue(true)
     expect(wrapper.find('[data-test="direct-group-batch-rate"]').exists()).toBe(false)
+    await wrapper.get('[data-test="direct-group-batch-all-children"]').setValue(true)
+    await flushPromises()
     await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
     await flushPromises()
 
     expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('enterprises', {
       group_ids: [],
       all: true,
-      child_ids: [],
-      all_children: true,
+      child_ids: [12],
+      all_children: false,
       can_delegate: false,
     })
   })
 
-  it('submits the same visible child selection after toggling all deployable children', async () => {
+  it('submits the selected child ids after toggling all deployable children', async () => {
     listGroups.mockResolvedValue([makeAgentGroupRate()])
     listDirectChildrenWithoutGroupDelegation.mockResolvedValue(makeChildrenResponse([
       makeChild({ id: 12, email: 'alpha@example.com' }),
@@ -1194,6 +1235,11 @@ describe('agent management pages', () => {
     await wrapper.get('[data-test="direct-group-batch-select-7"]').setValue(true)
     await flushPromises()
 
+    expect((wrapper.get('[data-test="direct-group-batch-all-children"]').element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.get('[data-test="direct-group-batch-child-count"]').attributes('data-count')).toBe('0')
+
+    await wrapper.get('[data-test="direct-group-batch-all-children"]').setValue(true)
+    await flushPromises()
     expect((wrapper.get('[data-test="direct-group-batch-all-children"]').element as HTMLInputElement).checked).toBe(true)
     expect((wrapper.get('[data-test="direct-group-batch-child-12"]').element as HTMLInputElement).checked).toBe(true)
     expect((wrapper.get('[data-test="direct-group-batch-child-13"]').element as HTMLInputElement).checked).toBe(true)
@@ -1217,6 +1263,106 @@ describe('agent management pages', () => {
       child_ids: [12, 14],
       all_children: false,
       can_delegate: false,
+    })
+  })
+
+  it('keeps all selected assigned children checked across pages and submits explicit ids for rate updates', async () => {
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listDirectChildrenWithGroupDelegation.mockImplementation((_kind, query) => {
+      if (query.page_size === 1000) {
+        return Promise.resolve(makePagedChildrenResponse([
+          makeChild({ id: 12, email: 'alpha@example.com', group_rates: { 7: 2.4 } }),
+          makeChild({ id: 13, email: 'beta@example.com', group_rates: { 7: 2.4 } }),
+          makeChild({ id: 14, email: 'gamma@example.com', group_rates: { 7: 2.4 } }),
+        ], { total: 3, page: 1, page_size: 1000, pages: 1 }))
+      }
+      if (query.page === 2) {
+        return Promise.resolve(makePagedChildrenResponse([
+          makeChild({ id: 14, email: 'gamma@example.com', group_rates: { 7: 2.4 } }),
+        ], { total: 3, page: 2, page_size: 2, pages: 2 }))
+      }
+      return Promise.resolve(makePagedChildrenResponse([
+        makeChild({ id: 12, email: 'alpha@example.com', group_rates: { 7: 2.4 } }),
+        makeChild({ id: 13, email: 'beta@example.com', group_rates: { 7: 2.4 } }),
+      ], { total: 3, page: 1, page_size: 2, pages: 2 }))
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-update"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-update-all"]').setValue(true)
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="direct-group-update-all"]').element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('[data-test="direct-group-update-child-count"]').attributes('data-count')).toBe('3')
+
+    await wrapper.get('[data-test="direct-group-update-modal"]').get('[data-test="pagination-next"]').trigger('click')
+    await flushPromises()
+    expect((wrapper.get('[data-test="direct-group-update-child-14"]').element as HTMLInputElement).checked).toBe(true)
+
+    await wrapper.get('[data-test="direct-group-update-child-14"]').setValue(false)
+    await flushPromises()
+    expect((wrapper.get('[data-test="direct-group-update-all"]').element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.get('[data-test="direct-group-update-child-count"]').attributes('data-count')).toBe('2')
+
+    await wrapper.get('[data-test="direct-group-update-rate"]').setValue('3.2')
+    await wrapper.get('[data-test="apply-direct-group-update"]').trigger('click')
+    await flushPromises()
+
+    expect(updateDirectChildrenExistingGroupDelegations).toHaveBeenCalledWith('users', {
+      group_id: 7,
+      child_ids: [12, 13],
+      all: false,
+      rate_multiplier: 3.2,
+    })
+  })
+
+  it('reselects all assigned children or clears them when toggling reclaim all', async () => {
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listDirectChildrenWithGroupDelegation.mockImplementation((_kind, query) => {
+      if (query.page_size === 1000) {
+        return Promise.resolve(makePagedChildrenResponse([
+          makeChild({ id: 12, email: 'alpha@example.com', group_rates: { 7: 2.4 } }),
+          makeChild({ id: 13, email: 'beta@example.com', group_rates: { 7: 2.4 } }),
+          makeChild({ id: 14, email: 'gamma@example.com', group_rates: { 7: 2.4 } }),
+        ], { total: 3, page: 1, page_size: 1000, pages: 1 }))
+      }
+      return Promise.resolve(makePagedChildrenResponse([
+        makeChild({ id: 12, email: 'alpha@example.com', group_rates: { 7: 2.4 } }),
+        makeChild({ id: 13, email: 'beta@example.com', group_rates: { 7: 2.4 } }),
+      ], { total: 3, page: 1, page_size: 2, pages: 2 }))
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-reclaim"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="direct-group-reclaim-child-12"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-reclaim-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-reclaim-all"]').setValue(true)
+    await flushPromises()
+    expect((wrapper.get('[data-test="direct-group-reclaim-all"]').element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.get('[data-test="direct-group-reclaim-child-count"]').attributes('data-count')).toBe('3')
+
+    await wrapper.get('[data-test="direct-group-reclaim-all"]').setValue(false)
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-reclaim-child-count"]').attributes('data-count')).toBe('0')
+
+    await wrapper.get('[data-test="direct-group-reclaim-all"]').setValue(true)
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-reclaim-child-13"]').setValue(false)
+    await flushPromises()
+    await wrapper.get('[data-test="apply-direct-group-reclaim"]').trigger('click')
+    await flushPromises()
+
+    expect(reclaimDirectChildrenGroupDelegations).toHaveBeenCalledWith('users', {
+      group_id: 7,
+      child_ids: [12, 14],
+      all: false,
     })
   })
 
@@ -1315,6 +1461,20 @@ describe('agent management pages', () => {
     expect(setInviteGroupDefault).toHaveBeenCalledWith(7, {
       rate_multiplier: 0.05,
     })
+  })
+
+  it('saves explicit zero invite default group rates', async () => {
+    const wrapper = mountAgentView(MyGroupsView, 'agent_level1')
+    await flushPromises()
+
+    await wrapper.get('[data-test="invite-default-rate-7"]').setValue('0.0')
+    await wrapper.get('[data-test="save-invite-default-7"]').trigger('click')
+    await flushPromises()
+
+    expect(setInviteGroupDefault).toHaveBeenCalledWith(7, {
+      rate_multiplier: 0,
+    })
+    expect(showError).not.toHaveBeenCalledWith('agentManagement.groups.invalidRate')
   })
 
   it('shows invite default group propagation config for admins', async () => {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -22,6 +23,25 @@ type agentManagementRepository struct {
 
 func NewAgentManagementRepository(client *dbent.Client, sqlDB *sql.DB) service.AgentManagementRepository {
 	return &agentManagementRepository{client: client, sql: sqlDB}
+}
+
+func normalizePositiveIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func (r *agentManagementRepository) GetRootAdmin(ctx context.Context) (*service.User, error) {
@@ -80,6 +100,103 @@ func (r *agentManagementRepository) ListDirectChildrenWithSearch(ctx context.Con
 		out = append(out, *userEntityToService(children[i]))
 	}
 	return out, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *agentManagementRepository) SearchUsageAPIKeys(ctx context.Context, userIDs []int64, userID int64, keyword string, limit int) ([]service.AgentUsageAPIKeySummary, error) {
+	userIDs = normalizePositiveIDs(userIDs)
+	if len(userIDs) == 0 {
+		return []service.AgentUsageAPIKeySummary{}, nil
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+
+	usageConditions := []string{"ul.user_id = ANY($1)", "ul.api_key_id > 0"}
+	args := []any{pq.Array(userIDs)}
+	if userID > 0 {
+		args = append(args, userID)
+		usageConditions = append(usageConditions, "ul.user_id = $"+strconv.Itoa(len(args)))
+	}
+	keyConditions := []string{"ak.deleted_at IS NULL"}
+	if keyword = strings.TrimSpace(keyword); keyword != "" {
+		args = append(args, "%"+strings.ToLower(keyword)+"%")
+		keyConditions = append(keyConditions, "LOWER(ak.name) LIKE $"+strconv.Itoa(len(args)))
+	}
+	args = append(args, limit)
+
+	rows, err := exec.QueryContext(ctx, `
+SELECT ak.id, ak.name, ak.user_id
+FROM api_keys ak
+JOIN (
+  SELECT DISTINCT api_key_id, user_id
+  FROM usage_logs ul
+  WHERE `+strings.Join(usageConditions, " AND ")+`
+) scoped ON scoped.api_key_id = ak.id AND scoped.user_id = ak.user_id
+WHERE `+strings.Join(keyConditions, " AND ")+`
+ORDER BY ak.id DESC
+LIMIT $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.AgentUsageAPIKeySummary, 0, limit)
+	for rows.Next() {
+		var item service.AgentUsageAPIKeySummary
+		if err := rows.Scan(&item.ID, &item.Name, &item.UserID); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *agentManagementRepository) SearchUsageAccounts(ctx context.Context, userIDs []int64, keyword string, limit int) ([]service.AgentUsageAccountSummary, error) {
+	userIDs = normalizePositiveIDs(userIDs)
+	if len(userIDs) == 0 {
+		return []service.AgentUsageAccountSummary{}, nil
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, errors.New("sql executor is not configured")
+	}
+
+	conditions := []string{"ul.user_id = ANY($1)", "ul.account_id > 0", "a.deleted_at IS NULL"}
+	args := []any{pq.Array(userIDs)}
+	if keyword = strings.TrimSpace(keyword); keyword != "" {
+		args = append(args, "%"+strings.ToLower(keyword)+"%")
+		conditions = append(conditions, "LOWER(a.name) LIKE $"+strconv.Itoa(len(args)))
+	}
+	args = append(args, limit)
+
+	rows, err := exec.QueryContext(ctx, `
+SELECT DISTINCT a.id, a.name
+FROM usage_logs ul
+JOIN accounts a ON a.id = ul.account_id
+WHERE `+strings.Join(conditions, " AND ")+`
+ORDER BY a.id DESC
+LIMIT $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.AgentUsageAccountSummary, 0, limit)
+	for rows.Next() {
+		var item service.AgentUsageAccountSummary
+		if err := rows.Scan(&item.ID, &item.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (r *agentManagementRepository) SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error) {
@@ -605,30 +722,12 @@ deleted_defaults AS (
     AND d.deleted_at IS NULL
   RETURNING d.agent_user_id
 ),
-deleted_employee_defaults AS (
-  UPDATE enterprise_employee_group_defaults d
-  SET deleted_at = CURRENT_TIMESTAMP,
-      updated_at = CURRENT_TIMESTAMP
-  FROM subtree s, selected_groups g
-  WHERE d.enterprise_user_id = s.id
-    AND d.group_id = g.group_id
-    AND d.deleted_at IS NULL
-  RETURNING d.enterprise_user_id
-),
 deleted_allowed AS (
   DELETE FROM user_allowed_groups uag
   USING subtree s, selected_groups g
   WHERE uag.user_id = s.id
     AND uag.group_id = g.group_id
   RETURNING uag.user_id
-),
-deleted_rate_rows AS (
-  DELETE FROM user_group_rate_multipliers ugr
-  USING subtree s, selected_groups g
-  WHERE ugr.user_id = s.id
-    AND ugr.group_id = g.group_id
-    AND ugr.rpm_override IS NULL
-  RETURNING ugr.user_id
 ),
 updated_rates AS (
   UPDATE user_group_rate_multipliers ugr
@@ -637,8 +736,16 @@ updated_rates AS (
   FROM subtree s, selected_groups g
   WHERE ugr.user_id = s.id
     AND ugr.group_id = g.group_id
-    AND ugr.rpm_override IS NOT NULL
     AND ugr.rate_multiplier IS NOT NULL
+  RETURNING ugr.user_id
+),
+deleted_empty_rates AS (
+  DELETE FROM user_group_rate_multipliers ugr
+  USING subtree s, selected_groups g
+  WHERE ugr.user_id = s.id
+    AND ugr.group_id = g.group_id
+    AND ugr.rate_multiplier IS NULL
+    AND ugr.rpm_override IS NULL
   RETURNING ugr.user_id
 ),
 affected AS (
@@ -648,10 +755,9 @@ affected AS (
   UNION SELECT manager_user_id FROM deleted_descendant_delegations
   UNION SELECT child_user_id FROM deleted_descendant_delegations
   UNION SELECT agent_user_id FROM deleted_defaults
-  UNION SELECT enterprise_user_id FROM deleted_employee_defaults
   UNION SELECT user_id FROM deleted_allowed
-  UNION SELECT user_id FROM deleted_rate_rows
   UNION SELECT user_id FROM updated_rates
+  UNION SELECT user_id FROM deleted_empty_rates
 )
 SELECT DISTINCT id
 FROM affected

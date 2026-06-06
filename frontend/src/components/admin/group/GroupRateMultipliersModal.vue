@@ -63,7 +63,7 @@
           <button
             type="button"
             class="btn btn-primary shrink-0"
-            :disabled="!selectedUser || !newRate"
+            :disabled="!selectedUser || newRate == null || !Number.isFinite(newRate) || newRate < 0"
             @click="handleAddLocal"
           >
             {{ t('common.add') }}
@@ -166,7 +166,7 @@
                       <input
                         type="number"
                         step="0.001"
-                        min="0.001"
+                        min="0"
                         autocomplete="off"
                         :value="entry.rate_multiplier ?? ''"
                         :placeholder="String(props.group?.rate_multiplier ?? 1)"
@@ -297,7 +297,7 @@ const showFinalRate = computed(() => {
 // 计算最终倍率预览
 const computeFinalRate = (rate: number | null | undefined) => {
   const base = rate ?? props.group?.rate_multiplier ?? 1
-  if (!batchFactor.value) return base
+  if (batchFactor.value == null || batchFactor.value <= 0) return base
   return parseFloat((base * batchFactor.value).toFixed(6))
 }
 
@@ -386,7 +386,7 @@ const selectUser = (user: AdminUser) => {
 
 // 本地添加（或覆盖已有用户）
 const handleAddLocal = () => {
-  if (!selectedUser.value || !newRate.value) return
+  if (!selectedUser.value || newRate.value == null || !Number.isFinite(newRate.value) || newRate.value < 0) return
   const user = selectedUser.value
   const idx = localEntries.value.findIndex(e => e.user_id === user.id)
   const entry: LocalEntry = {
@@ -418,7 +418,7 @@ const updateLocalRate = (userId: number, value: string) => {
     return
   }
   const num = parseFloat(value)
-  if (isNaN(num)) return
+  if (!Number.isFinite(num) || num < 0) return
   entry.rate_multiplier = num
 }
 

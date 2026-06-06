@@ -782,7 +782,7 @@ export default {
       inviteDefaultGroupRemoved: 'Default propagated group removed',
       inviteDefaultGroupFailed: 'Failed to save default propagated group',
       inviteDefaultGroupRemoveFailed: 'Failed to remove default propagated group',
-      invalidRate: 'Rate must be greater than 0',
+      invalidRate: 'Rate must be greater than or equal to 0',
       batchSelectionRequired: 'Select at least one group, or choose all groups',
       childSelectionRequired: 'Select at least one direct child, or choose all direct children',
       updateGroupRequired: 'Select a group to edit',

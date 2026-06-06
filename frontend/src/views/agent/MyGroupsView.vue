@@ -72,7 +72,7 @@
                         data-test="invite-default-batch-rate"
                         class="input h-9 w-28"
                         type="number"
-                        min="0.001"
+                        min="0"
                         step="0.001"
                       />
                     </label>
@@ -165,7 +165,7 @@
                         :data-test="`invite-default-rate-${groupRate.group.id}`"
                         class="hide-spinner w-24 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
                         type="number"
-                        min="0.001"
+                        min="0"
                         step="0.001"
                         :disabled="!inviteDefaultDraftFor(groupRate).assigned"
                         :placeholder="String(groupRate.effective_rate)"
@@ -260,10 +260,10 @@ const inviteDefaultAssignedCount = computed(() => (
   }).length
 ))
 
-function normalizedPositiveFloat(value: unknown): number {
+function normalizedNonNegativeFloat(value: unknown): number {
   const parsed = Number.parseFloat(String(value ?? '0'))
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return Number.NaN
   }
   return parsed
 }
@@ -376,8 +376,8 @@ async function saveInviteDefaultGroup(groupRate: AgentChildGroupDelegationOption
     return
   }
 
-  const rateMultiplier = normalizedPositiveFloat(draft.rate_multiplier)
-  if (rateMultiplier <= 0) {
+  const rateMultiplier = normalizedNonNegativeFloat(draft.rate_multiplier)
+  if (!Number.isFinite(rateMultiplier)) {
     appStore.showError(t('agentManagement.groups.invalidRate'))
     return
   }
@@ -410,8 +410,8 @@ async function removeInviteDefaultGroup(groupRate: AgentChildGroupDelegationOpti
 }
 
 async function applyInviteDefaultBatch() {
-  const rateMultiplier = normalizedPositiveFloat(inviteDefaultBatchRate.value)
-  if (rateMultiplier <= 0) {
+  const rateMultiplier = normalizedNonNegativeFloat(inviteDefaultBatchRate.value)
+  if (!Number.isFinite(rateMultiplier)) {
     appStore.showError(t('agentManagement.groups.invalidRate'))
     return
   }

@@ -35,8 +35,14 @@ import type {
   PaginatedResponse
 } from '@/types'
 import type { AdminUsageQueryParams, AdminUsageStatsResponse } from '@/api/admin/usage'
+import type { SimpleApiKey, SimpleUser } from '@/api/admin/usage'
 
 const BASE_PATH = '/agent-management'
+
+export interface AgentUsageAccountSummary {
+  id: number
+  name: string
+}
 
 export interface AgentDirectChildrenQuery {
   search?: string
@@ -121,6 +127,32 @@ export async function getUsageStats(params: AdminUsageQueryParams): Promise<Admi
 
 export async function listUsageUsers(): Promise<AgentManagedUser[]> {
   const { data } = await apiClient.get<AgentManagedUser[]>(`${BASE_PATH}/usage/users`)
+  return data
+}
+
+export async function searchUsageUsers(keyword: string): Promise<SimpleUser[]> {
+  const { data } = await apiClient.get<SimpleUser[]>(`${BASE_PATH}/usage/search-users`, {
+    params: { q: keyword }
+  })
+  return data
+}
+
+export async function searchUsageApiKeys(userId?: number, keyword?: string): Promise<SimpleApiKey[]> {
+  const params: Record<string, unknown> = {}
+  if (userId !== undefined && userId !== null) {
+    params.user_id = userId
+  }
+  if (keyword) {
+    params.q = keyword
+  }
+  const { data } = await apiClient.get<SimpleApiKey[]>(`${BASE_PATH}/usage/search-api-keys`, { params })
+  return data
+}
+
+export async function searchUsageAccounts(keyword: string): Promise<AgentUsageAccountSummary[]> {
+  const { data } = await apiClient.get<AgentUsageAccountSummary[]>(`${BASE_PATH}/usage/search-accounts`, {
+    params: { q: keyword }
+  })
   return data
 }
 
@@ -277,6 +309,9 @@ export const agentManagementAPI = {
   listUsage,
   getUsageStats,
   listUsageUsers,
+  searchUsageUsers,
+  searchUsageApiKeys,
+  searchUsageAccounts,
   createDirectUser,
   updateAllocation,
   updateChildNotes,

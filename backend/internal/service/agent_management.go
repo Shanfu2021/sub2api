@@ -21,7 +21,7 @@ var (
 	ErrAgentManagementUnsupportedRole       = infraerrors.BadRequest("AGENT_MANAGEMENT_UNSUPPORTED_ROLE", "unsupported agent management role")
 	ErrAgentManagementInvalidTarget         = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_TARGET", "invalid target user")
 	ErrAgentManagementInvalidAllocation     = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_ALLOCATION", "concurrency must be positive and RPM must be non-negative")
-	ErrAgentManagementInvalidGroupRate      = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_RATE", "group delegation rate multiplier must be positive")
+	ErrAgentManagementInvalidGroupRate      = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP_RATE", "group delegation rate multiplier must be non-negative")
 	ErrAgentManagementInvalidIncome         = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_INCOME", "agent income must be a valid number")
 	ErrAgentManagementGroupRateBelowCost    = infraerrors.BadRequest("AGENT_MANAGEMENT_GROUP_RATE_BELOW_COST", "group delegation rate multiplier cannot be lower than manager cost rate")
 	ErrAgentManagementInvalidGroup          = infraerrors.BadRequest("AGENT_MANAGEMENT_INVALID_GROUP", "only active exclusive groups can be delegated")
@@ -35,6 +35,10 @@ const (
 	DefaultAgentInviteConcurrency = 1
 	DefaultAgentInviteRPM         = 1
 )
+
+func validNonNegativeRateMultiplier(rate float64) bool {
+	return !math.IsNaN(rate) && !math.IsInf(rate, 0) && rate >= 0
+}
 
 type AgentPoolReclaimExceededError struct {
 	AllocatedConcurrency int
@@ -92,6 +96,17 @@ type AgentIncomeSetInput struct {
 
 type AgentChildNotesUpdate struct {
 	Notes string `json:"notes"`
+}
+
+type AgentUsageAPIKeySummary struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	UserID int64  `json:"user_id"`
+}
+
+type AgentUsageAccountSummary struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 type AllocationSummary struct {
@@ -267,6 +282,8 @@ type AgentManagementRepository interface {
 	CreateUser(ctx context.Context, user *User) error
 	ListDirectChildren(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
 	ListDirectChildrenWithSearch(ctx context.Context, parentID int64, roles []string, params pagination.PaginationParams, search string) ([]User, *pagination.PaginationResult, error)
+	SearchUsageAPIKeys(ctx context.Context, userIDs []int64, userID int64, keyword string, limit int) ([]AgentUsageAPIKeySummary, error)
+	SearchUsageAccounts(ctx context.Context, userIDs []int64, keyword string, limit int) ([]AgentUsageAccountSummary, error)
 	SumDirectChildAllocations(ctx context.Context, parentID int64, excludeChildID *int64) (concurrency int, rpm int, err error)
 	GetAgentProfile(ctx context.Context, userID int64) (*AgentProfile, error)
 	UpsertAgentProfile(ctx context.Context, userID int64, poolConcurrency int, poolRPM int) error
@@ -566,6 +583,67 @@ func (s *AgentManagementService) ListAgentUsageUsers(ctx context.Context, actorI
 		return nil, err
 	}
 	return users, nil
+}
+
+func (s *AgentManagementService) SearchAgentUsageUsers(ctx context.Context, actorID int64, keyword string, limit int) ([]User, error) {
+	users, err := s.listCurrentUsageVisibleUsers(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	capacity := len(users)
+	if capacity > limit {
+		capacity = limit
+	}
+	out := make([]User, 0, capacity)
+	for i := range users {
+		if keyword != "" &&
+			!strings.Contains(strings.ToLower(users[i].Email), keyword) &&
+			!strings.Contains(strings.ToLower(users[i].Username), keyword) {
+			continue
+		}
+		out = append(out, users[i])
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (s *AgentManagementService) SearchAgentUsageAPIKeys(ctx context.Context, actorID int64, userID int64, keyword string, limit int) ([]AgentUsageAPIKeySummary, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	visibleIDs, visibleSet, err := s.currentUsageVisibleUserScope(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if len(visibleIDs) == 0 {
+		return []AgentUsageAPIKeySummary{}, nil
+	}
+	if userID > 0 {
+		if _, ok := visibleSet[userID]; !ok {
+			return nil, ErrAgentManagementForbidden
+		}
+	}
+	return s.repo.SearchUsageAPIKeys(ctx, visibleIDs, userID, keyword, limit)
+}
+
+func (s *AgentManagementService) SearchAgentUsageAccounts(ctx context.Context, actorID int64, keyword string, limit int) ([]AgentUsageAccountSummary, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	visibleIDs, _, err := s.currentUsageVisibleUserScope(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if len(visibleIDs) == 0 {
+		return []AgentUsageAccountSummary{}, nil
+	}
+	return s.repo.SearchUsageAccounts(ctx, visibleIDs, keyword, limit)
 }
 
 func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID int64, input CreateDirectUserInput) (*User, error) {
@@ -1115,7 +1193,7 @@ func (s *AgentManagementService) ListChildGroupDelegationOptions(ctx context.Con
 }
 
 func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, actorID int64, childID int64, groupID int64, input ChildGroupDelegationInput) error {
-	if input.RateMultiplier <= 0 {
+	if !validNonNegativeRateMultiplier(input.RateMultiplier) {
 		return ErrAgentManagementInvalidGroupRate
 	}
 	actor, err := s.requireManager(ctx, actorID)
@@ -1174,7 +1252,7 @@ func (s *AgentManagementService) SetChildGroupDelegation(ctx context.Context, ac
 }
 
 func (s *AgentManagementService) SetChildGroupDelegationsBatch(ctx context.Context, actorID int64, childID int64, input ChildGroupDelegationBatchInput) error {
-	if input.RateMultiplier <= 0 {
+	if !validNonNegativeRateMultiplier(input.RateMultiplier) {
 		return ErrAgentManagementInvalidGroupRate
 	}
 	actor, err := s.requireManager(ctx, actorID)
@@ -1259,7 +1337,7 @@ func (s *AgentManagementService) SetDirectChildrenGroupDelegationsBatch(ctx cont
 				continue
 			}
 			rate, ok := groupRates[groupID]
-			if !ok || rate <= 0 {
+			if !ok || !validNonNegativeRateMultiplier(rate) {
 				return 0, ErrAgentManagementInvalidGroupRate
 			}
 			if err := s.SetChildGroupDelegation(ctx, actor.ID, children[i].ID, groupID, ChildGroupDelegationInput{
@@ -1298,7 +1376,7 @@ func (s *AgentManagementService) directChildrenGroupDelegationBatchRates(ctx con
 			continue
 		}
 		rate := options[i].ChildRateMultiplier
-		if rate <= 0 {
+		if !options[i].Assigned {
 			rate = options[i].EffectiveRate
 		}
 		access, err := s.requireGroupDelegationAccess(ctx, actor, groupID)
@@ -1308,7 +1386,7 @@ func (s *AgentManagementService) directChildrenGroupDelegationBatchRates(ctx con
 		if rate < access.minimumRate {
 			rate = access.minimumRate
 		}
-		if rate <= 0 {
+		if !validNonNegativeRateMultiplier(rate) {
 			return nil, ErrAgentManagementInvalidGroupRate
 		}
 		rates[groupID] = rate
@@ -1439,7 +1517,7 @@ func (s *AgentManagementService) UpdateDirectChildrenExistingGroupDelegations(ct
 	if input.RateMultiplier == nil && input.CanDelegate == nil {
 		return nil, ErrAgentManagementInvalidGroupSelection
 	}
-	if input.RateMultiplier != nil && *input.RateMultiplier <= 0 {
+	if input.RateMultiplier != nil && !validNonNegativeRateMultiplier(*input.RateMultiplier) {
 		return nil, ErrAgentManagementInvalidGroupRate
 	}
 	if !input.All && len(input.ChildIDs) == 0 {
@@ -1622,7 +1700,7 @@ func (s *AgentManagementService) ListInviteGroupDefaultOptions(ctx context.Conte
 }
 
 func (s *AgentManagementService) SetInviteGroupDefault(ctx context.Context, actorID int64, groupID int64, input AgentInviteGroupDefaultInput) error {
-	if input.RateMultiplier <= 0 {
+	if !validNonNegativeRateMultiplier(input.RateMultiplier) {
 		return ErrAgentManagementInvalidGroupRate
 	}
 	actor, err := s.requireManager(ctx, actorID)
@@ -1650,7 +1728,7 @@ func (s *AgentManagementService) SetInviteGroupDefault(ctx context.Context, acto
 }
 
 func (s *AgentManagementService) SetInviteGroupDefaultsBatch(ctx context.Context, actorID int64, input AgentInviteGroupDefaultBatchInput) error {
-	if input.RateMultiplier <= 0 {
+	if !validNonNegativeRateMultiplier(input.RateMultiplier) {
 		return ErrAgentManagementInvalidGroupRate
 	}
 	groupIDs, err := s.resolveInviteGroupDefaultBatchGroupIDs(ctx, actorID, input.GroupIDs, input.All)
@@ -1690,7 +1768,7 @@ func (s *AgentManagementService) ApplyInviteGroupDefaultsToChild(ctx context.Con
 		return err
 	}
 	for i := range defaults {
-		if defaults[i].RateMultiplier <= 0 {
+		if !validNonNegativeRateMultiplier(defaults[i].RateMultiplier) {
 			continue
 		}
 		rate := defaults[i].RateMultiplier
@@ -1834,24 +1912,10 @@ func (s *AgentManagementService) buildSubordinateStructureForOwner(ctx context.C
 }
 
 func (s *AgentManagementService) scopeAgentUsageFilters(ctx context.Context, actorID int64, filters usagestats.UsageLogFilters) (usagestats.UsageLogFilters, error) {
-	actor, err := s.userRepo.GetByID(ctx, actorID)
+	visibleIDs, visibleSet, err := s.currentUsageVisibleUserScope(ctx, actorID)
 	if err != nil {
 		return filters, err
 	}
-	if actor.Role != RoleAgentLevel1 {
-		return filters, ErrAgentManagementForbidden
-	}
-	visibleUsers, err := s.listCurrentUsageVisibleUsersForActor(ctx, actor)
-	if err != nil {
-		return filters, err
-	}
-	visibleIDs := make([]int64, 0, len(visibleUsers))
-	visibleSet := make(map[int64]struct{}, len(visibleUsers))
-	for i := range visibleUsers {
-		visibleIDs = append(visibleIDs, visibleUsers[i].ID)
-		visibleSet[visibleUsers[i].ID] = struct{}{}
-	}
-
 	filters.UserIDs = nil
 	if filters.UserID > 0 {
 		if _, ok := visibleSet[filters.UserID]; !ok {
@@ -1861,6 +1925,27 @@ func (s *AgentManagementService) scopeAgentUsageFilters(ctx context.Context, act
 	}
 	filters.UserIDs = visibleIDs
 	return filters, nil
+}
+
+func (s *AgentManagementService) currentUsageVisibleUserScope(ctx context.Context, actorID int64) ([]int64, map[int64]struct{}, error) {
+	actor, err := s.userRepo.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if actor.Role != RoleAgentLevel1 {
+		return nil, nil, ErrAgentManagementForbidden
+	}
+	visibleUsers, err := s.listCurrentUsageVisibleUsersForActor(ctx, actor)
+	if err != nil {
+		return nil, nil, err
+	}
+	visibleIDs := make([]int64, 0, len(visibleUsers))
+	visibleSet := make(map[int64]struct{}, len(visibleUsers))
+	for i := range visibleUsers {
+		visibleIDs = append(visibleIDs, visibleUsers[i].ID)
+		visibleSet[visibleUsers[i].ID] = struct{}{}
+	}
+	return visibleIDs, visibleSet, nil
 }
 
 func (s *AgentManagementService) listCurrentUsageVisibleUsers(ctx context.Context, actorID int64) ([]User, error) {

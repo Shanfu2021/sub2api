@@ -1,142 +1,55 @@
 <template>
   <AppLayout>
-    <div class="space-y-5">
+    <div class="space-y-6">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('agentManagement.usage.title') }}</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('agentManagement.usage.subtitle') }}</p>
         </div>
-        <button class="btn btn-secondary px-3" :disabled="loading" @click="refreshData">
-          <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-          <span class="ml-1.5">{{ t('common.refresh') }}</span>
-        </button>
       </div>
 
       <UsageStatsCards :stats="usageStats" />
 
       <section class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
-        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <label class="block">
-            <span class="input-label">{{ t('agentManagement.usage.timeRange') }}</span>
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('agentManagement.usage.timeRange') }}:</span>
             <DateRangePicker
               v-model:start-date="startDate"
               v-model:end-date="endDate"
-              @change="applyFilters"
+              @change="onDateRangeChange"
             />
-          </label>
-
-          <label class="block">
-            <span class="input-label">{{ t('agentManagement.usage.userFilter') }}</span>
-            <select v-model.number="filters.user_id" class="input w-full" @change="applyFilters">
-              <option :value="0">{{ t('agentManagement.usage.allUsers') }}</option>
-              <option v-for="user in usageUsers" :key="user.id" :value="user.id">
-                {{ user.email }} · {{ roleLabel(user.role) }}
-              </option>
-            </select>
-          </label>
-
-          <label class="block">
-            <span class="input-label">{{ t('usage.model') }}</span>
-            <input
-              v-model.trim="filters.model"
-              class="input w-full"
-              :placeholder="t('agentManagement.usage.modelPlaceholder')"
-              @keyup.enter="applyFilters"
-            />
-          </label>
-
-          <label class="block">
-            <span class="input-label">{{ t('admin.usage.group') }}</span>
-            <input
-              v-model.number="filters.group_id"
-              class="input w-full"
-              min="1"
-              type="number"
-              :placeholder="t('agentManagement.usage.groupPlaceholder')"
-              @keyup.enter="applyFilters"
-            />
-          </label>
-
-          <label class="block">
-            <span class="input-label">{{ t('usage.type') }}</span>
-            <select v-model="filters.request_type" class="input w-full" @change="applyFilters">
-              <option value="">{{ t('admin.usage.allTypes') }}</option>
-              <option value="sync">{{ t('usage.sync') }}</option>
-              <option value="stream">{{ t('usage.stream') }}</option>
-              <option value="ws_v2">{{ t('usage.ws') }}</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="mt-4 flex flex-wrap justify-end gap-2">
-          <button class="btn btn-secondary" @click="resetFilters">{{ t('common.reset') }}</button>
-          <button class="btn btn-primary" :disabled="loading" @click="applyFilters">{{ t('common.search') }}</button>
+          </div>
         </div>
       </section>
 
-      <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-        <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
-            <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500 dark:bg-dark-900/50 dark:text-dark-400">
-              <tr>
-                <th class="px-4 py-3">{{ t('admin.usage.user') }}</th>
-                <th class="px-4 py-3">{{ t('usage.model') }}</th>
-                <th class="px-4 py-3">{{ t('admin.usage.group') }}</th>
-                <th class="px-4 py-3">{{ t('usage.type') }}</th>
-                <th class="px-4 py-3">{{ t('usage.tokens') }}</th>
-                <th class="px-4 py-3">{{ t('usage.cost') }}</th>
-                <th class="px-4 py-3">{{ t('usage.duration') }}</th>
-                <th class="px-4 py-3">{{ t('usage.time') }}</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-if="loading">
-                <td colspan="8" class="px-4 py-10 text-center text-gray-500 dark:text-dark-400">
-                  {{ t('common.loading') }}
-                </td>
-              </tr>
-              <tr v-else-if="usageLogs.length === 0">
-                <td colspan="8" class="px-4 py-10 text-center text-gray-500 dark:text-dark-400">
-                  {{ t('usage.noRecords') }}
-                </td>
-              </tr>
-              <template v-else>
-                <tr v-for="row in usageLogs" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/40">
-                  <td class="px-4 py-3">
-                    <div class="font-medium text-gray-900 dark:text-white">{{ row.user?.email || userLabel(row.user_id) }}</div>
-                    <div class="text-xs text-gray-500 dark:text-dark-400">#{{ row.user_id }}</div>
-                  </td>
-                  <td class="max-w-[220px] break-all px-4 py-3 font-medium text-gray-900 dark:text-white">
-                    {{ row.model || '-' }}
-                  </td>
-                  <td class="px-4 py-3 text-gray-700 dark:text-dark-200">
-                    <span v-if="row.group" class="inline-flex rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
-                      {{ row.group.name }}
-                    </span>
-                    <span v-else>{{ row.group_id || '-' }}</span>
-                  </td>
-                  <td class="px-4 py-3">
-                    <span class="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-dark-200">
-                      {{ requestTypeLabel(row) }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-3 text-gray-700 dark:text-dark-200">
-                    <div>{{ formatTokens(row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_creation_tokens) }}</div>
-                    <div class="text-xs text-gray-500 dark:text-dark-400">
-                      {{ t('usage.in') }} {{ formatTokens(row.input_tokens) }} / {{ t('usage.out') }} {{ formatTokens(row.output_tokens) }}
-                    </div>
-                  </td>
-                  <td class="px-4 py-3 font-medium text-emerald-700 dark:text-emerald-300">
-                    {{ formatCurrency(row.actual_cost || 0) }}
-                  </td>
-                  <td class="px-4 py-3 text-gray-700 dark:text-dark-200">{{ formatDuration(row.duration_ms || 0) }}</td>
-                  <td class="whitespace-nowrap px-4 py-3 text-gray-700 dark:text-dark-200">{{ formatDateTime(row.created_at) }}</td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <UsageFilters
+        v-model="filters"
+        :start-date="startDate"
+        :end-date="endDate"
+        :exporting="exporting"
+        :model-options="modelNameOptions"
+        :show-cleanup="false"
+        :search-users-fn="agentManagementAPI.searchUsageUsers"
+        :search-api-keys-fn="agentManagementAPI.searchUsageApiKeys"
+        :search-accounts-fn="agentManagementAPI.searchUsageAccounts"
+        :load-groups-fn="loadAgentGroupOptions"
+        @change="applyFilters"
+        @refresh="refreshData"
+        @reset="resetFilters"
+        @export="exportToExcel"
+      />
+
+      <UsageTable
+        :data="usageLogs"
+        :loading="loading"
+        :columns="visibleColumns"
+        :server-side-sort="true"
+        :default-sort-key="'created_at'"
+        :default-sort-order="'desc'"
+        :user-clickable="false"
+        @sort="handleSort"
+      />
 
       <Pagination
         v-if="pagination.total > 0"
@@ -148,176 +61,335 @@
       />
     </div>
   </AppLayout>
+  <UsageExportProgress
+    :show="exportProgress.show"
+    :progress="exportProgress.progress"
+    :current="exportProgress.current"
+    :total="exportProgress.total"
+    :estimated-time="exportProgress.estimatedTime"
+    @cancel="cancelExport"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { saveAs } from 'file-saver'
 import { agentManagementAPI } from '@/api/agentManagement'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatCurrency, formatDateTime } from '@/utils/format'
+import { formatReasoningEffort } from '@/utils/format'
+import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
+import type { AdminUsageLog, SelectOption } from '@/types'
 import type { AdminUsageQueryParams, AdminUsageStatsResponse } from '@/api/admin/usage'
-import type { AgentManagedUser, AgentUsageLog, UsageRequestType, UserRole } from '@/types'
+import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'
-import Icon from '@/components/icons/Icon.vue'
+import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
+import UsageTable from '@/components/admin/usage/UsageTable.vue'
+import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const usageLogs = ref<AgentUsageLog[]>([])
-const usageUsers = ref<AgentManagedUser[]>([])
 const usageStats = ref<AdminUsageStatsResponse | null>(null)
+const usageLogs = ref<AdminUsageLog[]>([])
 const loading = ref(false)
+const exporting = ref(false)
+let abortController: AbortController | null = null
+let exportAbortController: AbortController | null = null
 
-const today = new Date()
-const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
-const startDate = ref(formatDateInput(yesterday))
-const endDate = ref(formatDateInput(today))
+const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' })
 
-const filters = reactive<{
-  user_id: number
-  model: string
-  group_id: number | ''
-  request_type: UsageRequestType | ''
-}>({
-  user_id: 0,
-  model: '',
-  group_id: '',
-  request_type: '',
-})
-
-const pagination = reactive({
-  page: 1,
-  page_size: getPersistedPageSize(20),
-  total: 0,
-  pages: 1,
-})
-
-const userLabels = computed(() => {
-  const labels = new Map<number, string>()
-  for (const user of usageUsers.value) {
-    labels.set(user.id, user.email)
-  }
-  return labels
-})
-
-function formatDateInput(date: Date): string {
+const formatLocalDate = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
-function roleLabel(role: UserRole | string): string {
-  return t(`admin.users.roles.${role}`)
+const defaultEnd = new Date()
+const defaultStart = new Date(defaultEnd.getTime() - 24 * 60 * 60 * 1000)
+const startDate = ref(formatLocalDate(defaultStart))
+const endDate = ref(formatLocalDate(defaultEnd))
+
+const filters = ref<AdminUsageQueryParams>({
+  start_date: startDate.value,
+  end_date: endDate.value,
+  request_type: undefined,
+  billing_type: null,
+  billing_mode: undefined,
+})
+
+const pagination = reactive({
+  page: 1,
+  page_size: getPersistedPageSize(),
+  total: 0,
+})
+
+const sortState = reactive({
+  sort_by: 'created_at',
+  sort_order: 'desc' as 'asc' | 'desc',
+})
+
+const visibleColumns = computed<Column[]>(() => [
+  { key: 'user', label: t('admin.usage.user'), sortable: false },
+  { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
+  { key: 'account', label: t('admin.usage.account'), sortable: false },
+  { key: 'model', label: t('usage.model'), sortable: true },
+  { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
+  { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
+  { key: 'group', label: t('admin.usage.group'), sortable: false },
+  { key: 'stream', label: t('usage.type'), sortable: false },
+  { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
+  { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'cost', label: t('usage.cost'), sortable: false },
+  { key: 'first_token', label: t('usage.firstToken'), sortable: false },
+  { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'created_at', label: t('usage.time'), sortable: true },
+  { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
+])
+
+const modelNameOptions = computed(() =>
+  Array.from(new Set(usageLogs.value.map((item) => item.model).filter(Boolean))).sort()
+)
+
+function buildUsageListParams(page: number, pageSize: number, exactTotal: boolean): AdminUsageQueryParams {
+  const requestType = filters.value.request_type
+  const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
+  return {
+    page,
+    page_size: pageSize,
+    exact_total: exactTotal,
+    ...filters.value,
+    start_date: startDate.value,
+    end_date: endDate.value,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    stream: legacyStream === null ? undefined : legacyStream,
+    sort_by: sortState.sort_by,
+    sort_order: sortState.sort_order,
+  }
 }
 
-function userLabel(userId: number): string {
-  return userLabels.value.get(userId) || `#${userId}`
+function buildStatsParams(force = false): AdminUsageQueryParams {
+  const requestType = filters.value.request_type
+  const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
+  return {
+    ...filters.value,
+    start_date: startDate.value,
+    end_date: endDate.value,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    stream: legacyStream === null ? undefined : legacyStream,
+    ...(force ? { nocache: 1 } : {}),
+  }
 }
 
-function requestTypeLabel(row: AgentUsageLog): string {
-  const requestType = row.request_type || (row.stream ? 'stream' : 'sync')
+async function loadAgentGroupOptions(): Promise<SelectOption[]> {
+  const groups = await agentManagementAPI.listGroups()
+  return groups.map((g) => ({ value: g.group.id, label: g.group.name || `#${g.group.id}` }))
+}
+
+async function loadLogs() {
+  abortController?.abort()
+  const controller = new AbortController()
+  abortController = controller
+  loading.value = true
+  try {
+    const res = await agentManagementAPI.listUsage(
+      buildUsageListParams(pagination.page, pagination.page_size, false),
+      { signal: controller.signal }
+    )
+    if (!controller.signal.aborted) {
+      usageLogs.value = (res.items || []) as AdminUsageLog[]
+      pagination.total = res.total || 0
+    }
+  } catch (error: any) {
+    if (error?.name !== 'AbortError') {
+      appStore.showError(error?.message || t('agentManagement.usage.loadFailed'))
+    }
+  } finally {
+    if (abortController === controller) loading.value = false
+  }
+}
+
+async function loadStats(force = false) {
+  try {
+    usageStats.value = await agentManagementAPI.getUsageStats(buildStatsParams(force))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('agentManagement.usage.loadFailed'))
+  }
+}
+
+function applyFilters() {
+  pagination.page = 1
+  void loadLogs()
+  void loadStats()
+}
+
+function refreshData() {
+  void loadLogs()
+  void loadStats(true)
+}
+
+function resetFilters() {
+  const end = new Date()
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+  startDate.value = formatLocalDate(start)
+  endDate.value = formatLocalDate(end)
+  filters.value = {
+    start_date: startDate.value,
+    end_date: endDate.value,
+    request_type: undefined,
+    billing_type: null,
+    billing_mode: undefined,
+  }
+  applyFilters()
+}
+
+function onDateRangeChange(range: { startDate: string; endDate: string }) {
+  startDate.value = range.startDate
+  endDate.value = range.endDate
+  filters.value = {
+    ...filters.value,
+    start_date: range.startDate,
+    end_date: range.endDate,
+  }
+  applyFilters()
+}
+
+function handlePageChange(page: number) {
+  pagination.page = page
+  void loadLogs()
+}
+
+function handlePageSizeChange(pageSize: number) {
+  pagination.page_size = pageSize
+  pagination.page = 1
+  void loadLogs()
+}
+
+function handleSort(key: string, order: 'asc' | 'desc') {
+  sortState.sort_by = key
+  sortState.sort_order = order
+  pagination.page = 1
+  void loadLogs()
+}
+
+function getRequestTypeLabel(log: AdminUsageLog): string {
+  const requestType = resolveUsageRequestType(log)
   if (requestType === 'ws_v2') return t('usage.ws')
   if (requestType === 'stream') return t('usage.stream')
   if (requestType === 'sync') return t('usage.sync')
   return t('usage.unknown')
 }
 
-function formatDuration(ms: number): string {
-  return ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`
+function accountBilled(log: AdminUsageLog): number {
+  const base = log.account_stats_cost != null ? log.account_stats_cost : (log.total_cost ?? 0)
+  const result = base * (log.account_rate_multiplier ?? 1)
+  return Number.isFinite(result) ? result : 0
 }
 
-function formatTokens(value: number): string {
-  if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
-  if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-  if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`
-  return value.toLocaleString()
+function cancelExport() {
+  exportAbortController?.abort()
 }
 
-function buildParams(includePagination = true): AdminUsageQueryParams {
-  const params: AdminUsageQueryParams = {
-    start_date: startDate.value,
-    end_date: endDate.value,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  }
-  if (includePagination) {
-    params.page = pagination.page
-    params.page_size = pagination.page_size
-    params.sort_by = 'created_at'
-    params.sort_order = 'desc'
-  }
-  if (filters.user_id > 0) params.user_id = filters.user_id
-  if (filters.model.trim()) params.model = filters.model.trim()
-  const groupId = Number(filters.group_id)
-  if (Number.isFinite(groupId) && groupId > 0) params.group_id = groupId
-  if (filters.request_type) params.request_type = filters.request_type
-  return params
-}
-
-async function loadUsageUsers() {
-  usageUsers.value = await agentManagementAPI.listUsageUsers()
-}
-
-async function loadUsage() {
-  loading.value = true
+async function exportToExcel() {
+  if (exporting.value) return
+  exporting.value = true
+  exportProgress.show = true
+  const controller = new AbortController()
+  exportAbortController = controller
   try {
-    const [records, stats] = await Promise.all([
-      agentManagementAPI.listUsage(buildParams(true)),
-      agentManagementAPI.getUsageStats(buildParams(false)),
-    ])
-    usageLogs.value = records.items || []
-    pagination.total = records.total || 0
-    pagination.page = records.page || pagination.page
-    pagination.page_size = records.page_size || pagination.page_size
-    pagination.pages = records.pages || 1
-    usageStats.value = stats
-  } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('agentManagement.usage.loadFailed'))
+    let page = 1
+    let total = pagination.total
+    let exportedCount = 0
+    const XLSX = await import('xlsx')
+    const headers = [
+      t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
+      t('admin.usage.account'), t('usage.model'), t('usage.reasoningEffort'), t('admin.usage.group'),
+      t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'), t('usage.type'),
+      t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
+      t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
+      t('admin.usage.inputCost'), t('admin.usage.outputCost'),
+      t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
+      t('usage.rate'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
+      t('usage.firstToken'), t('usage.duration'), t('admin.usage.requestId'), t('usage.userAgent')
+    ]
+    const ws = XLSX.utils.aoa_to_sheet([headers])
+    while (true) {
+      const res = await agentManagementAPI.listUsage(
+        buildUsageListParams(page, 100, true),
+        { signal: controller.signal }
+      )
+      if (controller.signal.aborted) break
+      if (page === 1) {
+        total = res.total || 0
+        exportProgress.total = total
+      }
+      const rows = ((res.items || []) as AdminUsageLog[]).map((log) => [
+        log.created_at,
+        log.user?.email || '',
+        log.api_key?.name || '',
+        log.account?.name || '',
+        log.model || '',
+        formatReasoningEffort(log.reasoning_effort),
+        log.group?.name || '',
+        log.inbound_endpoint || '',
+        log.upstream_endpoint || '',
+        getRequestTypeLabel(log),
+        log.input_tokens,
+        log.output_tokens,
+        log.cache_read_tokens,
+        log.cache_creation_tokens,
+        log.input_cost?.toFixed(6) || '0.000000',
+        log.output_cost?.toFixed(6) || '0.000000',
+        log.cache_read_cost?.toFixed(6) || '0.000000',
+        log.cache_creation_cost?.toFixed(6) || '0.000000',
+        log.rate_multiplier?.toPrecision(4) || '1.00',
+        log.total_cost?.toFixed(6) || '0.000000',
+        log.actual_cost?.toFixed(6) || '0.000000',
+        accountBilled(log).toFixed(6),
+        log.first_token_ms ?? '',
+        log.duration_ms,
+        log.request_id || '',
+        log.user_agent || '',
+      ])
+      if (rows.length) XLSX.utils.sheet_add_aoa(ws, rows, { origin: -1 })
+      exportedCount += rows.length
+      exportProgress.current = exportedCount
+      exportProgress.progress = total > 0 ? Math.min(100, Math.round(exportedCount / total * 100)) : 0
+      if (exportedCount >= total || rows.length < 100) break
+      page++
+    }
+    if (!controller.signal.aborted) {
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Usage')
+      const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      saveAs(new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `agent_usage_${startDate.value}_to_${endDate.value}.xlsx`)
+      appStore.showSuccess(t('usage.exportSuccess'))
+    }
+  } catch (error: any) {
+    if (error?.name !== 'AbortError') {
+      appStore.showError(error?.message || 'Export Failed')
+    }
   } finally {
-    loading.value = false
+    if (exportAbortController === controller) {
+      exportAbortController = null
+      exporting.value = false
+      exportProgress.show = false
+    }
   }
 }
 
-async function refreshData() {
-  await loadUsage()
-}
+onMounted(() => {
+  void loadLogs()
+  void loadStats()
+})
 
-async function applyFilters() {
-  pagination.page = 1
-  await loadUsage()
-}
-
-async function resetFilters() {
-  filters.user_id = 0
-  filters.model = ''
-  filters.group_id = ''
-  filters.request_type = ''
-  pagination.page = 1
-  await loadUsage()
-}
-
-async function handlePageChange(page: number) {
-  pagination.page = page
-  await loadUsage()
-}
-
-async function handlePageSizeChange(pageSize: number) {
-  pagination.page_size = pageSize
-  pagination.page = 1
-  await loadUsage()
-}
-
-onMounted(async () => {
-  try {
-    await loadUsageUsers()
-  } catch (error) {
-    appStore.showError((error as { message?: string }).message || t('agentManagement.usage.usersLoadFailed'))
-  }
-  await loadUsage()
+onUnmounted(() => {
+  abortController?.abort()
+  exportAbortController?.abort()
 })
 </script>
