@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -1510,6 +1511,22 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 // 按需恢复 error / rate-limit / overload / temp-unsched / model-rate-limit 等运行时状态。
 func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error) {
 	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+}
+
+func (s *RateLimitService) SetAccountSchedulable(ctx context.Context, accountID int64, schedulable bool) error {
+	if s == nil || s.accountRepo == nil {
+		return errors.New("rate limit service is not available")
+	}
+	if err := s.accountRepo.SetSchedulable(ctx, accountID, schedulable); err != nil {
+		return err
+	}
+	if schedulable {
+		s.notifyAccountSchedulingBlockCleared(accountID)
+	} else if account, err := s.accountRepo.GetByID(ctx, accountID); err == nil && account != nil {
+		account.Schedulable = false
+		s.notifyAccountSchedulingBlocked(account, time.Time{}, "scheduled_test_auto_control")
+	}
+	return nil
 }
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {

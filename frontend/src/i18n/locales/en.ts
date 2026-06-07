@@ -4380,7 +4380,20 @@ export default {
       maxResultsTooltipExample: 'For example, 100 means keeping at most the latest 100 test results. When the 101st result is saved, the oldest one is removed.',
       maxResultsTooltipRange: 'Recommended range: usually 20 to 200. Use 20-50 when you only care about recent health status, or 100-200 if you want a longer trend history.',
       autoRecover: 'Auto Recover',
-      autoRecoverHelp: 'Automatically recover account from error/rate-limited state on successful test'
+      autoRecoverHelp: 'Automatically recover account from error/rate-limited state on successful test',
+      autoSchedulableControl: 'Auto Scheduling Control',
+      autoSchedulableControlHelp: 'Disable account scheduling on failed or slow-first-token tests, and enable it after a healthy test',
+      firstTokenTimeout: 'First Token Timeout (s)',
+      firstTokenTimeoutHelp: 'Use 0 or leave empty to ignore first-token time when controlling scheduling',
+      firstToken: 'First token',
+      totalLatency: 'Total',
+      decisions: {
+        enabled: 'Enabled scheduling',
+        disabled_failure: 'Disabled after failure',
+        disabled_slow_first_token: 'Disabled for slow first token',
+        auto_control_unavailable: 'Auto control failed',
+        no_action: 'No action'
+      }
     },
 
     // Proxies

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -126,13 +127,23 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		return
 	}
 
-	if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
-		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
+	if result.Decision == "" {
+		result.Decision = ScheduledTestDecisionNoAction
 	}
+	if plan.AutoSchedulableControl {
+		s.applyAutoSchedulableControl(ctx, plan, result)
+		if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
+		}
+	} else {
+		if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
+		}
 
-	// Auto-recover account if test succeeded and auto_recover is enabled.
-	if result.Status == "success" && plan.AutoRecover {
-		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
+		// Auto-recover account if test succeeded and auto_recover is enabled.
+		if result.Status == "success" && plan.AutoRecover {
+			s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
+		}
 	}
 
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
@@ -144,6 +155,65 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) applyAutoSchedulableControl(ctx context.Context, plan *ScheduledTestPlan, result *ScheduledTestResult) {
+	if s.rateLimitSvc == nil {
+		result.Decision = ScheduledTestDecisionAutoControlUnavailable
+		result.DecisionReason = "rate limit service is not available"
+		return
+	}
+
+	if result.Status != "success" {
+		reason := result.ErrorMessage
+		if reason == "" {
+			reason = "scheduled test failed"
+		}
+		result.Decision = ScheduledTestDecisionDisabledFailure
+		result.DecisionReason = reason
+		if err := s.rateLimitSvc.SetAccountSchedulable(ctx, plan.AccountID, false); err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-control disable failed: %v", plan.ID, err)
+			result.DecisionReason = fmt.Sprintf("%s; disable failed: %v", result.DecisionReason, err)
+		}
+		return
+	}
+
+	if plan.FirstTokenTimeoutMs > 0 {
+		if result.FirstTokenMs == nil {
+			result.Decision = ScheduledTestDecisionDisabledSlowFirstToken
+			result.DecisionReason = fmt.Sprintf("first token missing (threshold %dms)", plan.FirstTokenTimeoutMs)
+			if err := s.rateLimitSvc.SetAccountSchedulable(ctx, plan.AccountID, false); err != nil {
+				logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-control disable failed: %v", plan.ID, err)
+				result.DecisionReason = fmt.Sprintf("%s; disable failed: %v", result.DecisionReason, err)
+			}
+			return
+		}
+		if *result.FirstTokenMs > plan.FirstTokenTimeoutMs {
+			result.Decision = ScheduledTestDecisionDisabledSlowFirstToken
+			result.DecisionReason = fmt.Sprintf("first token %dms exceeded threshold %dms", *result.FirstTokenMs, plan.FirstTokenTimeoutMs)
+			if err := s.rateLimitSvc.SetAccountSchedulable(ctx, plan.AccountID, false); err != nil {
+				logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-control disable failed: %v", plan.ID, err)
+				result.DecisionReason = fmt.Sprintf("%s; disable failed: %v", result.DecisionReason, err)
+			}
+			return
+		}
+	}
+
+	if _, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, plan.AccountID); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-control recover failed: %v", plan.ID, err)
+		result.Decision = ScheduledTestDecisionAutoControlUnavailable
+		result.DecisionReason = fmt.Sprintf("recover failed: %v", err)
+		return
+	}
+	if err := s.rateLimitSvc.SetAccountSchedulable(ctx, plan.AccountID, true); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-control enable failed: %v", plan.ID, err)
+		result.Decision = ScheduledTestDecisionAutoControlUnavailable
+		result.DecisionReason = fmt.Sprintf("enable failed: %v", err)
+		return
+	}
+
+	result.Decision = ScheduledTestDecisionEnabled
+	result.DecisionReason = "scheduled test succeeded"
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.

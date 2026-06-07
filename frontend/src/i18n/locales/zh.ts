@@ -4472,7 +4472,20 @@ export default {
       maxResultsTooltipExample: '例如填写 100，表示最多保存最近 100 次测试结果；第 101 次结果写入后，最早的一条会被清理。',
       maxResultsTooltipRange: '推荐填写范围：一般可填 20 到 200。只关注近期可用性时可填 20-50；需要回看较长时间的波动趋势时可填 100-200。',
       autoRecover: '自动恢复',
-      autoRecoverHelp: '测试成功后自动恢复异常状态的账号'
+      autoRecoverHelp: '测试成功后自动恢复异常状态的账号',
+      autoSchedulableControl: '自动控制调度',
+      autoSchedulableControlHelp: '测试失败或首 Token 超时关闭账号调度，测试健康后打开账号调度',
+      firstTokenTimeout: '首 Token 超时（秒）',
+      firstTokenTimeoutHelp: '填 0 或留空表示不按首 Token 时间关闭调度',
+      firstToken: '首 Token',
+      totalLatency: '总耗时',
+      decisions: {
+        enabled: '已打开调度',
+        disabled_failure: '失败关闭调度',
+        disabled_slow_first_token: '首 Token 慢关闭调度',
+        auto_control_unavailable: '自动控制失败',
+        no_action: '未操作'
+      }
     },
 
     // Proxies Management

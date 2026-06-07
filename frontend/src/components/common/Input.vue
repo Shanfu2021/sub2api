@@ -22,6 +22,9 @@
         :required="required"
         :placeholder="placeholderText"
         :autocomplete="autocomplete"
+        :min="min"
+        :max="max"
+        :step="step"
         :readonly="readonly"
         :class="[
           'input w-full transition-all duration-200',
@@ -70,6 +73,9 @@ interface Props {
   hint?: string
   id?: string
   autocomplete?: string
+  min?: string | number
+  max?: string | number
+  step?: string | number
 }
 
 const props = withDefaults(defineProps<Props>(), {
