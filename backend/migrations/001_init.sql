@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS groups (
     description     TEXT,
     rate_multiplier DECIMAL(10, 4) NOT NULL DEFAULT 1.0,  -- 费率倍率
     is_exclusive    BOOLEAN NOT NULL DEFAULT FALSE,       -- 是否专属分组
-    scheduling_strategy VARCHAR(32) DEFAULT 'weighted',   -- 账号调度策略
     status          VARCHAR(20) NOT NULL DEFAULT 'active', -- active/disabled
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
