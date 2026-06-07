@@ -1266,6 +1266,51 @@ describe('agent management pages', () => {
     })
   })
 
+  it('keeps selected deployable children when searching another child', async () => {
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listDirectChildrenWithoutGroupDelegation.mockImplementation((_kind, query) => {
+      if (query.search === 'beta') {
+        return Promise.resolve(makeChildrenResponse([
+          makeChild({ id: 13, email: 'beta@example.com' }),
+        ]))
+      }
+      return Promise.resolve(makeChildrenResponse([
+        makeChild({ id: 12, email: 'alpha@example.com' }),
+      ]))
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-batch"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-batch-select-7"]').setValue(true)
+    await flushPromises()
+
+    await wrapper.get('[data-test="direct-group-batch-child-12"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-batch-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-batch-search"]').setValue('beta')
+    await wrapper.get('[data-test="direct-group-batch-search-submit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-batch-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-batch-child-13"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-batch-child-count"]').attributes('data-count')).toBe('2')
+
+    await wrapper.get('[data-test="apply-direct-group-batch"]').trigger('click')
+    await flushPromises()
+
+    expect(setDirectChildrenGroupDelegationsBatch).toHaveBeenCalledWith('users', {
+      group_ids: [7],
+      all: false,
+      child_ids: [12, 13],
+      all_children: false,
+      can_delegate: false,
+    })
+  })
+
   it('keeps all selected assigned children checked across pages and submits explicit ids for rate updates', async () => {
     listGroups.mockResolvedValue([makeAgentGroupRate()])
     listDirectChildrenWithGroupDelegation.mockImplementation((_kind, query) => {
@@ -1306,6 +1351,45 @@ describe('agent management pages', () => {
     expect((wrapper.get('[data-test="direct-group-update-all"]').element as HTMLInputElement).checked).toBe(false)
     expect(wrapper.get('[data-test="direct-group-update-child-count"]').attributes('data-count')).toBe('2')
 
+    await wrapper.get('[data-test="direct-group-update-rate"]').setValue('3.2')
+    await wrapper.get('[data-test="apply-direct-group-update"]').trigger('click')
+    await flushPromises()
+
+    expect(updateDirectChildrenExistingGroupDelegations).toHaveBeenCalledWith('users', {
+      group_id: 7,
+      child_ids: [12, 13],
+      all: false,
+      rate_multiplier: 3.2,
+    })
+  })
+
+  it('keeps selected assigned children when searching another child for rate updates', async () => {
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listDirectChildrenWithGroupDelegation.mockImplementation((_kind, query) => {
+      if (query.search === 'beta') {
+        return Promise.resolve(makeChildrenResponse([
+          makeChild({ id: 13, email: 'beta@example.com', group_rates: { 7: 2.4 } }),
+        ]))
+      }
+      return Promise.resolve(makeChildrenResponse([
+        makeChild({ id: 12, email: 'alpha@example.com', group_rates: { 7: 2.4 } }),
+      ]))
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-update"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-update-child-12"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-update-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-update-search"]').setValue('beta')
+    await wrapper.get('[data-test="direct-group-update-search-submit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-update-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-update-child-13"]').setValue(true)
     await wrapper.get('[data-test="direct-group-update-rate"]').setValue('3.2')
     await wrapper.get('[data-test="apply-direct-group-update"]').trigger('click')
     await flushPromises()
@@ -1362,6 +1446,43 @@ describe('agent management pages', () => {
     expect(reclaimDirectChildrenGroupDelegations).toHaveBeenCalledWith('users', {
       group_id: 7,
       child_ids: [12, 14],
+      all: false,
+    })
+  })
+
+  it('keeps selected assigned children when searching another child for reclaim', async () => {
+    listGroups.mockResolvedValue([makeAgentGroupRate()])
+    listDirectChildrenWithGroupDelegation.mockImplementation((_kind, query) => {
+      if (query.search === 'beta') {
+        return Promise.resolve(makeChildrenResponse([
+          makeChild({ id: 13, email: 'beta@example.com', group_rates: { 7: 2.4 } }),
+        ]))
+      }
+      return Promise.resolve(makeChildrenResponse([
+        makeChild({ id: 12, email: 'alpha@example.com', group_rates: { 7: 2.4 } }),
+      ]))
+    })
+    const wrapper = mountAgentView(DirectUsersView, 'admin')
+    await flushPromises()
+
+    await wrapper.get('[data-test="open-direct-group-reclaim"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="direct-group-reclaim-child-12"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-reclaim-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-reclaim-search"]').setValue('beta')
+    await wrapper.get('[data-test="direct-group-reclaim-search-submit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="direct-group-reclaim-child-count"]').attributes('data-count')).toBe('1')
+
+    await wrapper.get('[data-test="direct-group-reclaim-child-13"]').setValue(true)
+    await wrapper.get('[data-test="apply-direct-group-reclaim"]').trigger('click')
+    await flushPromises()
+
+    expect(reclaimDirectChildrenGroupDelegations).toHaveBeenCalledWith('users', {
+      group_id: 7,
+      child_ids: [12, 13],
       all: false,
     })
   })

@@ -1937,7 +1937,6 @@ function closeDirectGroupBatchDialog() {
 async function applyDirectGroupBatchSearch() {
   directGroupBatchDialog.search = directGroupBatchDialog.searchDraft.trim()
   directGroupBatchDialog.pagination.page = 1
-  selectedDirectGroupBatchChildIDs.value = []
   await loadDirectGroupBatchChildren()
 }
 
@@ -2108,14 +2107,12 @@ async function onDirectGroupReclaimGroupChange() {
 async function applyDirectGroupUpdateSearch() {
   directGroupUpdateDialog.search = directGroupUpdateDialog.searchDraft.trim()
   directGroupUpdateDialog.pagination.page = 1
-  selectedDirectGroupUpdateChildIDs.value = []
   await loadDirectGroupUpdateChildren()
 }
 
 async function applyDirectGroupReclaimSearch() {
   directGroupReclaimDialog.search = directGroupReclaimDialog.searchDraft.trim()
   directGroupReclaimDialog.pagination.page = 1
-  selectedDirectGroupReclaimChildIDs.value = []
   await loadDirectGroupReclaimChildren()
 }
 
