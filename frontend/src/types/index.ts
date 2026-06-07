@@ -838,6 +838,8 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type GroupSchedulingStrategy = 'weighted' | 'strict_priority'
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -875,6 +877,7 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   created_at: string
   updated_at: string
 }
@@ -997,6 +1000,7 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -1032,6 +1036,7 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   copy_accounts_from_group_ids?: number[]
 }
 

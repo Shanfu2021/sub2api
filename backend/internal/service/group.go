@@ -10,6 +10,11 @@ import (
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 type GroupModelsListConfig = domain.GroupModelsListConfig
 
+const (
+	GroupSchedulingStrategyWeighted       = "weighted"
+	GroupSchedulingStrategyStrictPriority = "strict_priority"
+)
+
 type Group struct {
 	ID             int64
 	Name           string
@@ -60,6 +65,7 @@ type Group struct {
 	AllowMessagesDispatch       bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
 	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
+	SchedulingStrategy          string
 	DefaultMappedModel          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig

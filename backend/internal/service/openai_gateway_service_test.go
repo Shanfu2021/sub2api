@@ -1111,7 +1111,7 @@ func TestOpenAIStreamingResponseFailedBeforeOutputReturnsFailover(t *testing.T) 
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
-	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
+	require.Contains(t, string(failoverErr.ResponseBody), "Service temporarily unavailable")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
 }

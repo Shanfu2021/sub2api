@@ -509,6 +509,14 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.form.schedulingStrategy") }}</label>
+          <Select
+            v-model="createForm.scheduling_strategy"
+            :options="schedulingStrategyOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.schedulingStrategyHint") }}</p>
+        </div>
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -1794,6 +1802,14 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.form.schedulingStrategy") }}</label>
+          <Select
+            v-model="editForm.scheduling_strategy"
+            :options="schedulingStrategyOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.form.schedulingStrategyHint") }}</p>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3158,6 +3174,11 @@ const subscriptionTypeOptions = computed(() => [
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
 ]);
 
+const schedulingStrategyOptions = computed(() => [
+  { value: "weighted", label: t("admin.groups.scheduling.weighted") },
+  { value: "strict_priority", label: t("admin.groups.scheduling.strictPriority") },
+]);
+
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
 const fallbackGroupOptions = computed(() => {
   const options: { value: number | null; label: string }[] = [
@@ -3353,6 +3374,7 @@ const createForm = reactive({
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
+  scheduling_strategy: "weighted" as "weighted" | "strict_priority",
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -3685,6 +3707,7 @@ const editForm = reactive({
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
+  scheduling_strategy: "weighted" as "weighted" | "strict_priority",
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -3928,6 +3951,7 @@ const closeCreateModal = () => {
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
+  createForm.scheduling_strategy = "weighted";
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
@@ -4065,6 +4089,7 @@ const handleEdit = async (group: AdminGroup) => {
     messagesDispatchFormState.exact_model_mappings;
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
+  editForm.scheduling_strategy = group.scheduling_strategy ?? "weighted";
   editForm.model_routing_enabled = group.model_routing_enabled || false;
   editForm.supported_model_scopes = group.supported_model_scopes || [
     "claude",

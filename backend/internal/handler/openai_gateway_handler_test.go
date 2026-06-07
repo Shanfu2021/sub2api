@@ -175,6 +175,63 @@ func TestOpenAIEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testin
 	assert.Equal(t, "Upstream request failed", errorObj["message"])
 }
 
+func TestOpenAIHandleFailoverExhausted_ReturnsGatewayOwnedError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusForbidden,
+		ResponseBody: []byte(`{"error":{"message":"OpenAI upstream billing quota exhausted","type":"insufficient_quota"}}`),
+	}, false)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.True(t, gjson.GetBytes(w.Body.Bytes(), "error").Exists())
+	require.Equal(t, "api_error", gjson.GetBytes(w.Body.Bytes(), "error.type").String())
+	require.Equal(t, "Service temporarily unavailable", gjson.GetBytes(w.Body.Bytes(), "error.message").String())
+	require.NotContains(t, w.Body.String(), "OpenAI")
+	require.NotContains(t, w.Body.String(), "upstream")
+	require.NotContains(t, w.Body.String(), "quota")
+}
+
+func TestOpenAIWSFailoverExhaustedCloseResponseIsGatewayOwned(t *testing.T) {
+	tests := []struct {
+		name       string
+		failover   *service.UpstreamFailoverError
+		wantStatus coderws.StatusCode
+	}{
+		{
+			name:       "nil failover",
+			failover:   nil,
+			wantStatus: coderws.StatusInternalError,
+		},
+		{
+			name:       "rate limited",
+			failover:   &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests},
+			wantStatus: coderws.StatusTryAgainLater,
+		},
+		{
+			name:       "forbidden",
+			failover:   &service.UpstreamFailoverError{StatusCode: http.StatusForbidden},
+			wantStatus: coderws.StatusPolicyViolation,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, reason := openAIWSFailoverExhaustedCloseResponse(tt.failover)
+
+			require.Equal(t, tt.wantStatus, status)
+			require.NotEmpty(t, reason)
+			require.NotContains(t, reason, "upstream")
+			require.NotContains(t, reason, "OpenAI")
+			require.NotContains(t, reason, "quota")
+		})
+	}
+}
+
 // Writer 已写后 ensureForwardErrorResponse 必须仍然把错误信息以 SSE
 // 形式追加给客户端（streamStarted 强制 true）。
 // 这是 case B 修复：旧实现遇到 Writer.Written 直接 return false，

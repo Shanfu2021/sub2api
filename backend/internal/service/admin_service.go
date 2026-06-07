@@ -221,6 +221,7 @@ type CreateGroupInput struct {
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
+	SchedulingStrategy          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
@@ -262,6 +263,7 @@ type UpdateGroupInput struct {
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
+	SchedulingStrategy          *string
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
@@ -2056,6 +2058,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.MCPXMLInject != nil {
 		mcpXMLInject = *input.MCPXMLInject
 	}
+	schedulingStrategy, err := normalizeGroupSchedulingStrategy(input.SchedulingStrategy)
+	if err != nil {
+		return nil, err
+	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -2115,6 +2121,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
+		SchedulingStrategy:              schedulingStrategy,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
@@ -2171,6 +2178,17 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 	}
 	return price
+}
+
+func normalizeGroupSchedulingStrategy(strategy string) (string, error) {
+	switch strings.TrimSpace(strategy) {
+	case "", GroupSchedulingStrategyWeighted:
+		return GroupSchedulingStrategyWeighted, nil
+	case GroupSchedulingStrategyStrictPriority:
+		return GroupSchedulingStrategyStrictPriority, nil
+	default:
+		return "", fmt.Errorf("invalid scheduling_strategy")
+	}
 }
 
 // validateFallbackGroup 校验降级分组的有效性
@@ -2359,6 +2377,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RequirePrivacySet != nil {
 		group.RequirePrivacySet = *input.RequirePrivacySet
+	}
+	if input.SchedulingStrategy != nil {
+		schedulingStrategy, err := normalizeGroupSchedulingStrategy(*input.SchedulingStrategy)
+		if err != nil {
+			return nil, err
+		}
+		group.SchedulingStrategy = schedulingStrategy
 	}
 	if input.DefaultMappedModel != nil {
 		group.DefaultMappedModel = *input.DefaultMappedModel
