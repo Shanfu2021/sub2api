@@ -1065,9 +1065,6 @@ func (s *AuthService) applyInvitationPostCreateDefaults(ctx context.Context, use
 }
 
 func (s *AuthService) applyRegistrationInvitationPostCreateDefaults(ctx context.Context, user *User, invitationResolution *registrationInvitationResolution) error {
-	if invitationResolution == nil || invitationResolution.ParentID == nil {
-		return nil
-	}
 	return s.applyInvitationPostCreateDefaults(ctx, user)
 }
 

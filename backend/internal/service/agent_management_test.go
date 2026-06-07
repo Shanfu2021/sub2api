@@ -254,6 +254,14 @@ func (r *agentManagementRepoStub) ListDirectChildrenWithSearch(_ context.Context
 	return out, &pagination.PaginationResult{Total: int64(len(out)), Page: params.Page, PageSize: params.Limit(), Pages: 1}, nil
 }
 
+func (r *agentManagementRepoStub) SearchUsageAPIKeys(context.Context, []int64, int64, string, int) ([]AgentUsageAPIKeySummary, error) {
+	return nil, nil
+}
+
+func (r *agentManagementRepoStub) SearchUsageAccounts(context.Context, []int64, string, int) ([]AgentUsageAccountSummary, error) {
+	return nil, nil
+}
+
 func paginateServiceSlice[T any](items []T, params pagination.PaginationParams) []T {
 	offset := params.Offset()
 	if offset >= len(items) {

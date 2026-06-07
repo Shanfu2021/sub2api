@@ -943,6 +943,47 @@ func TestRegisterWithAdminInvitationAppliesInviteGroupDefaults(t *testing.T) {
 	require.Empty(t, agentRepo.setEffectiveQuotas)
 }
 
+func TestOpenRegistrationAppliesRootAdminInviteGroupDefaults(t *testing.T) {
+	rootID := int64(1)
+	groupID := int64(20)
+	repo := &userRepoStub{
+		nextID: 110,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "false",
+	}, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+	)
+	agentRepo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: rootID, groupID: groupID, rateMultiplier: 2.4},
+	}
+	repo.onCreate = func(user *User) {
+		clone := *user
+		agentRepo.users[user.ID] = &clone
+	}
+	service.SetAgentManagementService(NewAgentManagementService(agentRepo, repo, nil, nil))
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "open-signup@test.com", "password", "", "", "", "")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
+	require.ElementsMatch(t, []int64{groupID}, user.AllowedGroups)
+	require.Equal(t, []agentGroupDelegationRecord{
+		{managerID: rootID, childID: user.ID, groupID: groupID, rateMultiplier: 2.4, canDelegate: false},
+	}, agentRepo.groupDelegations)
+	require.Equal(t, []struct {
+		userID  int64
+		groupID int64
+	}{{userID: user.ID, groupID: groupID}}, repo.addedAllowedGroups)
+	require.Empty(t, agentRepo.setEffectiveQuotas)
+}
+
 func TestRegisterWithAgentInvitationRollsBackCreatedUserWhenInviteDefaultsFail(t *testing.T) {
 	rootID := int64(1)
 	agentID := int64(2)
