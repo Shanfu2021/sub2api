@@ -900,6 +900,104 @@ func TestRegisterWithAgentInvitationAppliesInviteGroupDefaults(t *testing.T) {
 	}{{userID: agentID, concurrency: 8, rpm: 80}}, agentRepo.setEffectiveQuotas)
 }
 
+func TestRegisterWithOrdinaryInvitationCopiesInviterGroupsAndRates(t *testing.T) {
+	runRegisterWithNonManagerInvitationCopiesInviterGroupsAndRates(t, RoleUser)
+}
+
+func TestRegisterWithEnterpriseInvitationCopiesInviterGroupsAndRates(t *testing.T) {
+	runRegisterWithNonManagerInvitationCopiesInviterGroupsAndRates(t, RoleEnterprise)
+}
+
+func runRegisterWithNonManagerInvitationCopiesInviterGroupsAndRates(t *testing.T, inviterRole string) {
+	t.Helper()
+
+	rootID := int64(1)
+	agentID := int64(2)
+	inviterID := int64(3)
+	inviterGroupID := int64(20)
+	parentDefaultGroupID := int64(30)
+	unallowedRateGroupID := int64(40)
+	repo := &userRepoStub{
+		nextID: 111,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {
+				ID:     rootID,
+				Email:  "admin@test.com",
+				Role:   RoleAdmin,
+				Status: StatusActive,
+			},
+			"agent@test.com": {
+				ID:           agentID,
+				Email:        "agent@test.com",
+				Role:         RoleAgentLevel1,
+				ParentUserID: &rootID,
+				Status:       StatusActive,
+			},
+			"inviter@test.com": {
+				ID:            inviterID,
+				Email:         "inviter@test.com",
+				Role:          inviterRole,
+				ParentUserID:  &agentID,
+				Concurrency:   1,
+				RPMLimit:      1,
+				Status:        StatusActive,
+				AllowedGroups: []int64{inviterGroupID},
+			},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": inviterID}}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, nil, nil)
+	service.affiliateService = NewAffiliateService(affiliateRepo, service.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@test.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		&User{ID: inviterID, Email: "inviter@test.com", Role: inviterRole, ParentUserID: &agentID, Concurrency: 1, RPMLimit: 1, Status: StatusActive, AllowedGroups: []int64{inviterGroupID}},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {UserID: agentID, PoolConcurrency: 20, PoolRPM: 200, InviteDefaultConcurrency: 2, InviteDefaultRPM: 20},
+	}
+	agentRepo.inviteGroupDefaults = []agentGroupDelegationRecord{
+		{managerID: agentID, groupID: parentDefaultGroupID, rateMultiplier: 9.9},
+	}
+	groupRateRepo := &agentManagementUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			inviterID: {inviterGroupID: 1.7, unallowedRateGroupID: 7.7},
+		},
+	}
+	repo.onCreate = func(user *User) {
+		clone := *user
+		agentRepo.users[user.ID] = &clone
+	}
+	agentService := NewAgentManagementService(agentRepo, repo, nil, nil)
+	agentService.SetUserGroupRateRepository(groupRateRepo)
+	service.SetAgentManagementService(agentService)
+
+	_, user, err := service.RegisterWithVerification(context.Background(), "ordinary-copy@test.com", "password", "", "", "", "USERAFF")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, int64(111), user.ID)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, agentID, *user.ParentUserID)
+	require.ElementsMatch(t, []int64{inviterGroupID}, user.AllowedGroups)
+	require.Empty(t, agentRepo.groupDelegations)
+	require.Equal(t, []struct {
+		userID  int64
+		groupID int64
+	}{{userID: user.ID, groupID: inviterGroupID}}, repo.addedAllowedGroups)
+	require.InDelta(t, 1.7, groupRateRepo.rates[user.ID][inviterGroupID], 1e-12)
+	require.NotContains(t, groupRateRepo.rates[user.ID], parentDefaultGroupID)
+	require.NotContains(t, groupRateRepo.rates[user.ID], unallowedRateGroupID)
+	require.Equal(t, []struct {
+		userID      int64
+		concurrency int
+		rpm         int
+	}{{userID: agentID, concurrency: 17, rpm: 179}}, agentRepo.setEffectiveQuotas)
+}
+
 func TestRegisterWithAdminInvitationAppliesInviteGroupDefaults(t *testing.T) {
 	rootID := int64(1)
 	groupID := int64(20)

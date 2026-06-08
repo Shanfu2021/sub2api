@@ -82,6 +82,7 @@ type AuthService struct {
 type registrationInvitationResolution struct {
 	RedeemCode *RedeemCode
 	ParentID   *int64
+	InviterID  *int64
 	BindCode   string
 }
 
@@ -261,7 +262,7 @@ func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitat
 		} else {
 			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid as redeem code, trying affiliate code: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
 		}
-		_, parentID, ok, err := s.resolveAffiliateInvitation(ctx, invitationCode)
+		summary, parentID, ok, err := s.resolveAffiliateInvitation(ctx, invitationCode)
 		if err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Invalid affiliate invitation code: %s, error: %v", invitationCode, err)
 			return nil, ErrInvitationCodeInvalid
@@ -270,13 +271,16 @@ func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitat
 			return nil, ErrInvitationCodeInvalid
 		}
 		resolved.ParentID = parentID
+		if summary != nil && summary.UserID > 0 {
+			resolved.InviterID = &summary.UserID
+		}
 		if resolved.BindCode == "" {
 			resolved.BindCode = invitationCode
 		}
 		return resolved, nil
 	}
 
-	_, parentID, ok, err := s.resolveAffiliateInvitation(ctx, affiliateCode)
+	summary, parentID, ok, err := s.resolveAffiliateInvitation(ctx, affiliateCode)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Invalid affiliate invitation code: %s, error: %v", affiliateCode, err)
 		return nil, ErrInvitationCodeInvalid
@@ -288,6 +292,9 @@ func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitat
 		return nil, ErrInvitationCodeRequired
 	}
 	resolved.ParentID = parentID
+	if summary != nil && summary.UserID > 0 {
+		resolved.InviterID = &summary.UserID
+	}
 	return resolved, nil
 }
 
@@ -1065,7 +1072,75 @@ func (s *AuthService) applyInvitationPostCreateDefaults(ctx context.Context, use
 }
 
 func (s *AuthService) applyRegistrationInvitationPostCreateDefaults(ctx context.Context, user *User, invitationResolution *registrationInvitationResolution) error {
+	if invitationResolution != nil && invitationResolution.InviterID != nil && *invitationResolution.InviterID > 0 {
+		applied, err := s.applyNonManagerInviterGroups(ctx, user, *invitationResolution.InviterID)
+		if err != nil {
+			return err
+		}
+		if applied {
+			return s.recalculateRegistrationParentQuota(ctx, user)
+		}
+	}
 	return s.applyInvitationPostCreateDefaults(ctx, user)
+}
+
+func (s *AuthService) applyNonManagerInviterGroups(ctx context.Context, user *User, inviterID int64) (bool, error) {
+	if s == nil || user == nil || user.ID <= 0 || inviterID <= 0 || s.userRepo == nil {
+		return false, nil
+	}
+	inviter, err := s.userRepo.GetByID(ctx, inviterID)
+	if err != nil {
+		return false, err
+	}
+	if isAgentManagerRole(inviter.Role) {
+		return false, nil
+	}
+
+	groups := append([]int64(nil), inviter.AllowedGroups...)
+	groupSet := make(map[int64]struct{}, len(groups))
+	for _, groupID := range groups {
+		groupSet[groupID] = struct{}{}
+		if err := s.userRepo.AddGroupToAllowedGroups(ctx, user.ID, groupID); err != nil {
+			return false, err
+		}
+	}
+	user.AllowedGroups = append([]int64(nil), groups...)
+
+	if s.agentManagementService != nil && s.agentManagementService.userGroupRateRepo != nil {
+		rates, err := s.agentManagementService.userGroupRateRepo.GetByUserID(ctx, inviterID)
+		if err != nil {
+			return false, err
+		}
+		input := make(map[int64]*float64, len(rates))
+		for groupID, rate := range rates {
+			if _, ok := groupSet[groupID]; !ok {
+				continue
+			}
+			value := rate
+			input[groupID] = &value
+		}
+		if err := s.agentManagementService.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input); err != nil {
+			return false, err
+		}
+	}
+	if s.agentManagementService != nil {
+		s.agentManagementService.invalidateUser(ctx, user.ID)
+	}
+	return true, nil
+}
+
+func (s *AuthService) recalculateRegistrationParentQuota(ctx context.Context, user *User) error {
+	if s == nil || user == nil || user.ParentUserID == nil || s.userRepo == nil || s.agentManagementService == nil {
+		return nil
+	}
+	parent, err := s.userRepo.GetByID(ctx, *user.ParentUserID)
+	if err != nil {
+		return err
+	}
+	if !isAgentManagerRole(parent.Role) || parent.Role == RoleAdmin {
+		return nil
+	}
+	return s.agentManagementService.recalculateAgentEffectiveQuota(ctx, parent.ID)
 }
 
 func (s *AuthService) resolveSignupGrantPlan(ctx context.Context, signupSource string) signupGrantPlan {
