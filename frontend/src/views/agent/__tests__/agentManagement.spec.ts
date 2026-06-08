@@ -675,6 +675,15 @@ describe('agent management pages', () => {
     expect(wrapper.text()).not.toContain('admin.usage.cleanup.button')
   })
 
+  it('hides API key and account name filters on agent usage', async () => {
+    const wrapper = mountAgentView(AgentUsageView, 'agent_level1')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="usage-filter-api-key"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="usage-filter-account"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.usage.userFilter')
+  })
+
   it('renders direct child balance as read-only context', async () => {
     const wrapper = mountAgentView(DirectUsersView)
     await flushPromises()

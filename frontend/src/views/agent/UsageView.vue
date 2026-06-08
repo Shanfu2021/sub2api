@@ -30,6 +30,8 @@
         :exporting="exporting"
         :model-options="modelNameOptions"
         :show-cleanup="false"
+        :show-api-key-filter="false"
+        :show-account-filter="false"
         :search-users-fn="agentManagementAPI.searchUsageUsers"
         :search-api-keys-fn="agentManagementAPI.searchUsageApiKeys"
         :search-accounts-fn="agentManagementAPI.searchUsageAccounts"

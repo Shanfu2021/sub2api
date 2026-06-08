@@ -42,7 +42,7 @@
         </div>
 
         <!-- API Key Search -->
-        <div ref="apiKeySearchRef" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[240px]">
+        <div v-if="showApiKeyFilter" ref="apiKeySearchRef" data-test="usage-filter-api-key" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[240px]">
           <label class="input-label">{{ t('usage.apiKeyFilter') }}</label>
           <input
             v-model="apiKeyKeyword"
@@ -85,7 +85,7 @@
         </div>
 
         <!-- Account Filter -->
-        <div ref="accountSearchRef" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[220px]">
+        <div v-if="showAccountFilter" ref="accountSearchRef" data-test="usage-filter-account" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[220px]">
           <label class="input-label">{{ t('admin.usage.account') }}</label>
           <input
             v-model="accountKeyword"
@@ -188,6 +188,8 @@ interface Props {
   showActions?: boolean
   showCleanup?: boolean
   showExport?: boolean
+  showApiKeyFilter?: boolean
+  showAccountFilter?: boolean
   modelOptions?: string[]
   searchUsersFn?: UserSearchFn
   searchApiKeysFn?: ApiKeySearchFn
@@ -198,7 +200,9 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   showActions: true,
   showCleanup: true,
-  showExport: true
+  showExport: true,
+  showApiKeyFilter: true,
+  showAccountFilter: true
 })
 const emit = defineEmits([
   'update:modelValue',
@@ -211,6 +215,8 @@ const emit = defineEmits([
 
 const { t } = useI18n()
 const filters = toRef(props, 'modelValue')
+const showApiKeyFilter = computed(() => props.showApiKeyFilter)
+const showAccountFilter = computed(() => props.showAccountFilter)
 
 const userSearchRef = ref<HTMLElement | null>(null)
 const apiKeySearchRef = ref<HTMLElement | null>(null)
