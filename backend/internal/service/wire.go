@@ -45,6 +45,64 @@ func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiToke
 	return NewOAuthRefreshAPI(accountRepo, tokenCache)
 }
 
+// ProvideAuthService wires AuthService and attaches agent-management registration quota checks.
+func ProvideAuthService(
+	entClient *dbent.Client,
+	userRepo UserRepository,
+	redeemRepo RedeemCodeRepository,
+	refreshTokenCache RefreshTokenCache,
+	cfg *config.Config,
+	settingService *SettingService,
+	emailService *EmailService,
+	turnstileService *TurnstileService,
+	emailQueueService *EmailQueueService,
+	promoService *PromoService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
+	affiliateService *AffiliateService,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	agentManagementService *AgentManagementService,
+) *AuthService {
+	svc := NewAuthService(
+		entClient,
+		userRepo,
+		redeemRepo,
+		refreshTokenCache,
+		cfg,
+		settingService,
+		emailService,
+		turnstileService,
+		emailQueueService,
+		promoService,
+		defaultSubAssigner,
+		affiliateService,
+		userPlatformQuotaRepo,
+	)
+	svc.SetAgentManagementService(agentManagementService)
+	return svc
+}
+
+func ProvideAgentManagementService(
+	repo AgentManagementRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	enterpriseCleanupRepo AgentEnterpriseDeletionCleanupRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	settingRepo SettingRepository,
+	usageService *UsageService,
+) *AgentManagementService {
+	svc := NewAgentManagementService(repo, userRepo, groupRepo, authCacheInvalidator)
+	svc.SetEnterpriseCleanupRepository(enterpriseCleanupRepo)
+	svc.SetUserGroupRateRepository(userGroupRateRepo)
+	svc.SetSettingRepository(settingRepo)
+	svc.SetUsageService(usageService)
+	return svc
+}
+
+func ProvideAgentEnterpriseDeletionCleanupRepository(repo EnterpriseManagementRepository) AgentEnterpriseDeletionCleanupRepository {
+	return repo
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -502,8 +560,10 @@ func ProvideAPIKeyService(
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
-	NewAuthService,
+	ProvideAuthService,
 	NewUserService,
+	ProvideAgentManagementService,
+	ProvideAgentEnterpriseDeletionCleanupRepository,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
 	NewGroupService,
@@ -586,6 +646,8 @@ var ProviderSet = wire.NewSet(
 	NewModelPricingResolver,
 	NewContentModerationService,
 	NewAffiliateService,
+	NewEnterpriseManagementService,
+	NewPurchaseInfoService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,

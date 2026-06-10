@@ -70,6 +70,10 @@ func (s *rpmOverrideRepoStub) GetRPMOverrideByUserAndGroup(_ context.Context, _,
 	return s.override, nil
 }
 
+func (s *rpmOverrideRepoStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
+}
+
 func newBillingServiceForRPM(t *testing.T, cache UserRPMCache, rateRepo UserGroupRateRepository) *BillingCacheService {
 	t.Helper()
 	// 用 nil BillingCache 走 "无缓存" 分支，避免 CheckBillingEligibility 副作用。
@@ -195,6 +199,20 @@ func TestBillingCacheService_CheckRPM_UserLevelFallbackWhenGroupUnlimited(t *tes
 
 	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userGroupCalls), "group 未设限时不应 INCR user-group 键")
 	require.EqualValues(t, 3, atomic.LoadInt32(&cache.userCalls))
+}
+
+func TestBillingCacheService_CheckRPM_NegativeUserLimitRejectsWithoutCounting(t *testing.T) {
+	cache := &userRPMCacheStub{}
+	repo := &rpmOverrideRepoStub{override: nil}
+	svc := newBillingServiceForRPM(t, cache, repo)
+
+	user := &User{ID: 1, RPMLimit: -1}
+	group := &Group{ID: 10, RPMLimit: 0}
+
+	require.ErrorIs(t, svc.checkRPM(context.Background(), user, group), ErrUserRPMExceeded)
+	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userGroupCalls))
+	require.EqualValues(t, 0, atomic.LoadInt32(&cache.userCalls))
+	require.EqualValues(t, 0, atomic.LoadInt32(&repo.calls))
 }
 
 func TestBillingCacheService_CheckRPM_NoLimitsConfiguredIsNoop(t *testing.T) {

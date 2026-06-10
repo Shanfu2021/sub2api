@@ -42,7 +42,7 @@
         </div>
 
         <!-- API Key Search -->
-        <div ref="apiKeySearchRef" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[240px]">
+        <div v-if="showApiKeyFilter" ref="apiKeySearchRef" data-test="usage-filter-api-key" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[240px]">
           <label class="input-label">{{ t('usage.apiKeyFilter') }}</label>
           <input
             v-model="apiKeyKeyword"
@@ -85,7 +85,7 @@
         </div>
 
         <!-- Account Filter -->
-        <div ref="accountSearchRef" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[220px]">
+        <div v-if="showAccountFilter" ref="accountSearchRef" data-test="usage-filter-account" class="usage-filter-dropdown relative w-full sm:w-auto sm:min-w-[220px]">
           <label class="input-label">{{ t('admin.usage.account') }}</label>
           <input
             v-model="accountKeyword"
@@ -156,10 +156,10 @@
           {{ t('common.reset') }}
         </button>
         <slot name="after-reset" />
-        <button type="button" @click="$emit('cleanup')" class="btn btn-danger">
+        <button v-if="showCleanup" type="button" @click="$emit('cleanup')" class="btn btn-danger">
           {{ t('admin.usage.cleanup.button') }}
         </button>
-        <button type="button" @click="$emit('export')" :disabled="exporting" class="btn btn-primary">
+        <button v-if="showExport" type="button" @click="$emit('export')" :disabled="exporting" class="btn btn-primary">
           {{ t('usage.exportExcel') }}
         </button>
       </div>
@@ -175,6 +175,10 @@ import Select, { type SelectOption } from '@/components/common/Select.vue'
 import type { SimpleApiKey, SimpleUser } from '@/api/admin/usage'
 
 type ModelValue = Record<string, any>
+type UserSearchFn = (keyword: string) => Promise<SimpleUser[]>
+type ApiKeySearchFn = (userId?: number, keyword?: string) => Promise<SimpleApiKey[]>
+type AccountSearchFn = (keyword: string) => Promise<SimpleAccount[]>
+type GroupLoadFn = () => Promise<SelectOption[]>
 
 interface Props {
   modelValue: ModelValue
@@ -182,11 +186,23 @@ interface Props {
   startDate: string
   endDate: string
   showActions?: boolean
+  showCleanup?: boolean
+  showExport?: boolean
+  showApiKeyFilter?: boolean
+  showAccountFilter?: boolean
   modelOptions?: string[]
+  searchUsersFn?: UserSearchFn
+  searchApiKeysFn?: ApiKeySearchFn
+  searchAccountsFn?: AccountSearchFn
+  loadGroupsFn?: GroupLoadFn
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  showActions: true
+  showActions: true,
+  showCleanup: true,
+  showExport: true,
+  showApiKeyFilter: true,
+  showAccountFilter: true
 })
 const emit = defineEmits([
   'update:modelValue',
@@ -199,6 +215,8 @@ const emit = defineEmits([
 
 const { t } = useI18n()
 const filters = toRef(props, 'modelValue')
+const showApiKeyFilter = computed(() => props.showApiKeyFilter)
+const showAccountFilter = computed(() => props.showAccountFilter)
 
 const userSearchRef = ref<HTMLElement | null>(null)
 const apiKeySearchRef = ref<HTMLElement | null>(null)
@@ -259,7 +277,9 @@ const debounceUserSearch = () => {
       return
     }
     try {
-      const results = await adminAPI.usage.searchUsers(userKeyword.value)
+      const results = props.searchUsersFn
+        ? await props.searchUsersFn(userKeyword.value)
+        : await adminAPI.usage.searchUsers(userKeyword.value)
       userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
     } catch {
       userResults.value = []
@@ -271,10 +291,14 @@ const debounceApiKeySearch = () => {
   if (apiKeySearchTimeout) clearTimeout(apiKeySearchTimeout)
   apiKeySearchTimeout = setTimeout(async () => {
     try {
-      apiKeyResults.value = await adminAPI.usage.searchApiKeys(
-        filters.value.user_id,
-        apiKeyKeyword.value || ''
-      )
+      if (props.searchApiKeysFn) {
+        apiKeyResults.value = await props.searchApiKeysFn(filters.value.user_id, apiKeyKeyword.value || '')
+      } else {
+        apiKeyResults.value = await adminAPI.usage.searchApiKeys(
+          filters.value.user_id,
+          apiKeyKeyword.value || ''
+        )
+      }
     } catch {
       apiKeyResults.value = []
     }
@@ -289,7 +313,9 @@ const selectUser = async (u: SimpleUser) => {
 
   // Auto-load API keys for this user
   try {
-    apiKeyResults.value = await adminAPI.usage.searchApiKeys(u.id, '')
+    apiKeyResults.value = props.searchApiKeysFn
+      ? await props.searchApiKeysFn(u.id, '')
+      : await adminAPI.usage.searchApiKeys(u.id, '')
   } catch {
     apiKeyResults.value = []
   }
@@ -333,8 +359,12 @@ const debounceAccountSearch = () => {
       return
     }
     try {
-      const res = await adminAPI.accounts.list(1, 20, { search: accountKeyword.value })
-      accountResults.value = res.items.map((a) => ({ id: a.id, name: a.name }))
+      if (props.searchAccountsFn) {
+        accountResults.value = await props.searchAccountsFn(accountKeyword.value)
+      } else {
+        const res = await adminAPI.accounts.list(1, 20, { search: accountKeyword.value })
+        accountResults.value = res.items.map((a) => ({ id: a.id, name: a.name }))
+      }
     } catch {
       accountResults.value = []
     }
@@ -426,8 +456,12 @@ watch(
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
   try {
-    const gs = await adminAPI.groups.list(1, 1000)
-    groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))
+    if (props.loadGroupsFn) {
+      groupOptions.value.push(...await props.loadGroupsFn())
+    } else {
+      const gs = await adminAPI.groups.list(1, 1000)
+      groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))
+    }
   } catch {
     // Ignore filter option loading errors (page still usable)
   }

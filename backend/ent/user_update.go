@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -108,6 +109,33 @@ func (_u *UserUpdate) SetNillableRole(v *string) *UserUpdate {
 	return _u
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (_u *UserUpdate) SetParentUserID(v int64) *UserUpdate {
+	_u.mutation.ResetParentUserID()
+	_u.mutation.SetParentUserID(v)
+	return _u
+}
+
+// SetNillableParentUserID sets the "parent_user_id" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableParentUserID(v *int64) *UserUpdate {
+	if v != nil {
+		_u.SetParentUserID(*v)
+	}
+	return _u
+}
+
+// AddParentUserID adds value to the "parent_user_id" field.
+func (_u *UserUpdate) AddParentUserID(v int64) *UserUpdate {
+	_u.mutation.AddParentUserID(v)
+	return _u
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (_u *UserUpdate) ClearParentUserID() *UserUpdate {
+	_u.mutation.ClearParentUserID()
+	return _u
+}
+
 // SetBalance sets the "balance" field.
 func (_u *UserUpdate) SetBalance(v float64) *UserUpdate {
 	_u.mutation.ResetBalance()
@@ -147,6 +175,48 @@ func (_u *UserUpdate) SetNillableConcurrency(v *int) *UserUpdate {
 // AddConcurrency adds value to the "concurrency" field.
 func (_u *UserUpdate) AddConcurrency(v int) *UserUpdate {
 	_u.mutation.AddConcurrency(v)
+	return _u
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (_u *UserUpdate) SetAllocatedConcurrency(v int) *UserUpdate {
+	_u.mutation.ResetAllocatedConcurrency()
+	_u.mutation.SetAllocatedConcurrency(v)
+	return _u
+}
+
+// SetNillableAllocatedConcurrency sets the "allocated_concurrency" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableAllocatedConcurrency(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetAllocatedConcurrency(*v)
+	}
+	return _u
+}
+
+// AddAllocatedConcurrency adds value to the "allocated_concurrency" field.
+func (_u *UserUpdate) AddAllocatedConcurrency(v int) *UserUpdate {
+	_u.mutation.AddAllocatedConcurrency(v)
+	return _u
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (_u *UserUpdate) SetAllocatedRpm(v int) *UserUpdate {
+	_u.mutation.ResetAllocatedRpm()
+	_u.mutation.SetAllocatedRpm(v)
+	return _u
+}
+
+// SetNillableAllocatedRpm sets the "allocated_rpm" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableAllocatedRpm(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetAllocatedRpm(*v)
+	}
+	return _u
+}
+
+// AddAllocatedRpm adds value to the "allocated_rpm" field.
+func (_u *UserUpdate) AddAllocatedRpm(v int) *UserUpdate {
+	_u.mutation.AddAllocatedRpm(v)
 	return _u
 }
 
@@ -516,6 +586,21 @@ func (_u *UserUpdate) AddUsageLogs(v ...*UsageLog) *UserUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (_u *UserUpdate) AddAgentIncomeUsageLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// AddAgentIncomeUsageLogs adds the "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdate) AddAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAgentIncomeUsageLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_u *UserUpdate) AddAttributeValueIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAttributeValueIDs(ids...)
@@ -589,6 +674,36 @@ func (_u *UserUpdate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserUpda
 		ids[i] = v[i].ID
 	}
 	return _u.AddPendingAuthSessionIDs(ids...)
+}
+
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdate) AddManagedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddManagedGroupDelegations adds the "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) AddManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddManagedGroupDelegationIDs(ids...)
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdate) AddReceivedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddReceivedGroupDelegations adds the "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) AddReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddReceivedGroupDelegationIDs(ids...)
 }
 
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
@@ -758,6 +873,27 @@ func (_u *UserUpdate) RemoveUsageLogs(v ...*UsageLog) *UserUpdate {
 	return _u.RemoveUsageLogIDs(ids...)
 }
 
+// ClearAgentIncomeUsageLogs clears all "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdate) ClearAgentIncomeUsageLogs() *UserUpdate {
+	_u.mutation.ClearAgentIncomeUsageLogs()
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogIDs removes the "agent_income_usage_logs" edge to UsageLog entities by IDs.
+func (_u *UserUpdate) RemoveAgentIncomeUsageLogIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogs removes "agent_income_usage_logs" edges to UsageLog entities.
+func (_u *UserUpdate) RemoveAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAgentIncomeUsageLogIDs(ids...)
+}
+
 // ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
 func (_u *UserUpdate) ClearAttributeValues() *UserUpdate {
 	_u.mutation.ClearAttributeValues()
@@ -861,6 +997,48 @@ func (_u *UserUpdate) RemovePendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearManagedGroupDelegations clears all "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) ClearManagedGroupDelegations() *UserUpdate {
+	_u.mutation.ClearManagedGroupDelegations()
+	return _u
+}
+
+// RemoveManagedGroupDelegationIDs removes the "managed_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdate) RemoveManagedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveManagedGroupDelegations removes "managed_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdate) RemoveManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveManagedGroupDelegationIDs(ids...)
+}
+
+// ClearReceivedGroupDelegations clears all "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdate) ClearReceivedGroupDelegations() *UserUpdate {
+	_u.mutation.ClearReceivedGroupDelegations()
+	return _u
+}
+
+// RemoveReceivedGroupDelegationIDs removes the "received_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdate) RemoveReceivedGroupDelegationIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveReceivedGroupDelegations removes "received_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdate) RemoveReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveReceivedGroupDelegationIDs(ids...)
 }
 
 // ClearPlatformQuotas clears all "platform_quotas" edges to the UserPlatformQuota entity.
@@ -991,6 +1169,15 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ParentUserID(); ok {
+		_spec.SetField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedParentUserID(); ok {
+		_spec.AddField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.ParentUserIDCleared() {
+		_spec.ClearField(user.FieldParentUserID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 	}
@@ -1002,6 +1189,18 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(user.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedConcurrency(); ok {
+		_spec.SetField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedConcurrency(); ok {
+		_spec.AddField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedRpm(); ok {
+		_spec.SetField(user.FieldAllocatedRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedRpm(); ok {
+		_spec.AddField(user.FieldAllocatedRpm, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -1399,6 +1598,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAgentIncomeUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentIncomeUsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.AttributeValuesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1624,6 +1868,96 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedManagedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ManagedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedReceivedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ReceivedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.PlatformQuotasCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1757,6 +2091,33 @@ func (_u *UserUpdateOne) SetNillableRole(v *string) *UserUpdateOne {
 	return _u
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (_u *UserUpdateOne) SetParentUserID(v int64) *UserUpdateOne {
+	_u.mutation.ResetParentUserID()
+	_u.mutation.SetParentUserID(v)
+	return _u
+}
+
+// SetNillableParentUserID sets the "parent_user_id" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableParentUserID(v *int64) *UserUpdateOne {
+	if v != nil {
+		_u.SetParentUserID(*v)
+	}
+	return _u
+}
+
+// AddParentUserID adds value to the "parent_user_id" field.
+func (_u *UserUpdateOne) AddParentUserID(v int64) *UserUpdateOne {
+	_u.mutation.AddParentUserID(v)
+	return _u
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (_u *UserUpdateOne) ClearParentUserID() *UserUpdateOne {
+	_u.mutation.ClearParentUserID()
+	return _u
+}
+
 // SetBalance sets the "balance" field.
 func (_u *UserUpdateOne) SetBalance(v float64) *UserUpdateOne {
 	_u.mutation.ResetBalance()
@@ -1796,6 +2157,48 @@ func (_u *UserUpdateOne) SetNillableConcurrency(v *int) *UserUpdateOne {
 // AddConcurrency adds value to the "concurrency" field.
 func (_u *UserUpdateOne) AddConcurrency(v int) *UserUpdateOne {
 	_u.mutation.AddConcurrency(v)
+	return _u
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (_u *UserUpdateOne) SetAllocatedConcurrency(v int) *UserUpdateOne {
+	_u.mutation.ResetAllocatedConcurrency()
+	_u.mutation.SetAllocatedConcurrency(v)
+	return _u
+}
+
+// SetNillableAllocatedConcurrency sets the "allocated_concurrency" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableAllocatedConcurrency(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetAllocatedConcurrency(*v)
+	}
+	return _u
+}
+
+// AddAllocatedConcurrency adds value to the "allocated_concurrency" field.
+func (_u *UserUpdateOne) AddAllocatedConcurrency(v int) *UserUpdateOne {
+	_u.mutation.AddAllocatedConcurrency(v)
+	return _u
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (_u *UserUpdateOne) SetAllocatedRpm(v int) *UserUpdateOne {
+	_u.mutation.ResetAllocatedRpm()
+	_u.mutation.SetAllocatedRpm(v)
+	return _u
+}
+
+// SetNillableAllocatedRpm sets the "allocated_rpm" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableAllocatedRpm(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetAllocatedRpm(*v)
+	}
+	return _u
+}
+
+// AddAllocatedRpm adds value to the "allocated_rpm" field.
+func (_u *UserUpdateOne) AddAllocatedRpm(v int) *UserUpdateOne {
+	_u.mutation.AddAllocatedRpm(v)
 	return _u
 }
 
@@ -2165,6 +2568,21 @@ func (_u *UserUpdateOne) AddUsageLogs(v ...*UsageLog) *UserUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (_u *UserUpdateOne) AddAgentIncomeUsageLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// AddAgentIncomeUsageLogs adds the "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdateOne) AddAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAgentIncomeUsageLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_u *UserUpdateOne) AddAttributeValueIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAttributeValueIDs(ids...)
@@ -2238,6 +2656,36 @@ func (_u *UserUpdateOne) AddPendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.AddPendingAuthSessionIDs(ids...)
+}
+
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdateOne) AddManagedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddManagedGroupDelegations adds the "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) AddManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddManagedGroupDelegationIDs(ids...)
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_u *UserUpdateOne) AddReceivedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// AddReceivedGroupDelegations adds the "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) AddReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddReceivedGroupDelegationIDs(ids...)
 }
 
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
@@ -2407,6 +2855,27 @@ func (_u *UserUpdateOne) RemoveUsageLogs(v ...*UsageLog) *UserUpdateOne {
 	return _u.RemoveUsageLogIDs(ids...)
 }
 
+// ClearAgentIncomeUsageLogs clears all "agent_income_usage_logs" edges to the UsageLog entity.
+func (_u *UserUpdateOne) ClearAgentIncomeUsageLogs() *UserUpdateOne {
+	_u.mutation.ClearAgentIncomeUsageLogs()
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogIDs removes the "agent_income_usage_logs" edge to UsageLog entities by IDs.
+func (_u *UserUpdateOne) RemoveAgentIncomeUsageLogIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveAgentIncomeUsageLogIDs(ids...)
+	return _u
+}
+
+// RemoveAgentIncomeUsageLogs removes "agent_income_usage_logs" edges to UsageLog entities.
+func (_u *UserUpdateOne) RemoveAgentIncomeUsageLogs(v ...*UsageLog) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAgentIncomeUsageLogIDs(ids...)
+}
+
 // ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
 func (_u *UserUpdateOne) ClearAttributeValues() *UserUpdateOne {
 	_u.mutation.ClearAttributeValues()
@@ -2510,6 +2979,48 @@ func (_u *UserUpdateOne) RemovePendingAuthSessions(v ...*PendingAuthSession) *Us
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearManagedGroupDelegations clears all "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) ClearManagedGroupDelegations() *UserUpdateOne {
+	_u.mutation.ClearManagedGroupDelegations()
+	return _u
+}
+
+// RemoveManagedGroupDelegationIDs removes the "managed_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdateOne) RemoveManagedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveManagedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveManagedGroupDelegations removes "managed_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdateOne) RemoveManagedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveManagedGroupDelegationIDs(ids...)
+}
+
+// ClearReceivedGroupDelegations clears all "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_u *UserUpdateOne) ClearReceivedGroupDelegations() *UserUpdateOne {
+	_u.mutation.ClearReceivedGroupDelegations()
+	return _u
+}
+
+// RemoveReceivedGroupDelegationIDs removes the "received_group_delegations" edge to AgentGroupDelegation entities by IDs.
+func (_u *UserUpdateOne) RemoveReceivedGroupDelegationIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveReceivedGroupDelegationIDs(ids...)
+	return _u
+}
+
+// RemoveReceivedGroupDelegations removes "received_group_delegations" edges to AgentGroupDelegation entities.
+func (_u *UserUpdateOne) RemoveReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveReceivedGroupDelegationIDs(ids...)
 }
 
 // ClearPlatformQuotas clears all "platform_quotas" edges to the UserPlatformQuota entity.
@@ -2670,6 +3181,15 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ParentUserID(); ok {
+		_spec.SetField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedParentUserID(); ok {
+		_spec.AddField(user.FieldParentUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.ParentUserIDCleared() {
+		_spec.ClearField(user.FieldParentUserID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 	}
@@ -2681,6 +3201,18 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedConcurrency(); ok {
 		_spec.AddField(user.FieldConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedConcurrency(); ok {
+		_spec.SetField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedConcurrency(); ok {
+		_spec.AddField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllocatedRpm(); ok {
+		_spec.SetField(user.FieldAllocatedRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAllocatedRpm(); ok {
+		_spec.AddField(user.FieldAllocatedRpm, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -3078,6 +3610,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAgentIncomeUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.AgentIncomeUsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentIncomeUsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.AttributeValuesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -3296,6 +3873,96 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedManagedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ManagedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ManagedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedReceivedGroupDelegationsIDs(); len(nodes) > 0 && !_u.mutation.ReceivedGroupDelegationsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ReceivedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

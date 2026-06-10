@@ -151,6 +151,39 @@ func (r *userGroupRateRepository) GetByUserAndGroup(ctx context.Context, userID,
 	return &v, nil
 }
 
+// GetDelegatedRateByUserAndGroup 获取直属上级传播给用户的专属分组倍率。
+func (r *userGroupRateRepository) GetDelegatedRateByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
+	query := `
+		SELECT agd.rate_multiplier
+		FROM agent_group_delegations agd
+		JOIN users u
+			ON u.id = agd.child_user_id
+			AND u.deleted_at IS NULL
+			AND u.parent_user_id = agd.manager_user_id
+		JOIN groups g
+			ON g.id = agd.group_id
+			AND g.deleted_at IS NULL
+			AND g.status = $3
+			AND g.is_exclusive = TRUE
+		WHERE agd.child_user_id = $1
+			AND agd.group_id = $2
+			AND agd.deleted_at IS NULL
+	`
+	var rate sql.NullFloat64
+	err := scanSingleRow(ctx, r.sql, query, []any{userID, groupID, service.StatusActive}, &rate)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !rate.Valid {
+		return nil, nil
+	}
+	v := rate.Float64
+	return &v, nil
+}
+
 // GetRPMOverrideByUserAndGroup 获取用户在特定分组的 rpm_override（NULL 返回 nil）
 func (r *userGroupRateRepository) GetRPMOverrideByUserAndGroup(ctx context.Context, userID, groupID int64) (*int, error) {
 	query := `SELECT rpm_override FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = $2`

@@ -100,6 +100,18 @@ func (UsageLog) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			Default(1).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+		field.Int64("agent_owner_user_id").
+			Optional().
+			Nillable(),
+		field.Float("agent_user_rate_multiplier").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+		field.Float("agent_cost_rate_multiplier").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+		field.Float("agent_income").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// account_rate_multiplier: 账号计费倍率快照（NULL 表示按 1.0 处理）
 		field.Float("account_rate_multiplier").
@@ -187,6 +199,10 @@ func (UsageLog) Edges() []ent.Edge {
 			Ref("usage_logs").
 			Field("subscription_id").
 			Unique(),
+		edge.From("agent_owner", User.Type).
+			Ref("agent_income_usage_logs").
+			Field("agent_owner_user_id").
+			Unique(),
 	}
 }
 
@@ -197,6 +213,7 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("api_key_id"),
 		index.Fields("account_id"),
 		index.Fields("group_id"),
+		index.Fields("agent_owner_user_id", "created_at"),
 		index.Fields("subscription_id"),
 		index.Fields("created_at"),
 		index.Fields("model"),

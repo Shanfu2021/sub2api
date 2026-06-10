@@ -10,6 +10,8 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	userent "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -30,6 +32,8 @@ func (s *UserRepoSuite) SetupTest() {
 	// 清理测试数据，确保每个测试从干净状态开始
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM usage_cleanup_tasks")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_group_rate_multipliers")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
@@ -111,6 +115,31 @@ func (s *UserRepoSuite) TestCreate() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("create@test.com", got.Email)
+}
+
+func (s *UserRepoSuite) TestAgentPromotionFieldsRoundTrip() {
+	parent := s.mustCreateUser(&service.User{
+		Email:       "parent-agent@test.com",
+		Role:        service.RoleAgentLevel1,
+		Concurrency: 50,
+		RPMLimit:    500,
+	})
+	child := s.mustCreateUser(&service.User{
+		Email:                "child-user@test.com",
+		Role:                 service.RoleUser,
+		ParentUserID:         &parent.ID,
+		AllocatedConcurrency: 7,
+		AllocatedRPM:         70,
+		Concurrency:          7,
+		RPMLimit:             70,
+	})
+
+	got, err := s.repo.GetByID(s.ctx, child.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.ParentUserID)
+	s.Require().Equal(parent.ID, *got.ParentUserID)
+	s.Require().Equal(7, got.AllocatedConcurrency)
+	s.Require().Equal(70, got.AllocatedRPM)
 }
 
 func (s *UserRepoSuite) TestGetByID_NotFound() {
@@ -225,6 +254,40 @@ func (s *UserRepoSuite) TestDeleteRemovesAuthIdentitiesAndChannels() {
 	channelCount, err := s.client.AuthIdentityChannel.Query().Where(authidentitychannel.IdentityIDEQ(identity.ID)).Count(s.ctx)
 	s.Require().NoError(err)
 	s.Require().Zero(channelCount)
+}
+
+func (s *UserRepoSuite) TestHardDeletePhysicallyDeletesAndCascadesUserRelations() {
+	user := s.mustCreateUser(&service.User{Email: "hard-delete@test.com"})
+	group := s.mustCreateGroup("hard-delete-group")
+
+	_, err := s.client.UserAllowedGroup.Create().
+		SetUserID(user.ID).
+		SetGroupID(group.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	_, err = integrationDB.ExecContext(s.ctx, `
+		INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+		VALUES ($1, $2, 1.25, NOW(), NOW())`, user.ID, group.ID)
+	s.Require().NoError(err)
+
+	err = s.repo.HardDelete(s.ctx, user.ID)
+	s.Require().NoError(err)
+
+	exists, err := s.client.User.Query().
+		Where(userent.IDEQ(user.ID)).
+		Exist(mixins.SkipSoftDelete(s.ctx))
+	s.Require().NoError(err)
+	s.Require().False(exists, "hard delete should physically remove the user row")
+
+	allowedCount, err := integrationDB.QueryContext(s.ctx, `SELECT 1 FROM user_allowed_groups WHERE user_id = $1`, user.ID)
+	s.Require().NoError(err)
+	s.Require().False(allowedCount.Next())
+	s.Require().NoError(allowedCount.Close())
+
+	rateRows, err := integrationDB.QueryContext(s.ctx, `SELECT 1 FROM user_group_rate_multipliers WHERE user_id = $1`, user.ID)
+	s.Require().NoError(err)
+	s.Require().False(rateRows.Next())
+	s.Require().NoError(rateRows.Close())
 }
 
 // --- List / ListWithFilters ---

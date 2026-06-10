@@ -55,29 +55,6 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 	}, nil
 }
 
-func (s *AuthService) validateOAuthRegistrationInvitation(ctx context.Context, invitationCode string) (*RedeemCode, error) {
-	if s == nil || s.settingService == nil || !s.settingService.IsInvitationCodeEnabled(ctx) {
-		return nil, nil
-	}
-	if s.redeemRepo == nil && s.oauthEmailFlowClient(ctx) == nil {
-		return nil, ErrServiceUnavailable
-	}
-
-	invitationCode = strings.TrimSpace(invitationCode)
-	if invitationCode == "" {
-		return nil, ErrInvitationCodeRequired
-	}
-
-	redeemCode, err := s.loadOAuthRegistrationInvitation(ctx, invitationCode)
-	if err != nil {
-		return nil, ErrInvitationCodeInvalid
-	}
-	if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-		return nil, ErrInvitationCodeInvalid
-	}
-	return redeemCode, nil
-}
-
 // VerifyOAuthEmailCode verifies the locally entered email verification code for
 // third-party signup and binding flows. This is intentionally independent from
 // the global registration email verification toggle.
@@ -127,7 +104,8 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, err
 	}
 
-	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, "", false)
+	if err != nil {
 		slog.Error("oauth email register: invitation failed", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
@@ -148,16 +126,31 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 
 	signupSource = normalizeOAuthSignupSource(signupSource)
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+	var defaultRPMLimit int
+	if s.settingService != nil {
+		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+	}
+	defaultConcurrency := grantPlan.Concurrency
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+		if err != nil {
+			return nil, nil, err
+		}
+		defaultConcurrency = quota.Concurrency
+		defaultRPMLimit = quota.RPM
+	}
 
 	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
+		Concurrency:  defaultConcurrency,
+		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
+	user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
@@ -166,11 +159,18 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+		return nil, nil, err
+	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
+	}
+	if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+		s.bindOAuthAffiliate(ctx, user.ID, invitationResolution.BindCode)
 	}
 	return tokenPair, user, nil
 }
@@ -207,7 +207,8 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if strings.TrimSpace(password) == "" {
 		return nil, nil, infraerrors.BadRequest("PASSWORD_REQUIRED", "password is required")
 	}
-	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, "", false)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -230,16 +231,26 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if s.settingService != nil {
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
+	defaultConcurrency := grantPlan.Concurrency
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+		if err != nil {
+			return nil, nil, err
+		}
+		defaultConcurrency = quota.Concurrency
+		defaultRPMLimit = quota.RPM
+	}
 	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
+		Concurrency:  defaultConcurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
+	user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
@@ -247,11 +258,18 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		}
 		return nil, nil, ErrServiceUnavailable
 	}
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+		return nil, nil, err
+	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
 		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
+	}
+	if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+		s.bindOAuthAffiliate(ctx, user.ID, invitationResolution.BindCode)
 	}
 	return tokenPair, user, nil
 }
@@ -270,21 +288,35 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	}
 
 	signupSource = normalizeOAuthSignupSource(signupSource)
-	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, affiliateCode, false)
 	if err != nil {
 		return err
 	}
-	if invitationRedeemCode != nil {
-		if err := s.useOAuthRegistrationInvitation(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+	if invitationResolution != nil && invitationResolution.RedeemCode != nil {
+		if err := s.useOAuthRegistrationInvitation(ctx, invitationResolution.RedeemCode.ID, user.ID); err != nil {
 			return ErrInvitationCodeInvalid
+		}
+	}
+	if user.ParentUserID == nil {
+		user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
+		if user.ParentUserID != nil {
+			if err := s.userRepo.Update(ctx, user); err != nil {
+				return ErrServiceUnavailable
+			}
 		}
 	}
 
 	s.updateOAuthSignupSource(ctx, user.ID, signupSource)
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
+		return err
+	}
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
+	if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+		affiliateCode = invitationResolution.BindCode
+	}
 	s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
 	return nil
 }
@@ -348,6 +380,9 @@ func (s *AuthService) oauthEmailFlowClient(ctx context.Context) *dbent.Client {
 }
 
 func (s *AuthService) loadOAuthRegistrationInvitation(ctx context.Context, invitationCode string) (*RedeemCode, error) {
+	if s == nil {
+		return nil, ErrServiceUnavailable
+	}
 	if client := s.oauthEmailFlowClient(ctx); client != nil {
 		entity, err := client.RedeemCode.Query().Where(redeemcode.CodeEQ(invitationCode)).Only(ctx)
 		if err != nil {
@@ -370,6 +405,9 @@ func (s *AuthService) loadOAuthRegistrationInvitation(ctx context.Context, invit
 			GroupID:      entity.GroupID,
 			ValidityDays: entity.ValidityDays,
 		}, nil
+	}
+	if s.redeemRepo == nil {
+		return nil, ErrRedeemCodeNotFound
 	}
 	return s.redeemRepo.GetByCode(ctx, invitationCode)
 }

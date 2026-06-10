@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -65,6 +66,8 @@ type Client struct {
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
+	// AgentGroupDelegation is the client for interacting with the AgentGroupDelegation builders.
+	AgentGroupDelegation *AgentGroupDelegationClient
 	// Announcement is the client for interacting with the Announcement builders.
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
@@ -143,6 +146,7 @@ func (c *Client) init() {
 	c.APIKey = NewAPIKeyClient(c.config)
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
+	c.AgentGroupDelegation = NewAgentGroupDelegationClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
@@ -270,6 +274,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		APIKey:                        NewAPIKeyClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
+		AgentGroupDelegation:          NewAgentGroupDelegationClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
@@ -324,6 +329,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		APIKey:                        NewAPIKeyClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
+		AgentGroupDelegation:          NewAgentGroupDelegationClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
@@ -385,8 +391,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
+		c.APIKey, c.Account, c.AccountGroup, c.AgentGroupDelegation, c.Announcement,
+		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -404,8 +410,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
+		c.APIKey, c.Account, c.AccountGroup, c.AgentGroupDelegation, c.Announcement,
+		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -428,6 +434,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Account.mutate(ctx, m)
 	case *AccountGroupMutation:
 		return c.AccountGroup.mutate(ctx, m)
+	case *AgentGroupDelegationMutation:
+		return c.AgentGroupDelegation.mutate(ctx, m)
 	case *AnnouncementMutation:
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
@@ -992,6 +1000,189 @@ func (c *AccountGroupClient) mutate(ctx context.Context, m *AccountGroupMutation
 		return (&AccountGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AccountGroup mutation op: %q", m.Op())
+	}
+}
+
+// AgentGroupDelegationClient is a client for the AgentGroupDelegation schema.
+type AgentGroupDelegationClient struct {
+	config
+}
+
+// NewAgentGroupDelegationClient returns a client for the AgentGroupDelegation from the given config.
+func NewAgentGroupDelegationClient(c config) *AgentGroupDelegationClient {
+	return &AgentGroupDelegationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentgroupdelegation.Hooks(f(g(h())))`.
+func (c *AgentGroupDelegationClient) Use(hooks ...Hook) {
+	c.hooks.AgentGroupDelegation = append(c.hooks.AgentGroupDelegation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentgroupdelegation.Intercept(f(g(h())))`.
+func (c *AgentGroupDelegationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentGroupDelegation = append(c.inters.AgentGroupDelegation, interceptors...)
+}
+
+// Create returns a builder for creating a AgentGroupDelegation entity.
+func (c *AgentGroupDelegationClient) Create() *AgentGroupDelegationCreate {
+	mutation := newAgentGroupDelegationMutation(c.config, OpCreate)
+	return &AgentGroupDelegationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentGroupDelegation entities.
+func (c *AgentGroupDelegationClient) CreateBulk(builders ...*AgentGroupDelegationCreate) *AgentGroupDelegationCreateBulk {
+	return &AgentGroupDelegationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentGroupDelegationClient) MapCreateBulk(slice any, setFunc func(*AgentGroupDelegationCreate, int)) *AgentGroupDelegationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentGroupDelegationCreateBulk{err: fmt.Errorf("calling to AgentGroupDelegationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentGroupDelegationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentGroupDelegationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentGroupDelegation.
+func (c *AgentGroupDelegationClient) Update() *AgentGroupDelegationUpdate {
+	mutation := newAgentGroupDelegationMutation(c.config, OpUpdate)
+	return &AgentGroupDelegationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentGroupDelegationClient) UpdateOne(_m *AgentGroupDelegation) *AgentGroupDelegationUpdateOne {
+	mutation := newAgentGroupDelegationMutation(c.config, OpUpdateOne, withAgentGroupDelegation(_m))
+	return &AgentGroupDelegationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentGroupDelegationClient) UpdateOneID(id int64) *AgentGroupDelegationUpdateOne {
+	mutation := newAgentGroupDelegationMutation(c.config, OpUpdateOne, withAgentGroupDelegationID(id))
+	return &AgentGroupDelegationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentGroupDelegation.
+func (c *AgentGroupDelegationClient) Delete() *AgentGroupDelegationDelete {
+	mutation := newAgentGroupDelegationMutation(c.config, OpDelete)
+	return &AgentGroupDelegationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentGroupDelegationClient) DeleteOne(_m *AgentGroupDelegation) *AgentGroupDelegationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentGroupDelegationClient) DeleteOneID(id int64) *AgentGroupDelegationDeleteOne {
+	builder := c.Delete().Where(agentgroupdelegation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentGroupDelegationDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentGroupDelegation.
+func (c *AgentGroupDelegationClient) Query() *AgentGroupDelegationQuery {
+	return &AgentGroupDelegationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentGroupDelegation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentGroupDelegation entity by its id.
+func (c *AgentGroupDelegationClient) Get(ctx context.Context, id int64) (*AgentGroupDelegation, error) {
+	return c.Query().Where(agentgroupdelegation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentGroupDelegationClient) GetX(ctx context.Context, id int64) *AgentGroupDelegation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryManager queries the manager edge of a AgentGroupDelegation.
+func (c *AgentGroupDelegationClient) QueryManager(_m *AgentGroupDelegation) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentgroupdelegation.Table, agentgroupdelegation.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentgroupdelegation.ManagerTable, agentgroupdelegation.ManagerColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryChild queries the child edge of a AgentGroupDelegation.
+func (c *AgentGroupDelegationClient) QueryChild(_m *AgentGroupDelegation) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentgroupdelegation.Table, agentgroupdelegation.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentgroupdelegation.ChildTable, agentgroupdelegation.ChildColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a AgentGroupDelegation.
+func (c *AgentGroupDelegationClient) QueryGroup(_m *AgentGroupDelegation) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentgroupdelegation.Table, agentgroupdelegation.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentgroupdelegation.GroupTable, agentgroupdelegation.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentGroupDelegationClient) Hooks() []Hook {
+	hooks := c.hooks.AgentGroupDelegation
+	return append(hooks[:len(hooks):len(hooks)], agentgroupdelegation.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentGroupDelegationClient) Interceptors() []Interceptor {
+	inters := c.inters.AgentGroupDelegation
+	return append(inters[:len(inters):len(inters)], agentgroupdelegation.Interceptors[:]...)
+}
+
+func (c *AgentGroupDelegationClient) mutate(ctx context.Context, m *AgentGroupDelegationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentGroupDelegationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentGroupDelegationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentGroupDelegationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentGroupDelegationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AgentGroupDelegation mutation op: %q", m.Op())
 	}
 }
 
@@ -2597,6 +2788,22 @@ func (c *GroupClient) QueryAllowedUsers(_m *Group) *UserQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, group.AllowedUsersTable, group.AllowedUsersPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryAgentGroupDelegations queries the agent_group_delegations edge of a Group.
+func (c *GroupClient) QueryAgentGroupDelegations(_m *Group) *AgentGroupDelegationQuery {
+	query := (&AgentGroupDelegationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(agentgroupdelegation.Table, agentgroupdelegation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.AgentGroupDelegationsTable, group.AgentGroupDelegationsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5040,6 +5247,22 @@ func (c *UsageLogClient) QuerySubscription(_m *UsageLog) *UserSubscriptionQuery 
 	return query
 }
 
+// QueryAgentOwner queries the agent_owner edge of a UsageLog.
+func (c *UsageLogClient) QueryAgentOwner(_m *UsageLog) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.AgentOwnerTable, usagelog.AgentOwnerColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *UsageLogClient) Hooks() []Hook {
 	return c.hooks.UsageLog
@@ -5285,6 +5508,22 @@ func (c *UserClient) QueryUsageLogs(_m *User) *UsageLogQuery {
 	return query
 }
 
+// QueryAgentIncomeUsageLogs queries the agent_income_usage_logs edge of a User.
+func (c *UserClient) QueryAgentIncomeUsageLogs(_m *User) *UsageLogQuery {
+	query := (&UsageLogClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(usagelog.Table, usagelog.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.AgentIncomeUsageLogsTable, user.AgentIncomeUsageLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryAttributeValues queries the attribute_values edge of a User.
 func (c *UserClient) QueryAttributeValues(_m *User) *UserAttributeValueQuery {
 	query := (&UserAttributeValueClient{config: c.config}).Query()
@@ -5358,6 +5597,38 @@ func (c *UserClient) QueryPendingAuthSessions(_m *User) *PendingAuthSessionQuery
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(pendingauthsession.Table, pendingauthsession.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.PendingAuthSessionsTable, user.PendingAuthSessionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryManagedGroupDelegations queries the managed_group_delegations edge of a User.
+func (c *UserClient) QueryManagedGroupDelegations(_m *User) *AgentGroupDelegationQuery {
+	query := (&AgentGroupDelegationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(agentgroupdelegation.Table, agentgroupdelegation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ManagedGroupDelegationsTable, user.ManagedGroupDelegationsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryReceivedGroupDelegations queries the received_group_delegations edge of a User.
+func (c *UserClient) QueryReceivedGroupDelegations(_m *User) *AgentGroupDelegationQuery {
+	query := (&AgentGroupDelegationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(agentgroupdelegation.Table, agentgroupdelegation.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ReceivedGroupDelegationsTable, user.ReceivedGroupDelegationsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -6209,26 +6480,26 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		APIKey, Account, AccountGroup, AgentGroupDelegation, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		APIKey, Account, AccountGroup, AgentGroupDelegation, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

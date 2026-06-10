@@ -233,6 +233,39 @@ func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	require.InDelta(t, 0.36, *repo.updated.ImagePrice4K, 0.0001)
 }
 
+func TestAdminService_UpdateGroup_RaisingBaseRateRaisesManagedFloorFromRootAdmin(t *testing.T) {
+	oldRate := 1.2
+	newRate := 1.6
+	existingGroup := &Group{
+		ID:             4,
+		Name:           "exclusive",
+		Platform:       PlatformAnthropic,
+		Status:         StatusActive,
+		RateMultiplier: oldRate,
+	}
+	groupRepo := &groupRepoStubForAdmin{getByID: existingGroup}
+	userRepo := &userRepoStub{user: &User{ID: 1, Role: RoleAdmin, Status: StatusActive}}
+	cleanup := &agentUserDeletionCleanupRepoStub{rateFloorAffectedUserIDs: []int64{42, 77, 88}}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		groupRepo:                groupRepo,
+		userRepo:                 userRepo,
+		agentDeletionCleanupRepo: cleanup,
+		authCacheInvalidator:     invalidator,
+	}
+
+	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{RateMultiplier: &newRate})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.Len(t, cleanup.raiseGroupRateFloorCalls, 1)
+	require.Equal(t, int64(1), cleanup.raiseGroupRateFloorCalls[0].userID)
+	require.Equal(t, int64(4), cleanup.raiseGroupRateFloorCalls[0].groupID)
+	require.Equal(t, 1.6, cleanup.raiseGroupRateFloorCalls[0].minimumRate)
+	require.ElementsMatch(t, []int64{42, 77, 88}, invalidator.userIDs)
+	require.Equal(t, []int64{4}, invalidator.groupIDs)
+}
+
 // TestAdminService_UpdateGroup_PartialImagePricing 测试仅更新部分 ImagePrice 字段
 func TestAdminService_UpdateGroup_PartialImagePricing(t *testing.T) {
 	oldPrice2K := 0.15

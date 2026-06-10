@@ -139,6 +139,7 @@ type CreateUserInput struct {
 	Concurrency   int
 	RPMLimit      int
 	AllowedGroups []int64
+	ParentUserID  *int64
 }
 
 type UpdateUserInput struct {
@@ -226,6 +227,7 @@ type CreateGroupInput struct {
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
+	SchedulingStrategy          string
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
@@ -267,6 +269,7 @@ type UpdateGroupInput struct {
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
+	SchedulingStrategy          *string
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
@@ -539,24 +542,26 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	apiKeyRepo           APIKeyRepository
-	redeemCodeRepo       RedeemCodeRepository
-	userGroupRateRepo    UserGroupRateRepository
-	userRPMCache         UserRPMCache
-	billingCacheService  *BillingCacheService
-	proxyProber          ProxyExitInfoProber
-	proxyLatencyCache    ProxyLatencyCache
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	entClient            *dbent.Client // 用于开启数据库事务
-	settingService       *SettingService
-	defaultSubAssigner   DefaultSubscriptionAssigner
-	userSubRepo          UserSubscriptionRepository
-	privacyClientFactory PrivacyClientFactory
-	runtimeBlocker       AccountRuntimeBlocker
+	userRepo                 UserRepository
+	groupRepo                GroupRepository
+	accountRepo              AccountRepository
+	proxyRepo                ProxyRepository
+	apiKeyRepo               APIKeyRepository
+	redeemCodeRepo           RedeemCodeRepository
+	userGroupRateRepo        UserGroupRateRepository
+	agentDeletionCleanupRepo AgentUserDeletionCleanupRepository
+	enterpriseCleanupRepo    EnterpriseAdminCleanupRepository
+	userRPMCache             UserRPMCache
+	billingCacheService      *BillingCacheService
+	proxyProber              ProxyExitInfoProber
+	proxyLatencyCache        ProxyLatencyCache
+	authCacheInvalidator     APIKeyAuthCacheInvalidator
+	entClient                *dbent.Client // 用于开启数据库事务
+	settingService           *SettingService
+	defaultSubAssigner       DefaultSubscriptionAssigner
+	userSubRepo              UserSubscriptionRepository
+	privacyClientFactory     PrivacyClientFactory
+	runtimeBlocker           AccountRuntimeBlocker
 }
 
 type userGroupRateBatchReader interface {
@@ -572,6 +577,8 @@ func NewAdminService(
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
 	userGroupRateRepo UserGroupRateRepository,
+	agentDeletionCleanupRepo AgentUserDeletionCleanupRepository,
+	enterpriseCleanupRepo EnterpriseAdminCleanupRepository,
 	userRPMCache UserRPMCache,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -585,24 +592,26 @@ func NewAdminService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		accountRepo:          accountRepo,
-		proxyRepo:            proxyRepo,
-		apiKeyRepo:           apiKeyRepo,
-		redeemCodeRepo:       redeemCodeRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		userRPMCache:         userRPMCache,
-		billingCacheService:  billingCacheService,
-		proxyProber:          proxyProber,
-		proxyLatencyCache:    proxyLatencyCache,
-		authCacheInvalidator: authCacheInvalidator,
-		entClient:            entClient,
-		settingService:       settingService,
-		defaultSubAssigner:   defaultSubAssigner,
-		userSubRepo:          userSubRepo,
-		privacyClientFactory: privacyClientFactory,
-		runtimeBlocker:       runtimeBlocker,
+		userRepo:                 userRepo,
+		groupRepo:                groupRepo,
+		accountRepo:              accountRepo,
+		proxyRepo:                proxyRepo,
+		apiKeyRepo:               apiKeyRepo,
+		redeemCodeRepo:           redeemCodeRepo,
+		userGroupRateRepo:        userGroupRateRepo,
+		agentDeletionCleanupRepo: agentDeletionCleanupRepo,
+		enterpriseCleanupRepo:    enterpriseCleanupRepo,
+		userRPMCache:             userRPMCache,
+		billingCacheService:      billingCacheService,
+		proxyProber:              proxyProber,
+		proxyLatencyCache:        proxyLatencyCache,
+		authCacheInvalidator:     authCacheInvalidator,
+		entClient:                entClient,
+		settingService:           settingService,
+		defaultSubAssigner:       defaultSubAssigner,
+		userSubRepo:              userSubRepo,
+		privacyClientFactory:     privacyClientFactory,
+		runtimeBlocker:           runtimeBlocker,
 	}
 }
 
@@ -701,16 +710,33 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		balance = s.settingService.GetDefaultBalance(ctx)
 	}
 
+	parentUserID := input.ParentUserID
+	if parentUserID == nil && s.userRepo != nil {
+		admin, err := s.userRepo.GetFirstAdmin(ctx)
+		if err != nil && !errors.Is(err, ErrUserNotFound) {
+			return nil, err
+		}
+		if admin != nil && admin.ID > 0 {
+			rootAdminID := admin.ID
+			parentUserID = &rootAdminID
+		}
+	}
+
 	user := &User{
-		Email:         input.Email,
-		Username:      input.Username,
-		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
-		Balance:       balance,
-		Concurrency:   input.Concurrency,
-		RPMLimit:      input.RPMLimit,
-		Status:        StatusActive,
-		AllowedGroups: input.AllowedGroups,
+		Email:        input.Email,
+		Username:     input.Username,
+		Notes:        input.Notes,
+		Role:         RoleUser, // Always create as regular user, never admin
+		ParentUserID: parentUserID,
+		Balance:      balance,
+		Concurrency:  input.Concurrency,
+		RPMLimit:     input.RPMLimit,
+		// Native admin-created users are also direct admin-pool users, so keep
+		// the agent-management allocation fields in sync with official limits.
+		AllocatedConcurrency: input.Concurrency,
+		AllocatedRPM:         input.RPMLimit,
+		Status:               StatusActive,
+		AllowedGroups:        input.AllowedGroups,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
@@ -740,11 +766,11 @@ func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userI
 }
 
 func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error) {
-	// 校验用户专属分组倍率：必须 > 0（nil 合法，表示清除专属倍率）
+	// 校验用户专属分组倍率：必须 >= 0（nil 合法，表示清除专属倍率）
 	if input.GroupRates != nil {
 		for groupID, rate := range input.GroupRates {
-			if rate != nil && *rate <= 0 {
-				return nil, fmt.Errorf("rate_multiplier must be > 0 (group_id=%d)", groupID)
+			if rate != nil && !validNonNegativeRateMultiplier(*rate) {
+				return nil, fmt.Errorf("rate_multiplier must be >= 0 (group_id=%d)", groupID)
 			}
 		}
 	}
@@ -782,6 +808,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if input.Status != "" {
+		if user.Role == RoleEnterprise && user.Status != input.Status {
+			affectedUserIDs, err := s.cascadeEnterpriseStatusFromAdminUsers(ctx, user.ID, input.Status)
+			if err != nil {
+				return nil, err
+			}
+			user.Status = input.Status
+			s.invalidateDeletedUserAuthCache(ctx, user.ID, affectedUserIDs)
+			return user, nil
+		}
 		user.Status = input.Status
 	}
 
@@ -802,9 +837,24 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	// 同步用户专属分组倍率
-	if input.GroupRates != nil && s.userGroupRateRepo != nil {
-		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input.GroupRates); err != nil {
+	if groupRates != nil && s.userGroupRateRepo != nil {
+		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, groupRates); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to sync user group rates: user_id=%d err=%v", user.ID, err)
+		}
+	}
+
+	var affectedGroupAccessUserIDs []int64
+	if len(removedAllowedGroups) > 0 && s.agentDeletionCleanupRepo != nil {
+		affectedGroupAccessUserIDs, err = s.agentDeletionCleanupRepo.RemoveUserGroupAccessForAdminUpdate(ctx, user.ID, removedAllowedGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+	raisedRateFloorUserIDs := []int64(nil)
+	if len(groupRates) > 0 && s.agentDeletionCleanupRepo != nil && (user.Role == RoleAgentLevel1 || user.Role == RoleEnterprise) {
+		raisedRateFloorUserIDs, err = s.raiseManagedGroupRateFloorsForAdminUserUpdate(ctx, user, oldGroupRates, groupRates)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -903,6 +953,7 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		}
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
 	}
+	s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
 	return nil
 }
 
@@ -1843,6 +1894,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.MCPXMLInject != nil {
 		mcpXMLInject = *input.MCPXMLInject
 	}
+	schedulingStrategy, err := normalizeGroupSchedulingStrategy(input.SchedulingStrategy)
+	if err != nil {
+		return nil, err
+	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -1902,6 +1957,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
+		SchedulingStrategy:              schedulingStrategy,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
@@ -1958,6 +2014,17 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 	}
 	return price
+}
+
+func normalizeGroupSchedulingStrategy(strategy string) (string, error) {
+	switch strings.TrimSpace(strategy) {
+	case "", GroupSchedulingStrategyWeighted:
+		return GroupSchedulingStrategyWeighted, nil
+	case GroupSchedulingStrategyStrictPriority:
+		return GroupSchedulingStrategyStrictPriority, nil
+	default:
+		return "", fmt.Errorf("invalid scheduling_strategy")
+	}
 }
 
 // validateFallbackGroup 校验降级分组的有效性
@@ -2034,6 +2101,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err != nil {
 		return nil, err
 	}
+	oldRateMultiplier := group.RateMultiplier
 
 	if input.Name != "" {
 		group.Name = input.Name
@@ -2146,6 +2214,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.RequirePrivacySet != nil {
 		group.RequirePrivacySet = *input.RequirePrivacySet
 	}
+	if input.SchedulingStrategy != nil {
+		schedulingStrategy, err := normalizeGroupSchedulingStrategy(*input.SchedulingStrategy)
+		if err != nil {
+			return nil, err
+		}
+		group.SchedulingStrategy = schedulingStrategy
+	}
 	if input.DefaultMappedModel != nil {
 		group.DefaultMappedModel = *input.DefaultMappedModel
 	}
@@ -2164,8 +2239,18 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	raisedRateFloorUserIDs, err := s.raiseManagedGroupRateFloorsForBaseGroupUpdate(ctx, group.ID, oldRateMultiplier, group.RateMultiplier, input.RateMultiplier != nil)
+	if err != nil {
+		return nil, err
+	}
+
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
+		for _, userID := range raisedRateFloorUserIDs {
+			if userID > 0 {
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+			}
+		}
 	}
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
@@ -2239,6 +2324,20 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	return group, nil
 }
 
+func (s *adminServiceImpl) raiseManagedGroupRateFloorsForBaseGroupUpdate(ctx context.Context, groupID int64, oldRate float64, newRate float64, rateChanged bool) ([]int64, error) {
+	if s == nil || !rateChanged || groupID <= 0 || newRate <= 0 || oldRate >= newRate || s.agentDeletionCleanupRepo == nil || s.userRepo == nil {
+		return nil, nil
+	}
+	rootAdmin, err := s.userRepo.GetFirstAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get root admin for group rate floor: %w", err)
+	}
+	if rootAdmin == nil || rootAdmin.ID <= 0 {
+		return nil, nil
+	}
+	return s.agentDeletionCleanupRepo.RaiseManagedGroupRateFloorForAdminUpdate(ctx, rootAdmin.ID, groupID, newRate)
+}
+
 func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 	var groupKeys []string
 	if s.authCacheInvalidator != nil {
@@ -2304,8 +2403,8 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 		return nil
 	}
 	for _, e := range entries {
-		if e.RateMultiplier <= 0 {
-			return fmt.Errorf("rate_multiplier must be > 0 (user_id=%d)", e.UserID)
+		if !validNonNegativeRateMultiplier(e.RateMultiplier) {
+			return fmt.Errorf("rate_multiplier must be >= 0 (user_id=%d)", e.UserID)
 		}
 	}
 	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)

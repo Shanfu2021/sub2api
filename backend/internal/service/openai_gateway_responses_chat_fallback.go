@@ -208,7 +208,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 			c.JSON(http.StatusBadGateway, gin.H{
 				"error": gin.H{
 					"type":    "api_error",
-					"message": "Failed to read upstream response",
+					"message": "Failed to read service response",
 				},
 			})
 		}

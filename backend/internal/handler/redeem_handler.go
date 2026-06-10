@@ -43,6 +43,9 @@ func (h *RedeemHandler) Redeem(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	if abortIfEmployeeFeatureRestricted(c) {
+		return
+	}
 
 	var req RedeemRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

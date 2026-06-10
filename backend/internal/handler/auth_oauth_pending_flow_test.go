@@ -1321,6 +1321,14 @@ func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T
 		SetStatus(service.StatusActive).
 		Save(ctx)
 	require.NoError(t, err)
+	_, err = client.User.Create().
+		SetEmail("admin@example.com").
+		SetUsername("admin").
+		SetPasswordHash("admin-hash").
+		SetRole(service.RoleAdmin).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
 
 	_, err = client.AuthIdentity.Create().
 		SetUserID(conflictOwner.ID).
@@ -2634,6 +2642,7 @@ func (r *oauthPendingFlowUserRepo) Create(ctx context.Context, user *service.Use
 		SetNillableTotpEnabledAt(user.TotpEnabledAt).
 		SetTotalRecharged(user.TotalRecharged).
 		SetSignupSource(user.SignupSource).
+		SetNillableParentUserID(user.ParentUserID).
 		SetNillableLastLoginAt(user.LastLoginAt).
 		SetNillableLastActiveAt(user.LastActiveAt).
 		Save(ctx)
@@ -2668,8 +2677,15 @@ func (r *oauthPendingFlowUserRepo) GetByEmail(ctx context.Context, email string)
 	return oauthPendingFlowServiceUser(entity), nil
 }
 
-func (r *oauthPendingFlowUserRepo) GetFirstAdmin(context.Context) (*service.User, error) {
-	panic("unexpected GetFirstAdmin call")
+func (r *oauthPendingFlowUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error) {
+	entity, err := r.client.User.Query().Where(dbuser.RoleEQ(service.RoleAdmin)).First(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return oauthPendingFlowServiceUser(entity), nil
 }
 
 func (r *oauthPendingFlowUserRepo) Update(ctx context.Context, user *service.User) error {
@@ -2687,6 +2703,7 @@ func (r *oauthPendingFlowUserRepo) Update(ctx context.Context, user *service.Use
 		SetNillableTotpEnabledAt(user.TotpEnabledAt).
 		SetTotalRecharged(user.TotalRecharged).
 		SetSignupSource(user.SignupSource).
+		SetNillableParentUserID(user.ParentUserID).
 		SetNillableLastLoginAt(user.LastLoginAt).
 		SetNillableLastActiveAt(user.LastActiveAt).
 		Save(ctx)
@@ -2712,6 +2729,10 @@ func (r *oauthPendingFlowUserRepo) Delete(ctx context.Context, id int64) error {
 		}
 	}
 	return r.client.User.DeleteOneID(id).Exec(ctx)
+}
+
+func (r *oauthPendingFlowUserRepo) HardDelete(ctx context.Context, id int64) error {
+	return r.Delete(ctx, id)
 }
 
 func (r *oauthPendingFlowUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
@@ -2939,6 +2960,7 @@ func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 		TotpEnabled:         entity.TotpEnabled,
 		TotpEnabledAt:       entity.TotpEnabledAt,
 		TotalRecharged:      entity.TotalRecharged,
+		ParentUserID:        entity.ParentUserID,
 		CreatedAt:           entity.CreatedAt,
 		UpdatedAt:           entity.UpdatedAt,
 	}

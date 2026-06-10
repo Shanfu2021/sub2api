@@ -107,6 +107,30 @@
               </p>
             </div>
           </div>
+          <div class="flex items-end">
+            <div>
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <Toggle v-model="newPlan.auto_schedulable_control" />
+                {{ t('admin.scheduledTests.autoSchedulableControl') }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                {{ t('admin.scheduledTests.autoSchedulableControlHelp') }}
+              </p>
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.firstTokenTimeout') }}
+            </label>
+            <Input
+              v-model="newPlan.first_token_timeout_seconds"
+              type="number"
+              min="0"
+              step="0.1"
+              placeholder="10"
+              :hint="t('admin.scheduledTests.firstTokenTimeoutHelp')"
+            />
+          </div>
         </div>
         <div class="mt-3 flex justify-end gap-2">
           <button
@@ -183,6 +207,12 @@
                 class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
               >
                 {{ t('admin.scheduledTests.autoRecover') }}
+              </span>
+              <span
+                v-if="plan.auto_schedulable_control"
+                class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
+              >
+                {{ t('admin.scheduledTests.autoSchedulableControl') }}
               </span>
             </div>
 
@@ -317,6 +347,30 @@
                   </p>
                 </div>
               </div>
+              <div class="flex items-end">
+                <div>
+                  <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <Toggle v-model="editForm.auto_schedulable_control" />
+                    {{ t('admin.scheduledTests.autoSchedulableControl') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t('admin.scheduledTests.autoSchedulableControlHelp') }}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.firstTokenTimeout') }}
+                </label>
+                <Input
+                  v-model="editForm.first_token_timeout_seconds"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="10"
+                  :hint="t('admin.scheduledTests.firstTokenTimeoutHelp')"
+                />
+              </div>
             </div>
             <div class="mt-3 flex justify-end gap-2">
               <button
@@ -390,7 +444,17 @@
 
                     <!-- Latency -->
                     <span v-if="result.latency_ms > 0" class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ result.latency_ms }}ms
+                      {{ t('admin.scheduledTests.totalLatency') }} {{ result.latency_ms }}ms
+                    </span>
+                    <span v-if="result.first_token_ms != null" class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.scheduledTests.firstToken') }} {{ result.first_token_ms }}ms
+                    </span>
+                    <span
+                      v-if="result.decision && result.decision !== 'no_action'"
+                      class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                      :title="result.decision_reason"
+                    >
+                      {{ formatDecision(result.decision) }}
                     </span>
                   </div>
 
@@ -508,7 +572,9 @@ const editForm = reactive({
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
-  auto_recover: false
+  auto_recover: false,
+  auto_schedulable_control: false,
+  first_token_timeout_seconds: '' as string
 })
 
 const newPlan = reactive({
@@ -516,7 +582,9 @@ const newPlan = reactive({
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
-  auto_recover: false
+  auto_recover: false,
+  auto_schedulable_control: false,
+  first_token_timeout_seconds: '' as string
 })
 
 const resetNewPlan = () => {
@@ -525,6 +593,29 @@ const resetNewPlan = () => {
   newPlan.max_results = '100'
   newPlan.enabled = true
   newPlan.auto_recover = false
+  newPlan.auto_schedulable_control = false
+  newPlan.first_token_timeout_seconds = ''
+}
+
+const secondsToMs = (value: string) => {
+  const seconds = Number(value)
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 0
+  }
+  return Math.round(seconds * 1000)
+}
+
+const msToSecondsString = (value: number | null | undefined) => {
+  if (!value || value <= 0) {
+    return ''
+  }
+  return String(value / 1000)
+}
+
+const formatDecision = (decision: string) => {
+  const key = `admin.scheduledTests.decisions.${decision}`
+  const translated = t(key)
+  return translated === key ? decision : translated
 }
 
 // Load plans when dialog opens
@@ -567,7 +658,9 @@ const handleCreate = async () => {
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
-      auto_recover: newPlan.auto_recover
+      auto_recover: newPlan.auto_recover,
+      auto_schedulable_control: newPlan.auto_schedulable_control,
+      first_token_timeout_ms: secondsToMs(newPlan.first_token_timeout_seconds)
     })
     appStore.showSuccess(t('admin.scheduledTests.createSuccess'))
     showAddForm.value = false
@@ -600,6 +693,8 @@ const startEdit = (plan: ScheduledTestPlan) => {
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
   editForm.auto_recover = plan.auto_recover
+  editForm.auto_schedulable_control = plan.auto_schedulable_control
+  editForm.first_token_timeout_seconds = msToSecondsString(plan.first_token_timeout_ms)
 }
 
 const cancelEdit = () => {
@@ -615,7 +710,9 @@ const handleEdit = async () => {
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,
-      auto_recover: editForm.auto_recover
+      auto_recover: editForm.auto_recover,
+      auto_schedulable_control: editForm.auto_schedulable_control,
+      first_token_timeout_ms: secondsToMs(editForm.first_token_timeout_seconds)
     })
     const index = plans.value.findIndex((p) => p.id === editingPlanId.value)
     if (index !== -1) {

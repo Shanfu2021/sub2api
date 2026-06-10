@@ -65,6 +65,17 @@ type openAIRecordUsageUserRepoStub struct {
 	deductErr   error
 	lastAmount  float64
 	lastCtxErr  error
+	users       map[int64]*User
+}
+
+func (s *openAIRecordUsageUserRepoStub) GetByID(_ context.Context, id int64) (*User, error) {
+	if s != nil && s.users != nil {
+		if user, ok := s.users[id]; ok && user != nil {
+			clone := *user
+			return &clone, nil
+		}
+	}
+	return &User{ID: id}, nil
 }
 
 func (s *openAIRecordUsageUserRepoStub) DeductBalance(ctx context.Context, id int64, amount float64) error {
@@ -114,17 +125,37 @@ func (s *openAIRecordUsageAPIKeyQuotaStub) UpdateRateLimitUsage(ctx context.Cont
 type openAIUserGroupRateRepoStub struct {
 	UserGroupRateRepository
 
-	rate  *float64
-	err   error
-	calls int
+	rate     *float64
+	rates    map[int64]map[int64]float64
+	err      error
+	calls    int
+	requests []struct {
+		userID  int64
+		groupID int64
+	}
 }
 
 func (s *openAIUserGroupRateRepoStub) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
 	s.calls++
+	s.requests = append(s.requests, struct {
+		userID  int64
+		groupID int64
+	}{userID: userID, groupID: groupID})
 	if s.err != nil {
 		return nil, s.err
 	}
+	if s.rates != nil {
+		if byGroup, ok := s.rates[userID]; ok {
+			if rate, ok := byGroup[groupID]; ok {
+				return &rate, nil
+			}
+		}
+	}
 	return s.rate, nil
+}
+
+func (s *openAIUserGroupRateRepoStub) GetDelegatedRateByUserAndGroup(context.Context, int64, int64) (*float64, error) {
+	return nil, nil
 }
 
 func i64p(v int64) *int64 {
@@ -241,6 +272,217 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
 	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_CapturesDirectAgentIncomeSnapshot(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	agentID := int64(1000)
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			agentID: {ID: agentID, Role: RoleAgentLevel1},
+		},
+	}
+	rateRepo := &openAIUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			2000: {10: 0.2},
+			1000: {10: 0.1},
+		},
+	}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rateRepo)
+	groupID := int64(10)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "agent_income_direct_user",
+			Usage:     OpenAIUsage{InputTokens: 1000000},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      3000,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: 2000, ParentUserID: &agentID},
+		Account: &Account{ID: 4000, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AgentOwnerUserID)
+	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
+	require.InDelta(t, 0.2, usageRepo.lastLog.AgentUserRateMultiplier, 1e-12)
+	require.InDelta(t, 0.1, usageRepo.lastLog.AgentCostRateMultiplier, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.2-0.1)/0.2, usageRepo.lastLog.AgentIncome, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_CapturesDirectEnterpriseAgentIncomeSnapshot(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	agentID := int64(1000)
+	enterpriseID := int64(1500)
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			agentID: {ID: agentID, Role: RoleAgentLevel1},
+		},
+	}
+	groupID := int64(10)
+	rateRepo := &openAIUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			enterpriseID: {groupID: 0.2},
+			agentID:      {groupID: 0.1},
+		},
+	}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "agent_income_direct_enterprise",
+			Usage:     OpenAIUsage{InputTokens: 1000000},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      3000,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &agentID},
+		Account: &Account{ID: 4000, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AgentOwnerUserID)
+	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
+	require.InDelta(t, 0.2, usageRepo.lastLog.AgentUserRateMultiplier, 1e-12)
+	require.InDelta(t, 0.1, usageRepo.lastLog.AgentCostRateMultiplier, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.2-0.1)/0.2, usageRepo.lastLog.AgentIncome, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_DeductsAgentIncomeWhenChildRateIsBelowCost(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	agentID := int64(1000)
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			agentID: {ID: agentID, Role: RoleAgentLevel1},
+		},
+	}
+	rateRepo := &openAIUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			2000: {10: 0.1},
+			1000: {10: 0.2},
+		},
+	}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rateRepo)
+	groupID := int64(10)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "agent_income_below_cost_fallback",
+			Usage:     OpenAIUsage{InputTokens: 1000000},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      3000,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: 2000, ParentUserID: &agentID},
+		Account: &Account{ID: 4000, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AgentOwnerUserID)
+	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
+	require.InDelta(t, 0.1, usageRepo.lastLog.AgentUserRateMultiplier, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.AgentCostRateMultiplier, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.1-0.2)/0.1, usageRepo.lastLog.AgentIncome, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_KeepsAgentIncomeZeroWhenChildRateEqualsCost(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	agentID := int64(1000)
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			agentID: {ID: agentID, Role: RoleAgentLevel1},
+		},
+	}
+	rateRepo := &openAIUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			2000: {10: 0.2},
+			1000: {10: 0.2},
+		},
+	}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rateRepo)
+	groupID := int64(10)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "agent_income_equal_rate",
+			Usage:     OpenAIUsage{InputTokens: 1000000},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      3000,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: 2000, ParentUserID: &agentID},
+		Account: &Account{ID: 4000, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AgentOwnerUserID)
+	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
+	require.InDelta(t, 0.2, usageRepo.lastLog.AgentUserRateMultiplier, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.AgentCostRateMultiplier, 1e-12)
+	require.Zero(t, usageRepo.lastLog.AgentIncome)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_CapturesEnterpriseEmployeeAgentIncomeSnapshot(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	agentID := int64(1000)
+	enterpriseID := int64(1500)
+	userRepo := &openAIRecordUsageUserRepoStub{
+		users: map[int64]*User{
+			enterpriseID: {ID: enterpriseID, Role: RoleEnterprise, ParentUserID: &agentID},
+			agentID:      {ID: agentID, Role: RoleAgentLevel1},
+		},
+	}
+	groupID := int64(10)
+	rateRepo := &openAIUserGroupRateRepoStub{
+		rates: map[int64]map[int64]float64{
+			2000: {groupID: 0.2},
+			1000: {groupID: 0.1},
+		},
+	}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "agent_income_employee",
+			Usage:     OpenAIUsage{InputTokens: 1000000},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      3000,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: 2000, Role: RoleEmployee, ParentUserID: &enterpriseID},
+		Account: &Account{ID: 4000, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AgentOwnerUserID)
+	require.Equal(t, agentID, *usageRepo.lastLog.AgentOwnerUserID)
+	require.InDelta(t, usageRepo.lastLog.ActualCost*(0.2-0.1)/0.2, usageRepo.lastLog.AgentIncome, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {

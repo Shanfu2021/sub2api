@@ -164,6 +164,10 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+		field.String("scheduling_strategy").
+			MaxLen(32).
+			Default("weighted").
+			Comment("账号调度策略：weighted=加权负载均衡，strict_priority=严格优先级"),
 	}
 }
 
@@ -179,6 +183,7 @@ func (Group) Edges() []ent.Edge {
 		edge.From("allowed_users", User.Type).
 			Ref("allowed_groups").
 			Through("user_allowed_groups", UserAllowedGroup.Type),
+		edge.To("agent_group_delegations", AgentGroupDelegation.Type),
 		// 注意：fallback_group_id 直接作为字段使用，不定义 edge
 		// 这样允许多个分组指向同一个降级分组（M2O 关系）
 	}

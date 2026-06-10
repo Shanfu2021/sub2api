@@ -81,7 +81,7 @@
                   <input
                     type="number"
                     step="0.001"
-                    min="0.001"
+                    min="0"
                     :value="config.customRate ?? ''"
                     @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
                     :placeholder="String(config.defaultRate)"
@@ -139,7 +139,7 @@
                   <input
                     type="number"
                     step="0.001"
-                    min="0.001"
+                    min="0"
                     :value="config.customRate ?? ''"
                     @input="updateCustomRate(config.groupId, ($event.target as HTMLInputElement).value)"
                     :placeholder="String(config.defaultRate)"
@@ -270,7 +270,7 @@ const updateCustomRate = (groupId: number, value: string) => {
       config.customRate = null
     } else {
       const numValue = parseFloat(value)
-      config.customRate = isNaN(numValue) ? null : numValue
+      config.customRate = Number.isFinite(numValue) && numValue >= 0 ? numValue : null
     }
   }
 }
@@ -289,6 +289,14 @@ const handleSave = async () => {
     const groupRates: Record<number, number | null> = {}
     for (const c of groupConfigs.value) {
       const hadOriginalRate = originalGroupRates.value[c.groupId] !== undefined
+
+      if (c.isExclusive && !c.isSelected) {
+        // 取消专属分组时必须显式清掉倍率，避免旧值被再次提交回后端。
+        if (hadOriginalRate || c.customRate !== null) {
+          groupRates[c.groupId] = null
+        }
+        continue
+      }
 
       if (c.customRate !== null) {
         // 有专属倍率

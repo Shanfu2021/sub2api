@@ -202,6 +202,9 @@ func (h *UserHandler) GetAffiliate(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
+	if abortIfEmployeeFeatureRestricted(c) {
+		return
+	}
 
 	detail, err := h.affiliateService.GetAffiliateDetail(c.Request.Context(), subject.UserID)
 	if err != nil {
@@ -217,6 +220,9 @@ func (h *UserHandler) TransferAffiliateQuota(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if abortIfEmployeeFeatureRestricted(c) {
 		return
 	}
 

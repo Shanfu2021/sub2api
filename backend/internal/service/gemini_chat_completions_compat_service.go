@@ -119,7 +119,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
 			}
-			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
+			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "api_error", clientSafeUpstreamErrorMessage(http.StatusBadGateway))
 		}
 		requestIDHeader = idHeader
 
@@ -140,7 +140,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 				continue
 			}
 			setOpsUpstreamError(c, 0, safeErr, "")
-			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries: "+safeErr)
+			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "api_error", clientSafeUpstreamErrorMessage(http.StatusBadGateway))
 		}
 
 		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
@@ -240,12 +240,12 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	} else if useUpstreamStream {
 		collected, usageObj, err := collectGeminiSSE(resp.Body, account.Type == AccountTypeOAuth)
 		if err != nil {
-			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
+			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 		}
 		collectedBytes, _ := json.Marshal(collected)
 		chatResp, usageObj2, err := geminiResponseToChatCompletions(collected, originalModel, collectedBytes, usageObj)
 		if err != nil {
-			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to parse service response")
 		}
 		c.JSON(http.StatusOK, chatResp)
 		usage = usageObj2
@@ -445,12 +445,12 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 
 	var geminiResp map[string]any
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
-		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to parse service response")
 	}
 
 	chatResp, usage, err := geminiResponseToChatCompletions(geminiResp, originalModel, respBody, nil)
 	if err != nil {
-		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to parse service response")
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -811,15 +811,15 @@ func (s *GeminiMessagesCompatService) writeGeminiChatCompletionsMappedError(
 		upstreamStatus,
 		body,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed",
+		"api_error",
+		clientSafeUpstreamErrorMessage(upstreamStatus),
 	); matched {
 		return s.writeChatCompletionsError(c, status, errType, errMsg)
 	}
 
 	statusCode := http.StatusBadGateway
-	errType := "upstream_error"
-	errMsg := "Upstream request failed"
+	errType := "api_error"
+	errMsg := clientSafeUpstreamErrorMessage(upstreamStatus)
 	if mapped := mapGeminiErrorBodyToClaudeError(body); mapped != nil {
 		if mapped.Type != "" {
 			errType = mapped.Type
@@ -837,40 +837,40 @@ func (s *GeminiMessagesCompatService) writeGeminiChatCompletionsMappedError(
 		if statusCode == http.StatusBadGateway {
 			statusCode = http.StatusBadRequest
 		}
-		if errType == "upstream_error" {
+		if errType == "api_error" {
 			errType = "invalid_request_error"
 		}
-		if errMsg == "Upstream request failed" {
+		if errMsg == clientSafeUpstreamErrorMessage(upstreamStatus) {
 			errMsg = "Invalid request"
 		}
 	case http.StatusNotFound:
 		statusCode = http.StatusNotFound
-		if errType == "upstream_error" {
+		if errType == "api_error" {
 			errType = "not_found_error"
 		}
-		if errMsg == "Upstream request failed" {
+		if errMsg == clientSafeUpstreamErrorMessage(upstreamStatus) {
 			errMsg = "Resource not found"
 		}
 	case http.StatusTooManyRequests:
 		statusCode = http.StatusTooManyRequests
-		if errType == "upstream_error" {
+		if errType == "api_error" {
 			errType = "rate_limit_error"
 		}
-		if errMsg == "Upstream request failed" {
-			errMsg = "Upstream rate limit exceeded, please retry later"
+		if errMsg == clientSafeUpstreamErrorMessage(upstreamStatus) {
+			errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 		}
 	case 529:
 		statusCode = http.StatusServiceUnavailable
-		if errType == "upstream_error" {
+		if errType == "api_error" {
 			errType = "overloaded_error"
 		}
-		if errMsg == "Upstream request failed" {
-			errMsg = "Upstream service overloaded, please retry later"
+		if errMsg == clientSafeUpstreamErrorMessage(upstreamStatus) {
+			errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 		}
 	}
 
-	if upstreamMsg != "" && errMsg == "Upstream request failed" {
-		errMsg = upstreamMsg
+	if upstreamMsg != "" && errMsg == clientSafeUpstreamErrorMessage(upstreamStatus) {
+		errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 	}
 	return s.writeChatCompletionsError(c, statusCode, errType, errMsg)
 }

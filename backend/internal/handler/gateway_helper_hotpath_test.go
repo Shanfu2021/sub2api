@@ -257,6 +257,24 @@ func TestWaitForSlotWithPingTimeout_TimeoutAndStreamPing(t *testing.T) {
 	})
 }
 
+func TestAcquireUserSlotWithWaitRejectsNonPositiveConcurrency(t *testing.T) {
+	cache := &helperConcurrencyCacheStub{}
+	concurrency := service.NewConcurrencyService(cache)
+	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
+	streamStarted := false
+
+	release, err := helper.AcquireUserSlotWithWait(c, 202, 0, false, &streamStarted)
+
+	require.Nil(t, release)
+	var cErr *ConcurrencyError
+	require.ErrorAs(t, err, &cErr)
+	require.Equal(t, "user", cErr.SlotType)
+	require.False(t, cErr.IsTimeout)
+	require.False(t, streamStarted)
+	require.Equal(t, 0, cache.userAcquireCalls)
+}
+
 func TestWaitForSlotWithPingTimeout_ParentContextCanceled(t *testing.T) {
 	cache := &helperConcurrencyCacheStub{
 		accountSeq: []bool{false},

@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -263,6 +264,12 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
+	parentUserID, err := h.adminRootParentUserID(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	user, err := h.adminService.CreateUser(c.Request.Context(), &service.CreateUserInput{
 		Email:         req.Email,
 		Password:      req.Password,
@@ -272,6 +279,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Concurrency:   req.Concurrency,
 		RPMLimit:      req.RPMLimit,
 		AllowedGroups: req.AllowedGroups,
+		ParentUserID:  parentUserID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -279,6 +287,21 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	response.Success(c, dto.UserFromServiceAdmin(user))
+}
+
+func (h *UserHandler) adminRootParentUserID(c *gin.Context) (*int64, error) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		return nil, nil
+	}
+	admins, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 1, service.UserListFilters{Role: service.RoleAdmin, Status: service.StatusActive}, "id", "asc")
+	if err != nil {
+		return nil, err
+	}
+	if len(admins) == 0 {
+		return nil, service.ErrUserNotFound
+	}
+	rootAdminID := admins[0].ID
+	return &rootAdminID, nil
 }
 
 // Update handles updating a user

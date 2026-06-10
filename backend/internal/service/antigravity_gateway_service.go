@@ -1399,7 +1399,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	if err != nil {
 		return nil, &UpstreamFailoverError{
 			StatusCode:   http.StatusBadGateway,
-			ResponseBody: []byte(`{"error":{"type":"authentication_error","message":"Failed to get upstream access token"},"type":"error"}`),
+			ResponseBody: []byte(`{"error":{"type":"authentication_error","message":"Failed to get service access token"},"type":"error"}`),
 		}
 	}
 
@@ -1458,7 +1458,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		if c.Request.Context().Err() != nil {
 			return nil, s.writeClaudeError(c, http.StatusBadGateway, "client_disconnected", "Client disconnected before upstream response")
 		}
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "api_error", "Request failed")
 	}
 	resp := result.resp
 	defer func() { _ = resp.Body.Close() }()
@@ -2167,7 +2167,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	if err != nil {
 		return nil, &UpstreamFailoverError{
 			StatusCode:   http.StatusBadGateway,
-			ResponseBody: []byte(`{"error":{"message":"Failed to get upstream access token","status":"UNAVAILABLE"}}`),
+			ResponseBody: []byte(`{"error":{"message":"Failed to get service access token","status":"UNAVAILABLE"}}`),
 		}
 	}
 
@@ -2235,7 +2235,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		if c.Request.Context().Err() != nil {
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Client disconnected before upstream response")
 		}
-		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Request failed")
 	}
 	resp := result.resp
 	defer func() {
@@ -3459,7 +3459,7 @@ returnResponse:
 		logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Forward] warning: empty stream response (gemini non-stream), triggering failover")
 		return nil, &UpstreamFailoverError{
 			StatusCode:             http.StatusBadGateway,
-			ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
+			ResponseBody:           []byte(`{"error":"empty stream response"}`),
 			RetryableOnSameAccount: true,
 		}
 	}
@@ -3707,23 +3707,23 @@ func (s *AntigravityGatewayService) writeMappedClaudeError(c *gin.Context, accou
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "authentication_error"
-		errMsg = "Upstream authentication failed"
+		errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 	case 403:
 		statusCode = http.StatusBadGateway
 		errType = "permission_error"
-		errMsg = "Upstream access forbidden"
+		errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 	case 429:
 		statusCode = http.StatusTooManyRequests
 		errType = "rate_limit_error"
-		errMsg = "Upstream rate limit exceeded"
+		errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 	case 529:
 		statusCode = http.StatusServiceUnavailable
 		errType = "overloaded_error"
-		errMsg = "Upstream service overloaded"
+		errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 	default:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream request failed"
+		errType = clientSafeUpstreamErrorType(upstreamStatus, "api_error")
+		errMsg = clientSafeUpstreamErrorMessage(upstreamStatus)
 	}
 
 	c.JSON(statusCode, gin.H{
@@ -3899,7 +3899,7 @@ returnResponse:
 		logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Forward] warning: empty stream response (claude non-stream), triggering failover")
 		return nil, &UpstreamFailoverError{
 			StatusCode:             http.StatusBadGateway,
-			ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
+			ResponseBody:           []byte(`{"error":"empty stream response"}`),
 			RetryableOnSameAccount: true,
 		}
 	}
@@ -3919,7 +3919,7 @@ returnResponse:
 	claudeResp, agUsage, err := antigravity.TransformGeminiToClaude(geminiBody, originalModel)
 	if err != nil {
 		logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Forward] transform_error error=%v body=%s", err, string(geminiBody))
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "api_error", "Failed to parse service response")
 	}
 
 	c.Data(http.StatusOK, "application/json", claudeResp)
@@ -4067,7 +4067,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 					logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Claude-Stream] empty stream response (no valid events parsed), triggering failover")
 					return nil, &UpstreamFailoverError{
 						StatusCode:             http.StatusBadGateway,
-						ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
+						ResponseBody:           []byte(`{"error":"empty stream response"}`),
 						RetryableOnSameAccount: true,
 					}
 				}

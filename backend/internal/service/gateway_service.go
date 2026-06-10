@@ -624,6 +624,7 @@ type GatewayService struct {
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
+	agentIncomeResolver   *AgentIncomeResolver
 	userGroupRateCache    *gocache.Cache
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
@@ -713,6 +714,7 @@ func NewGatewayService(
 		&svc.userGroupRateSF,
 		"service.gateway",
 	)
+	svc.agentIncomeResolver = NewAgentIncomeResolver(userRepo, userGroupRateRepo)
 	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
 	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
@@ -1649,6 +1651,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	preferOAuth := platform == PlatformGemini
+	strictPriority := s.isStrictPriorityGroupForSelection(ctx, groupID, group)
 	if s.debugModelRoutingEnabled() && platform == PlatformAnthropic && requestedModel != "" {
 		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
 	}
@@ -1873,26 +1876,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 			if len(routingAvailable) > 0 {
 				// 排序：优先级 > 负载率 > 最后使用时间
-				sort.SliceStable(routingAvailable, func(i, j int) bool {
-					a, b := routingAvailable[i], routingAvailable[j]
-					if a.account.Priority != b.account.Priority {
-						return a.account.Priority < b.account.Priority
-					}
-					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
-					}
-					switch {
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
-						return true
-					case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
-						return false
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
-						return false
-					default:
-						return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
-					}
-				})
-				shuffleWithinSortGroups(routingAvailable)
+				sortAccountWithLoadCandidates(routingAvailable, preferOAuth, strictPriority)
 
 				// 4. 尝试获取槽位
 				for _, item := range routingAvailable {
@@ -2111,7 +2095,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, strictPriority); legacyErr != nil {
 			return nil, legacyErr
 		} else if ok {
 			return result, nil
@@ -2131,14 +2115,22 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 → 负载率 → LRU
+		// 分层过滤选择：优先级 → 负载率 → LRU；严格优先级时同优先级先按计费倍率排序。
+		if strictPriority {
+			sortAccountWithLoadCandidates(available, preferOAuth, true)
+		}
 		for len(available) > 0 {
-			// 1. 取优先级最小的集合
-			candidates := filterByMinPriority(available)
-			// 2. 取负载率最低的集合
-			candidates = filterByMinLoadRate(candidates)
-			// 3. LRU 选择最久未用的账号
-			selected := selectByLRU(candidates, preferOAuth)
+			var selected *accountWithLoad
+			if strictPriority {
+				selected = &available[0]
+			} else {
+				// 1. 取优先级最小的集合
+				candidates := filterByMinPriority(available)
+				// 2. 取负载率最低的集合
+				candidates = filterByMinLoadRate(candidates)
+				// 3. LRU 选择最久未用的账号
+				selected = selectByLRU(candidates, preferOAuth)
+			}
 			if selected == nil {
 				break
 			}
@@ -2169,7 +2161,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	// ============ Layer 3: 兜底排队 ============
-	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
+	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode, strictPriority)
 	for _, acc := range candidates {
 		// 会话数量限制检查（等待计划也需要占用会话配额）
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
@@ -2185,9 +2177,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, strictPriority bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
-	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+	if strictPriority {
+		sort.SliceStable(ordered, func(i, j int) bool {
+			return compareAccountStrictPriority(ordered[i], ordered[j], preferOAuth, true)
+		})
+	} else {
+		sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+	}
 
 	for _, acc := range ordered {
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
@@ -2223,6 +2221,24 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
 	}
+}
+
+func isStrictPriorityGroup(group *Group) bool {
+	return group != nil && group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority
+}
+
+func (s *GatewayService) isStrictPriorityGroupForSelection(ctx context.Context, groupID *int64, group *Group) bool {
+	if isStrictPriorityGroup(group) {
+		return true
+	}
+	if groupID == nil || *groupID <= 0 || s.groupRepo == nil {
+		return false
+	}
+	resolved, err := s.groupRepo.GetByIDLite(ctx, *groupID)
+	if err != nil {
+		return false
+	}
+	return isStrictPriorityGroup(resolved)
 }
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
@@ -2958,25 +2974,51 @@ func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad 
 
 func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 	sort.SliceStable(accounts, func(i, j int) bool {
-		a, b := accounts[i], accounts[j]
-		if a.Priority != b.Priority {
-			return a.Priority < b.Priority
-		}
-		switch {
-		case a.LastUsedAt == nil && b.LastUsedAt != nil:
-			return true
-		case a.LastUsedAt != nil && b.LastUsedAt == nil:
-			return false
-		case a.LastUsedAt == nil && b.LastUsedAt == nil:
-			if preferOAuth && a.Type != b.Type {
-				return a.Type == AccountTypeOAuth
-			}
-			return false
-		default:
-			return a.LastUsedAt.Before(*b.LastUsedAt)
-		}
+		return compareAccountStrictPriority(accounts[i], accounts[j], preferOAuth, false)
 	})
 	shuffleWithinPriorityAndLastUsed(accounts, preferOAuth)
+}
+
+func sortAccountWithLoadCandidates(accounts []accountWithLoad, preferOAuth bool, strictPriority bool) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.account == nil || b.account == nil {
+			return a.account != nil
+		}
+		if a.account.Priority != b.account.Priority {
+			return a.account.Priority < b.account.Priority
+		}
+		if strictPriority {
+			aRate, bRate := a.account.BillingRateMultiplier(), b.account.BillingRateMultiplier()
+			if aRate != bRate {
+				return aRate < bRate
+			}
+		}
+		aLoad, bLoad := 0, 0
+		if a.loadInfo != nil {
+			aLoad = a.loadInfo.LoadRate
+		}
+		if b.loadInfo != nil {
+			bLoad = b.loadInfo.LoadRate
+		}
+		if aLoad != bLoad {
+			return aLoad < bLoad
+		}
+		aWaiting, bWaiting := 0, 0
+		if a.loadInfo != nil {
+			aWaiting = a.loadInfo.WaitingCount
+		}
+		if b.loadInfo != nil {
+			bWaiting = b.loadInfo.WaitingCount
+		}
+		if aWaiting != bWaiting {
+			return aWaiting < bWaiting
+		}
+		return compareAccountStrictPriority(a.account, b.account, preferOAuth, false)
+	})
+	if !strictPriority {
+		shuffleWithinSortGroups(accounts)
+	}
 }
 
 // shuffleWithinSortGroups 对排序后的 accountWithLoad 切片，按 (Priority, LoadRate, LastUsedAt) 分组后组内随机打乱。
@@ -3064,6 +3106,40 @@ func sameAccountGroup(a, b *Account) bool {
 	return sameLastUsedAt(a.LastUsedAt, b.LastUsedAt)
 }
 
+func compareAccountStrictPriority(a, b *Account, preferOAuth bool, strictPriority bool) bool {
+	if a == nil || b == nil {
+		return a != nil
+	}
+	if a.Priority != b.Priority {
+		return a.Priority < b.Priority
+	}
+	if strictPriority {
+		aRate, bRate := a.BillingRateMultiplier(), b.BillingRateMultiplier()
+		if aRate != bRate {
+			return aRate < bRate
+		}
+	}
+	switch {
+	case a.LastUsedAt == nil && b.LastUsedAt != nil:
+		return true
+	case a.LastUsedAt != nil && b.LastUsedAt == nil:
+		return false
+	case a.LastUsedAt == nil && b.LastUsedAt == nil:
+		if preferOAuth && a.Type != b.Type {
+			return a.Type == AccountTypeOAuth
+		}
+		return a.ID < b.ID
+	default:
+		if a.LastUsedAt.Equal(*b.LastUsedAt) {
+			if preferOAuth && a.Type != b.Type {
+				return a.Type == AccountTypeOAuth
+			}
+			return a.ID < b.ID
+		}
+		return a.LastUsedAt.Before(*b.LastUsedAt)
+	}
+}
+
 // sameLastUsedAt 判断两个 LastUsedAt 是否相同（精度到秒）
 func sameLastUsedAt(a, b *time.Time) bool {
 	switch {
@@ -3076,9 +3152,15 @@ func sameLastUsedAt(a, b *time.Time) bool {
 	}
 }
 
-// sortCandidatesForFallback 根据配置选择排序策略
-// mode: "last_used"(按最后使用时间) 或 "random"(随机)
-func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string) {
+// sortCandidatesForFallback 根据配置选择排序策略。
+// mode: "last_used"(按最后使用时间) 或 "random"(随机)。
+func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string, strictPriority bool) {
+	if strictPriority {
+		sort.SliceStable(accounts, func(i, j int) bool {
+			return compareAccountStrictPriority(accounts[i], accounts[j], preferOAuth, true)
+		})
+		return
+	}
 	if mode == "random" {
 		// 先按优先级排序，然后在同优先级内随机打乱
 		sortAccountsByPriorityOnly(accounts, preferOAuth)
@@ -3136,6 +3218,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	if groupID != nil && s.groupRepo != nil {
 		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
 	}
+	strictPriority := isStrictPriorityGroup(schedGroup)
 
 	var accounts []Account
 	accountsLoaded := false
@@ -3233,23 +3316,8 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				selected = acc
 				continue
 			}
-			if acc.Priority < selected.Priority {
+			if compareAccountStrictPriority(acc, selected, preferOAuth, strictPriority) {
 				selected = acc
-			} else if acc.Priority == selected.Priority {
-				switch {
-				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-					selected = acc
-				case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-					// keep selected (never used is preferred)
-				case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-					if preferOAuth && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
-						selected = acc
-					}
-				default:
-					if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-						selected = acc
-					}
-				}
 			}
 		}
 
@@ -3347,23 +3415,8 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			selected = acc
 			continue
 		}
-		if acc.Priority < selected.Priority {
+		if compareAccountStrictPriority(acc, selected, preferOAuth, strictPriority) {
 			selected = acc
-		} else if acc.Priority == selected.Priority {
-			switch {
-			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-				selected = acc
-			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-				// keep selected (never used is preferred)
-			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				if preferOAuth && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
-					selected = acc
-				}
-			default:
-				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-					selected = acc
-				}
-			}
 		}
 	}
 
@@ -3396,6 +3449,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	if groupID != nil && s.groupRepo != nil {
 		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
 	}
+	strictPriority := isStrictPriorityGroup(schedGroup)
 
 	var accounts []Account
 	accountsLoaded := false
@@ -3493,23 +3547,8 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				selected = acc
 				continue
 			}
-			if acc.Priority < selected.Priority {
+			if compareAccountStrictPriority(acc, selected, preferOAuth, strictPriority) {
 				selected = acc
-			} else if acc.Priority == selected.Priority {
-				switch {
-				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-					selected = acc
-				case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-					// keep selected (never used is preferred)
-				case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-					if preferOAuth && acc.Platform == PlatformGemini && selected.Platform == PlatformGemini && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
-						selected = acc
-					}
-				default:
-					if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-						selected = acc
-					}
-				}
 			}
 		}
 
@@ -3608,23 +3647,8 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			selected = acc
 			continue
 		}
-		if acc.Priority < selected.Priority {
+		if compareAccountStrictPriority(acc, selected, preferOAuth, strictPriority) {
 			selected = acc
-		} else if acc.Priority == selected.Priority {
-			switch {
-			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-				selected = acc
-			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-				// keep selected (never used is preferred)
-			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				if preferOAuth && acc.Platform == PlatformGemini && selected.Platform == PlatformGemini && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
-					selected = acc
-				}
-			default:
-				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-					selected = acc
-				}
-			}
 		}
 	}
 
@@ -4732,8 +4756,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -5262,8 +5286,8 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -6062,8 +6086,8 @@ func (s *GatewayService) executeBedrockUpstream(
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
+					"type":    "api_error",
+					"message": "Request failed",
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
@@ -7389,8 +7413,8 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		resp.StatusCode,
 		body,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed",
+		"api_error",
+		"Request failed",
 	); matched {
 		c.JSON(status, gin.H{
 			"type": "error",
@@ -7416,7 +7440,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": clientSafeUpstreamErrorMessage(resp.StatusCode),
+			},
+		})
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -7427,28 +7457,28 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
 	case 401:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream authentication failed, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 403:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream access forbidden, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 429:
 		statusCode = http.StatusTooManyRequests
-		errType = "rate_limit_error"
-		errMsg = "Upstream rate limit exceeded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 529:
 		statusCode = http.StatusServiceUnavailable
-		errType = "overloaded_error"
-		errMsg = "Upstream service overloaded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 500, 502, 503, 504:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream service temporarily unavailable"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	default:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream request failed"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	}
 
 	// 返回自定义错误响应
@@ -7552,8 +7582,8 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		resp.StatusCode,
 		respBody,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed after retries",
+		"api_error",
+		clientSafeUpstreamErrorMessage(resp.StatusCode),
 	); matched {
 		c.JSON(status, gin.H{
 			"type": "error",
@@ -7577,8 +7607,8 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	c.JSON(http.StatusBadGateway, gin.H{
 		"type": "error",
 		"error": gin.H{
-			"type":    "upstream_error",
-			"message": "Upstream request failed after retries",
+			"type":    clientSafeUpstreamErrorType(resp.StatusCode, "api_error"),
+			"message": clientSafeUpstreamErrorMessage(resp.StatusCode),
 		},
 	})
 
@@ -8956,6 +8986,21 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+	userIncomeRate := multiplier
+	if result.ImageCount > 0 {
+		userIncomeRate = imageMultiplier
+	}
+	groupDefaultRate := multiplier
+	if apiKey.Group != nil {
+		groupDefaultRate = apiKey.Group.RateMultiplier
+	}
+	if s.agentIncomeResolver != nil && cost != nil {
+		snapshot := s.agentIncomeResolver.Resolve(ctx, user, apiKey.GroupID, cost.ActualCost, userIncomeRate, groupDefaultRate)
+		usageLog.AgentOwnerUserID = snapshot.AgentOwnerUserID
+		usageLog.AgentUserRateMultiplier = snapshot.UserRateMultiplier
+		usageLog.AgentCostRateMultiplier = snapshot.AgentCostRateMultiplier
+		usageLog.AgentIncome = snapshot.AgentIncome
+	}
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
@@ -9454,7 +9499,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// 获取凭证
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to get access token")
 		return err
 	}
 
@@ -9479,19 +9524,19 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
 
 	// 读取响应体
 	countTokensTooLarge := func(c *gin.Context) {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Service response too large")
 	}
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 	_ = resp.Body.Close()
 	if err != nil {
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+			s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 		}
 		return err
 	}
@@ -9514,7 +9559,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 				_ = resp.Body.Close()
 				if err != nil {
 					if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-						s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+						s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 					}
 					return err
 				}
@@ -9559,14 +9604,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		}
 
 		// 返回简化的错误响应
-		errMsg := "Upstream request failed"
-		switch resp.StatusCode {
-		case 429:
-			errMsg = "Rate limit exceeded"
-		case 529:
-			errMsg = "Service overloaded"
-		}
-		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
+		s.countTokensError(c, resp.StatusCode, clientSafeUpstreamErrorType(resp.StatusCode, "api_error"), clientSafeUpstreamErrorMessage(resp.StatusCode))
 		if upstreamMsg == "" {
 			return fmt.Errorf("upstream error: %d", resp.StatusCode)
 		}
@@ -9581,11 +9619,11 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to get access token")
 		return err
 	}
 	if tokenType != "apikey" {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Invalid account token type")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Invalid account token type")
 		return fmt.Errorf("anthropic api key passthrough requires apikey token, got: %s", tokenType)
 	}
 
@@ -9613,18 +9651,18 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			Kind:               "request_error",
 			Message:            sanitizeUpstreamErrorMessage(err.Error()),
 		})
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
 
 	countTokensTooLarge := func(c *gin.Context) {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+		s.countTokensError(c, http.StatusBadGateway, "api_error", "Service response too large")
 	}
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 	_ = resp.Body.Close()
 	if err != nil {
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+			s.countTokensError(c, http.StatusBadGateway, "api_error", "Failed to read service response")
 		}
 		return err
 	}
@@ -9644,7 +9682,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			logger.LegacyPrintf("service.gateway",
 				"[count_tokens] Upstream does not support count_tokens (404), returning 404: account=%d name=%s msg=%s",
 				account.ID, account.Name, truncateString(upstreamMsg, 512))
-			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported by upstream")
+			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported")
 			return nil
 		}
 
@@ -9670,14 +9708,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			Detail:             upstreamDetail,
 		})
 
-		errMsg := "Upstream request failed"
-		switch resp.StatusCode {
-		case 429:
-			errMsg = "Rate limit exceeded"
-		case 529:
-			errMsg = "Service overloaded"
-		}
-		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
+		s.countTokensError(c, resp.StatusCode, clientSafeUpstreamErrorType(resp.StatusCode, "api_error"), clientSafeUpstreamErrorMessage(resp.StatusCode))
 		if upstreamMsg == "" {
 			return fmt.Errorf("upstream error: %d", resp.StatusCode)
 		}

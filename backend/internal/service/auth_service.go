@@ -24,25 +24,26 @@ import (
 )
 
 var (
-	ErrInvalidCredentials      = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
-	ErrUserNotActive           = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
-	ErrEmailExists             = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
-	ErrEmailReserved           = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
-	ErrInvalidToken            = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
-	ErrTokenExpired            = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
-	ErrAccessTokenExpired      = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
-	ErrTokenTooLarge           = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
-	ErrTokenRevoked            = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
-	ErrRefreshTokenInvalid     = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
-	ErrRefreshTokenExpired     = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
-	ErrRefreshTokenReused      = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
-	ErrEmailVerifyRequired     = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
-	ErrEmailSuffixNotAllowed   = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
-	ErrRegDisabled             = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrServiceUnavailable      = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
-	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
-	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
-	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
+	ErrInvalidCredentials               = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
+	ErrUserNotActive                    = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists                      = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved                    = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrInvalidToken                     = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired                     = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrAccessTokenExpired               = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
+	ErrTokenTooLarge                    = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
+	ErrTokenRevoked                     = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrRefreshTokenInvalid              = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
+	ErrRefreshTokenExpired              = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
+	ErrRefreshTokenReused               = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
+	ErrEmailVerifyRequired              = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrEmailSuffixNotAllowed            = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
+	ErrRegDisabled                      = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrServiceUnavailable               = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
+	ErrInvitationCodeRequired           = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
+	ErrInvitationCodeInvalid            = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
+	ErrInvitationAgentQuotaInsufficient = infraerrors.BadRequest("INVITATION_AGENT_QUOTA_INSUFFICIENT", "invitation code is valid, but inviter agent quota is insufficient")
+	ErrOAuthInvitationRequired          = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -62,19 +63,27 @@ type JWTClaims struct {
 
 // AuthService 认证服务
 type AuthService struct {
-	entClient             *dbent.Client
-	userRepo              UserRepository
-	redeemRepo            RedeemCodeRepository
-	refreshTokenCache     RefreshTokenCache
-	cfg                   *config.Config
-	settingService        *SettingService
-	emailService          *EmailService
-	turnstileService      *TurnstileService
-	emailQueueService     *EmailQueueService
-	promoService          *PromoService
-	affiliateService      *AffiliateService
-	defaultSubAssigner    DefaultSubscriptionAssigner
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	entClient              *dbent.Client
+	userRepo               UserRepository
+	redeemRepo             RedeemCodeRepository
+	refreshTokenCache      RefreshTokenCache
+	cfg                    *config.Config
+	settingService         *SettingService
+	emailService           *EmailService
+	turnstileService       *TurnstileService
+	emailQueueService      *EmailQueueService
+	promoService           *PromoService
+	affiliateService       *AffiliateService
+	agentManagementService *AgentManagementService
+	defaultSubAssigner     DefaultSubscriptionAssigner
+	userPlatformQuotaRepo  UserPlatformQuotaRepository
+}
+
+type registrationInvitationResolution struct {
+	RedeemCode *RedeemCode
+	ParentID   *int64
+	InviterID  *int64
+	BindCode   string
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -128,6 +137,263 @@ func (s *AuthService) EntClient() *dbent.Client {
 	return s.entClient
 }
 
+func (s *AuthService) SetAgentManagementService(agentManagementService *AgentManagementService) {
+	s.agentManagementService = agentManagementService
+}
+
+func (s *AuthService) resolveAffiliateInvitation(ctx context.Context, affiliateCode string) (*AffiliateSummary, *int64, bool, error) {
+	code := strings.ToUpper(strings.TrimSpace(affiliateCode))
+	if code == "" {
+		return nil, nil, false, nil
+	}
+	if s == nil || s.affiliateService == nil || s.affiliateService.repo == nil || !s.affiliateService.IsEnabled(ctx) {
+		return nil, nil, false, nil
+	}
+	if !isValidAffiliateCodeFormat(code) {
+		return nil, nil, true, ErrAffiliateCodeInvalid
+	}
+	summary, err := s.affiliateService.repo.GetAffiliateByCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, ErrAffiliateProfileNotFound) {
+			return nil, nil, true, ErrAffiliateCodeInvalid
+		}
+		return nil, nil, true, err
+	}
+	if summary == nil || summary.UserID <= 0 {
+		return nil, nil, true, ErrAffiliateCodeInvalid
+	}
+	parentID, err := s.resolveInvitationParent(ctx, summary.UserID)
+	if err != nil {
+		return nil, nil, true, err
+	}
+	return summary, parentID, true, nil
+}
+
+func (s *AuthService) ValidateAffiliateInvitationCode(ctx context.Context, affiliateCode string) error {
+	resolution, err := s.resolveRegistrationInvitation(ctx, affiliateCode, "", false)
+	if err != nil {
+		return err
+	}
+	if resolution == nil || resolution.ParentID == nil {
+		return ErrInvitationCodeInvalid
+	}
+	return nil
+}
+
+func (s *AuthService) resolveInvitationParent(ctx context.Context, inviterID int64) (*int64, error) {
+	if s.agentManagementService != nil {
+		return s.agentManagementService.ResolveInvitationParent(ctx, inviterID)
+	}
+	if s == nil || s.userRepo == nil {
+		return nil, ErrServiceUnavailable
+	}
+	inviter, err := s.userRepo.GetByID(ctx, inviterID)
+	if err != nil {
+		return nil, err
+	}
+	if inviter.Role == RoleAdmin {
+		rootAdmin, err := s.userRepo.GetFirstAdmin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return &rootAdmin.ID, nil
+	}
+	if inviter.Role == RoleAgentLevel1 {
+		return &inviter.ID, nil
+	}
+	visited := map[int64]struct{}{inviter.ID: {}}
+	parentID := inviter.ParentUserID
+	for parentID != nil {
+		if _, ok := visited[*parentID]; ok {
+			break
+		}
+		visited[*parentID] = struct{}{}
+		parent, err := s.userRepo.GetByID(ctx, *parentID)
+		if err != nil {
+			return nil, err
+		}
+		if parent.Role == RoleAgentLevel1 {
+			return &parent.ID, nil
+		}
+		if parent.Role == RoleAdmin {
+			rootAdmin, err := s.userRepo.GetFirstAdmin(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &rootAdmin.ID, nil
+		}
+		parentID = parent.ParentUserID
+	}
+	rootAdmin, err := s.userRepo.GetFirstAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &rootAdmin.ID, nil
+}
+
+func (s *AuthService) resolveRegistrationInvitation(ctx context.Context, invitationCode, affiliateCode string, requireOAuthError bool) (*registrationInvitationResolution, error) {
+	if s == nil || s.settingService == nil || !s.settingService.IsInvitationCodeEnabled(ctx) {
+		return &registrationInvitationResolution{BindCode: strings.TrimSpace(affiliateCode)}, nil
+	}
+
+	invitationCode = strings.TrimSpace(invitationCode)
+	affiliateCode = strings.TrimSpace(affiliateCode)
+	if invitationCode == "" && affiliateCode == "" {
+		if requireOAuthError {
+			return nil, ErrOAuthInvitationRequired
+		}
+		return nil, ErrInvitationCodeRequired
+	}
+
+	resolved := &registrationInvitationResolution{BindCode: affiliateCode}
+	if invitationCode != "" {
+		redeemCode, err := s.loadOAuthRegistrationInvitation(ctx, invitationCode)
+		if err == nil && redeemCode.Type == RedeemTypeInvitation && redeemCode.CanUse() {
+			rootAdmin, err := s.userRepo.GetFirstAdmin(ctx)
+			if err != nil {
+				return nil, ErrServiceUnavailable
+			}
+			resolved.ParentID = &rootAdmin.ID
+			resolved.RedeemCode = redeemCode
+			return resolved, nil
+		}
+		if err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Invitation code not found as redeem code, trying affiliate code: %s, error: %v", invitationCode, err)
+		} else {
+			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid as redeem code, trying affiliate code: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
+		}
+		summary, parentID, ok, err := s.resolveAffiliateInvitation(ctx, invitationCode)
+		if err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Invalid affiliate invitation code: %s, error: %v", invitationCode, err)
+			return nil, ErrInvitationCodeInvalid
+		}
+		if !ok {
+			return nil, ErrInvitationCodeInvalid
+		}
+		resolved.ParentID = parentID
+		if summary != nil && summary.UserID > 0 {
+			resolved.InviterID = &summary.UserID
+		}
+		if resolved.BindCode == "" {
+			resolved.BindCode = invitationCode
+		}
+		return resolved, nil
+	}
+
+	summary, parentID, ok, err := s.resolveAffiliateInvitation(ctx, affiliateCode)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Invalid affiliate invitation code: %s, error: %v", affiliateCode, err)
+		return nil, ErrInvitationCodeInvalid
+	}
+	if !ok {
+		if requireOAuthError {
+			return nil, ErrOAuthInvitationRequired
+		}
+		return nil, ErrInvitationCodeRequired
+	}
+	resolved.ParentID = parentID
+	if summary != nil && summary.UserID > 0 {
+		resolved.InviterID = &summary.UserID
+	}
+	return resolved, nil
+}
+
+func (s *AuthService) resolveRegistrationParentID(ctx context.Context, invitationResolution *registrationInvitationResolution) *int64 {
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		return invitationResolution.ParentID
+	}
+	if s == nil || s.userRepo == nil {
+		return nil
+	}
+	admin, err := s.userRepo.GetFirstAdmin(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to resolve default registration parent admin: %v", err)
+		return nil
+	}
+	adminID := admin.ID
+	return &adminID
+}
+
+type registrationQuota struct {
+	Concurrency int
+	RPM         int
+}
+
+func (s *AuthService) resolveInvitationRegistrationQuota(ctx context.Context, parentID int64, fallbackConcurrency int, fallbackRPM int) (registrationQuota, error) {
+	quota := registrationQuota{Concurrency: fallbackConcurrency, RPM: fallbackRPM}
+	if parentID <= 0 || s == nil || s.userRepo == nil {
+		return quota, nil
+	}
+	parent, err := s.userRepo.GetByID(ctx, parentID)
+	if err != nil {
+		return quota, err
+	}
+	if parent.Role == RoleAdmin {
+		quota = s.resolveAdminInvitationRegistrationQuota(ctx, fallbackConcurrency, fallbackRPM)
+		return quota, nil
+	}
+	if !isAgentManagerRole(parent.Role) {
+		return quota, nil
+	}
+	quota = registrationQuota{Concurrency: DefaultAgentInviteConcurrency, RPM: DefaultAgentInviteRPM}
+	if s.agentManagementService == nil || s.agentManagementService.repo == nil {
+		return quota, ErrInvitationAgentQuotaInsufficient
+	}
+	profile, err := s.agentManagementService.repo.GetAgentProfile(ctx, parentID)
+	if err != nil {
+		return quota, err
+	}
+	if profile != nil {
+		quota.Concurrency = normalizedAgentInviteDefaultConcurrency(profile.InviteDefaultConcurrency, DefaultAgentInviteConcurrency)
+		quota.RPM = normalizedAgentInviteDefaultRPM(profile.InviteDefaultRPM, DefaultAgentInviteRPM)
+	}
+	totalConcurrency, totalRPM, err := s.agentManagementService.managerCapacity(ctx, parent)
+	if err != nil {
+		return quota, err
+	}
+	usage, err := s.agentManagementService.repo.GetDirectChildQuotaUsage(ctx, parentID, nil)
+	if err != nil {
+		return quota, err
+	}
+	if concurrencyRequestExceedsCapacity(totalConcurrency, usage.Concurrency, quota.Concurrency) ||
+		rpmRequestExceedsCapacity(totalRPM, usage.RPM, usage.UnlimitedRPM, quota.RPM) {
+		return quota, ErrInvitationAgentQuotaInsufficient
+	}
+	return quota, nil
+}
+
+func (s *AuthService) resolveAdminInvitationRegistrationQuota(ctx context.Context, fallbackConcurrency int, fallbackRPM int) registrationQuota {
+	quota := registrationQuota{Concurrency: fallbackConcurrency, RPM: fallbackRPM}
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return quota
+	}
+	if value, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyDefaultConcurrency); err == nil {
+		if parsed, parseErr := strconv.Atoi(value); parseErr == nil && parsed >= 1 {
+			quota.Concurrency = parsed
+		}
+	}
+	if value, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit); err == nil {
+		if parsed, parseErr := strconv.Atoi(value); parseErr == nil && parsed >= 0 {
+			quota.RPM = parsed
+		}
+	}
+	return quota
+}
+
+func normalizedAgentInviteDefaultConcurrency(value int, fallback int) int {
+	if value < 1 {
+		return fallback
+	}
+	return value
+}
+
+func normalizedAgentInviteDefaultRPM(value int, fallback int) int {
+	if value < 0 {
+		return fallback
+	}
+	return value
+}
+
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
@@ -149,23 +415,9 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	// 检查是否需要邀请码
-	var invitationRedeemCode *RedeemCode
-	if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
-		if invitationCode == "" {
-			return "", nil, ErrInvitationCodeRequired
-		}
-		// 验证邀请码
-		redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
-		if err != nil {
-			logger.LegacyPrintf("service.auth", "[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
-			return "", nil, ErrInvitationCodeInvalid
-		}
-		// 检查类型和状态
-		if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
-			return "", nil, ErrInvitationCodeInvalid
-		}
-		invitationRedeemCode = redeemCode
+	invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, affiliateCode, false)
+	if err != nil {
+		return "", nil, err
 	}
 
 	// 检查是否需要邮件验证
@@ -208,6 +460,15 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if s.settingService != nil {
 		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 	}
+	defaultConcurrency := grantPlan.Concurrency
+	if invitationResolution != nil && invitationResolution.ParentID != nil {
+		quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+		if err != nil {
+			return "", nil, err
+		}
+		defaultConcurrency = quota.Concurrency
+		defaultRPMLimit = quota.RPM
+	}
 
 	// 创建用户
 	user := &User{
@@ -215,10 +476,11 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
+		Concurrency:  defaultConcurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 	}
+	user.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
@@ -229,6 +491,10 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, ErrServiceUnavailable
 	}
 	s.postAuthUserBootstrap(ctx, user, "email", true)
+	if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
+		_ = s.userRepo.HardDelete(ctx, user.ID)
+		return "", nil, err
+	}
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
@@ -237,16 +503,23 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", user.ID, err)
 		}
 		if code := strings.TrimSpace(affiliateCode); code != "" {
+			if invitationResolution != nil && invitationResolution.BindCode != "" {
+				code = invitationResolution.BindCode
+			}
 			if err := s.affiliateService.BindInviterByCode(ctx, user.ID, code); err != nil {
 				// 邀请返利码绑定失败不影响注册，只记录日志
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
+			}
+		} else if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+			if err := s.affiliateService.BindInviterByCode(ctx, user.ID, invitationResolution.BindCode); err != nil {
 				logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
 			}
 		}
 	}
 
 	// 标记邀请码为已使用（如果使用了邀请码）
-	if invitationRedeemCode != nil {
-		if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+	if invitationResolution != nil && invitationResolution.RedeemCode != nil {
+		if err := s.redeemRepo.Use(ctx, invitationResolution.RedeemCode.ID, user.ID); err != nil {
 			// 邀请码标记失败不影响注册，只记录日志
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
 		}
@@ -524,6 +797,7 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
+			newUser.ParentUserID = s.resolveRegistrationParentID(ctx, nil)
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
 				if errors.Is(err, ErrEmailExists) {
@@ -613,20 +887,9 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				return nil, nil, ErrRegDisabled
 			}
 
-			// 检查是否需要邀请码
-			var invitationRedeemCode *RedeemCode
-			if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
-				if invitationCode == "" {
-					return nil, nil, ErrOAuthInvitationRequired
-				}
-				redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
-				if err != nil {
-					return nil, nil, ErrInvitationCodeInvalid
-				}
-				if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
-					return nil, nil, ErrInvitationCodeInvalid
-				}
-				invitationRedeemCode = redeemCode
+			invitationResolution, err := s.resolveRegistrationInvitation(ctx, invitationCode, affiliateCode, true)
+			if err != nil {
+				return nil, nil, err
 			}
 
 			randomPassword, err := randomHexString(32)
@@ -649,6 +912,15 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			if s.settingService != nil {
 				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
 			}
+			defaultConcurrency := grantPlan.Concurrency
+			if invitationResolution != nil && invitationResolution.ParentID != nil {
+				quota, err := s.resolveInvitationRegistrationQuota(ctx, *invitationResolution.ParentID, defaultConcurrency, defaultRPMLimit)
+				if err != nil {
+					return nil, nil, err
+				}
+				defaultConcurrency = quota.Concurrency
+				defaultRPMLimit = quota.RPM
+			}
 
 			newUser := &User{
 				Email:        email,
@@ -656,13 +928,14 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
-				Concurrency:  grantPlan.Concurrency,
+				Concurrency:  defaultConcurrency,
 				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
+			newUser.ParentUserID = s.resolveRegistrationParentID(ctx, invitationResolution)
 
-			if s.entClient != nil && invitationRedeemCode != nil {
+			if s.entClient != nil && invitationResolution != nil && invitationResolution.RedeemCode != nil {
 				tx, err := s.entClient.Tx(ctx)
 				if err != nil {
 					logger.LegacyPrintf("service.auth", "[Auth] Failed to begin transaction for oauth registration: %v", err)
@@ -683,7 +956,7 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						return nil, nil, ErrServiceUnavailable
 					}
 				} else {
-					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
+					if err := s.useOAuthRegistrationInvitation(txCtx, invitationResolution.RedeemCode.ID, newUser.ID); err != nil {
 						return nil, nil, ErrInvitationCodeInvalid
 					}
 					if err := tx.Commit(); err != nil {
@@ -692,10 +965,18 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					}
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
+					if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
+						_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+						return nil, nil, err
+					}
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
+					bindCode := affiliateCode
+					if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+						bindCode = invitationResolution.BindCode
+					}
+					s.bindOAuthAffiliate(ctx, user.ID, bindCode)
 				}
 			} else {
 				if err := s.userRepo.Create(ctx, newUser); err != nil {
@@ -712,12 +993,20 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				} else {
 					user = newUser
 					s.postAuthUserBootstrap(ctx, user, signupSource, false)
+					if err := s.applyRegistrationInvitationPostCreateDefaults(ctx, user, invitationResolution); err != nil {
+						_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+						return nil, nil, err
+					}
 					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					// snapshot user × platform quota（fail-open）
 					_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-					s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
-					if invitationRedeemCode != nil {
-						if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+					bindCode := affiliateCode
+					if invitationResolution != nil && strings.TrimSpace(invitationResolution.BindCode) != "" {
+						bindCode = invitationResolution.BindCode
+					}
+					s.bindOAuthAffiliate(ctx, user.ID, bindCode)
+					if invitationResolution != nil && invitationResolution.RedeemCode != nil {
+						if err := s.useOAuthRegistrationInvitation(ctx, invitationResolution.RedeemCode.ID, user.ID); err != nil {
 							return nil, nil, ErrInvitationCodeInvalid
 						}
 					}
@@ -760,6 +1049,98 @@ func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, ite
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 		}
 	}
+}
+
+func (s *AuthService) applyInvitationPostCreateDefaults(ctx context.Context, user *User) error {
+	if s == nil || user == nil || user.ID <= 0 || user.ParentUserID == nil || s.agentManagementService == nil {
+		return nil
+	}
+	parent, err := s.userRepo.GetByID(ctx, *user.ParentUserID)
+	if err != nil {
+		return err
+	}
+	if !isAgentManagerRole(parent.Role) {
+		return nil
+	}
+	if err := s.agentManagementService.ApplyInviteGroupDefaultsToChild(ctx, parent.ID, user.ID); err != nil {
+		return err
+	}
+	if parent.Role == RoleAdmin {
+		return nil
+	}
+	return s.agentManagementService.recalculateAgentEffectiveQuota(ctx, parent.ID)
+}
+
+func (s *AuthService) applyRegistrationInvitationPostCreateDefaults(ctx context.Context, user *User, invitationResolution *registrationInvitationResolution) error {
+	if invitationResolution != nil && invitationResolution.InviterID != nil && *invitationResolution.InviterID > 0 {
+		applied, err := s.applyNonManagerInviterGroups(ctx, user, *invitationResolution.InviterID)
+		if err != nil {
+			return err
+		}
+		if applied {
+			return s.recalculateRegistrationParentQuota(ctx, user)
+		}
+	}
+	return s.applyInvitationPostCreateDefaults(ctx, user)
+}
+
+func (s *AuthService) applyNonManagerInviterGroups(ctx context.Context, user *User, inviterID int64) (bool, error) {
+	if s == nil || user == nil || user.ID <= 0 || inviterID <= 0 || s.userRepo == nil {
+		return false, nil
+	}
+	inviter, err := s.userRepo.GetByID(ctx, inviterID)
+	if err != nil {
+		return false, err
+	}
+	if isAgentManagerRole(inviter.Role) {
+		return false, nil
+	}
+
+	groups := append([]int64(nil), inviter.AllowedGroups...)
+	groupSet := make(map[int64]struct{}, len(groups))
+	for _, groupID := range groups {
+		groupSet[groupID] = struct{}{}
+		if err := s.userRepo.AddGroupToAllowedGroups(ctx, user.ID, groupID); err != nil {
+			return false, err
+		}
+	}
+	user.AllowedGroups = append([]int64(nil), groups...)
+
+	if s.agentManagementService != nil && s.agentManagementService.userGroupRateRepo != nil {
+		rates, err := s.agentManagementService.userGroupRateRepo.GetByUserID(ctx, inviterID)
+		if err != nil {
+			return false, err
+		}
+		input := make(map[int64]*float64, len(rates))
+		for groupID, rate := range rates {
+			if _, ok := groupSet[groupID]; !ok {
+				continue
+			}
+			value := rate
+			input[groupID] = &value
+		}
+		if err := s.agentManagementService.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input); err != nil {
+			return false, err
+		}
+	}
+	if s.agentManagementService != nil {
+		s.agentManagementService.invalidateUser(ctx, user.ID)
+	}
+	return true, nil
+}
+
+func (s *AuthService) recalculateRegistrationParentQuota(ctx context.Context, user *User) error {
+	if s == nil || user == nil || user.ParentUserID == nil || s.userRepo == nil || s.agentManagementService == nil {
+		return nil
+	}
+	parent, err := s.userRepo.GetByID(ctx, *user.ParentUserID)
+	if err != nil {
+		return err
+	}
+	if !isAgentManagerRole(parent.Role) || parent.Role == RoleAdmin {
+		return nil
+	}
+	return s.agentManagementService.recalculateAgentEffectiveQuota(ctx, parent.ID)
 }
 
 func (s *AuthService) resolveSignupGrantPlan(ctx context.Context, signupSource string) signupGrantPlan {

@@ -46,11 +46,18 @@ func (User) Fields() []ent.Field {
 		field.String("role").
 			MaxLen(20).
 			Default(domain.RoleUser),
+		field.Int64("parent_user_id").
+			Optional().
+			Nillable(),
 		field.Float("balance").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
 		field.Int("concurrency").
 			Default(5),
+		field.Int("allocated_concurrency").
+			Default(0),
+		field.Int("allocated_rpm").
+			Default(0),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
@@ -125,12 +132,15 @@ func (User) Edges() []ent.Edge {
 		edge.To("allowed_groups", Group.Type).
 			Through("user_allowed_groups", UserAllowedGroup.Type),
 		edge.To("usage_logs", UsageLog.Type),
+		edge.To("agent_income_usage_logs", UsageLog.Type),
 		edge.To("attribute_values", UserAttributeValue.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
 		edge.To("payment_orders", PaymentOrder.Type),
 		edge.To("auth_identities", AuthIdentity.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("pending_auth_sessions", PendingAuthSession.Type),
+		edge.To("managed_group_delegations", AgentGroupDelegation.Type),
+		edge.To("received_group_delegations", AgentGroupDelegation.Type),
 		edge.To("platform_quotas", UserPlatformQuota.Type),
 	}
 }
@@ -139,6 +149,8 @@ func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
+		index.Fields("parent_user_id"),
+		index.Fields("role", "parent_user_id"),
 		index.Fields("deleted_at"),
 	}
 }

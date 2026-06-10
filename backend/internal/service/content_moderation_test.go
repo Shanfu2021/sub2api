@@ -191,6 +191,10 @@ func (r *contentModerationTestUserRepo) Delete(ctx context.Context, id int64) er
 	panic("unexpected Delete call")
 }
 
+func (r *contentModerationTestUserRepo) HardDelete(ctx context.Context, id int64) error {
+	panic("unexpected HardDelete call")
+}
+
 func (r *contentModerationTestUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*UserAvatar, error) {
 	panic("unexpected GetUserAvatar call")
 }

@@ -162,6 +162,39 @@ func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
 
+func TestAccountTestService_RunTestBackgroundRecordsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resp := newJSONResponse(http.StatusOK, strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"pong"}`,
+		"",
+		`data: {"type":"response.completed"}`,
+		"",
+	}, "\n"))
+
+	accountID := int64(91)
+	repo := &openAIAccountTestRepo{}
+	repo.accountsByID = map[int64]*Account{
+		accountID: {
+			ID:          accountID,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Concurrency: 1,
+			Credentials: map[string]any{"access_token": "test-token"},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+
+	result, err := svc.RunTestBackground(context.Background(), accountID, "gpt-5.4")
+
+	require.NoError(t, err)
+	require.Equal(t, "success", result.Status)
+	require.Equal(t, "pong", result.ResponseText)
+	require.NotNil(t, result.FirstTokenMs)
+	require.GreaterOrEqual(t, *result.FirstTokenMs, int64(0))
+}
+
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()

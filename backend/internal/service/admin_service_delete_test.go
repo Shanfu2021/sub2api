@@ -13,18 +13,26 @@ import (
 )
 
 type userRepoStub struct {
-	user          *User
-	getErr        error
-	createErr     error
-	deleteErr     error
-	exists        bool
-	existsErr     error
-	nextID        int64
-	created       []*User
-	updated       []*User
-	deletedIDs    []int64
-	usersByEmail  map[string]*User
-	getByEmailErr error
+	user               *User
+	getErr             error
+	createErr          error
+	deleteErr          error
+	exists             bool
+	existsErr          error
+	nextID             int64
+	created            []*User
+	updated            []*User
+	deletedIDs         []int64
+	hardDeletedIDs     []int64
+	deleteContexts     []context.Context
+	usersByEmail       map[string]*User
+	getByEmailErr      error
+	onCreate           func(*User)
+	addGroupErr        error
+	addedAllowedGroups []struct {
+		userID  int64
+		groupID int64
+	}
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -40,6 +48,9 @@ func (s *userRepoStub) Create(ctx context.Context, user *User) error {
 	}
 	s.usersByEmail[user.Email] = user
 	s.user = user
+	if s.onCreate != nil {
+		s.onCreate(user)
+	}
 	return nil
 }
 
@@ -47,7 +58,17 @@ func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
+	if s.usersByEmail != nil {
+		for _, user := range s.usersByEmail {
+			if user.ID == id {
+				return user, nil
+			}
+		}
+	}
 	if s.user == nil {
+		return nil, ErrUserNotFound
+	}
+	if s.user.ID != 0 && s.user.ID != id {
 		return nil, ErrUserNotFound
 	}
 	return s.user, nil
@@ -69,7 +90,17 @@ func (s *userRepoStub) GetByEmail(ctx context.Context, email string) (*User, err
 }
 
 func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
-	panic("unexpected GetFirstAdmin call")
+	if s.usersByEmail != nil {
+		for _, user := range s.usersByEmail {
+			if user.Role == RoleAdmin {
+				return user, nil
+			}
+		}
+	}
+	if s.user != nil && s.user.Role == RoleAdmin {
+		return s.user, nil
+	}
+	return nil, ErrUserNotFound
 }
 
 func (s *userRepoStub) Update(ctx context.Context, user *User) error {
@@ -84,6 +115,13 @@ func (s *userRepoStub) Update(ctx context.Context, user *User) error {
 
 func (s *userRepoStub) Delete(ctx context.Context, id int64) error {
 	s.deletedIDs = append(s.deletedIDs, id)
+	s.deleteContexts = append(s.deleteContexts, ctx)
+	return s.deleteErr
+}
+
+func (s *userRepoStub) HardDelete(ctx context.Context, id int64) error {
+	s.hardDeletedIDs = append(s.hardDeletedIDs, id)
+	s.deleteContexts = append(s.deleteContexts, ctx)
 	return s.deleteErr
 }
 
@@ -150,7 +188,35 @@ func (s *userRepoStub) RemoveGroupFromUserAllowedGroups(ctx context.Context, use
 }
 
 func (s *userRepoStub) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
-	panic("unexpected AddGroupToAllowedGroups call")
+	if s.addGroupErr != nil {
+		return s.addGroupErr
+	}
+	s.addedAllowedGroups = append(s.addedAllowedGroups, struct {
+		userID  int64
+		groupID int64
+	}{userID: userID, groupID: groupID})
+	if s.usersByEmail != nil {
+		for _, user := range s.usersByEmail {
+			if user.ID == userID {
+				for _, allowedID := range user.AllowedGroups {
+					if allowedID == groupID {
+						return nil
+					}
+				}
+				user.AllowedGroups = append(user.AllowedGroups, groupID)
+				return nil
+			}
+		}
+	}
+	if s.user != nil && s.user.ID == userID {
+		for _, allowedID := range s.user.AllowedGroups {
+			if allowedID == groupID {
+				return nil
+			}
+		}
+		s.user.AllowedGroups = append(s.user.AllowedGroups, groupID)
+	}
+	return nil
 }
 
 func (s *userRepoStub) ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error) {
@@ -175,6 +241,91 @@ func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
 
 func (s *userRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
 	return s.GetByID(ctx, id)
+}
+
+type agentUserDeletionCleanupRepoStub struct {
+	calls                []int64
+	affectedUserIDs      []int64
+	recalculatedAgentIDs []int64
+	groupAccessCalls     []struct {
+		userID   int64
+		groupIDs []int64
+	}
+	raiseGroupRateFloorCalls []struct {
+		userID      int64
+		groupID     int64
+		minimumRate float64
+	}
+	groupAccessAffectedUserIDs []int64
+	rateFloorAffectedUserIDs   []int64
+	err                        error
+}
+
+func (s *agentUserDeletionCleanupRepoStub) DeleteAgentForAdminUserDeletion(ctx context.Context, user *User) ([]int64, error) {
+	if user != nil {
+		s.calls = append(s.calls, user.ID)
+	}
+	return s.affectedUserIDs, s.err
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RecalculateAgentQuota(_ context.Context, agentID int64) error {
+	s.recalculatedAgentIDs = append(s.recalculatedAgentIDs, agentID)
+	return s.err
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RemoveUserGroupAccessForAdminUpdate(_ context.Context, userID int64, groupIDs []int64) ([]int64, error) {
+	clonedGroupIDs := append([]int64(nil), groupIDs...)
+	s.groupAccessCalls = append(s.groupAccessCalls, struct {
+		userID   int64
+		groupIDs []int64
+	}{userID: userID, groupIDs: clonedGroupIDs})
+	return s.groupAccessAffectedUserIDs, s.err
+}
+
+func (s *agentUserDeletionCleanupRepoStub) RaiseManagedGroupRateFloorForAdminUpdate(_ context.Context, userID int64, groupID int64, minimumRate float64) ([]int64, error) {
+	s.raiseGroupRateFloorCalls = append(s.raiseGroupRateFloorCalls, struct {
+		userID      int64
+		groupID     int64
+		minimumRate float64
+	}{userID: userID, groupID: groupID, minimumRate: minimumRate})
+	return s.rateFloorAffectedUserIDs, s.err
+}
+
+type enterpriseAdminCleanupRepoStub struct {
+	deleteEmployeeCalls []struct {
+		enterpriseID int64
+		employeeID   int64
+		operatorID   int64
+	}
+	hardDeleteEnterpriseIDs []int64
+	cascadeStatusCalls      []struct {
+		enterpriseID int64
+		status       string
+	}
+	affectedUserIDs []int64
+	err             error
+}
+
+func (s *enterpriseAdminCleanupRepoStub) DeleteEmployeeAndReturnAllocation(_ context.Context, enterpriseID int64, employeeID int64, operatorID int64) ([]int64, error) {
+	s.deleteEmployeeCalls = append(s.deleteEmployeeCalls, struct {
+		enterpriseID int64
+		employeeID   int64
+		operatorID   int64
+	}{enterpriseID: enterpriseID, employeeID: employeeID, operatorID: operatorID})
+	return s.affectedUserIDs, s.err
+}
+
+func (s *enterpriseAdminCleanupRepoStub) HardDeleteEnterpriseWithEmployees(_ context.Context, enterpriseID int64) ([]int64, error) {
+	s.hardDeleteEnterpriseIDs = append(s.hardDeleteEnterpriseIDs, enterpriseID)
+	return s.affectedUserIDs, s.err
+}
+
+func (s *enterpriseAdminCleanupRepoStub) CascadeEnterpriseStatus(_ context.Context, enterpriseID int64, targetStatus string) ([]int64, error) {
+	s.cascadeStatusCalls = append(s.cascadeStatusCalls, struct {
+		enterpriseID int64
+		status       string
+	}{enterpriseID: enterpriseID, status: targetStatus})
+	return s.affectedUserIDs, s.err
 }
 
 type groupRepoStub struct {
@@ -518,13 +669,99 @@ func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, ex
 	return calls
 }
 
-func TestAdminService_DeleteUser_Success(t *testing.T) {
+func TestAdminService_DeleteUser_RegularUserHardDeletes(t *testing.T) {
 	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
 	svc := &adminServiceImpl{userRepo: repo}
 
 	err := svc.DeleteUser(context.Background(), 7)
 	require.NoError(t, err)
-	require.Equal(t, []int64{7}, repo.deletedIDs)
+	require.Empty(t, repo.deletedIDs)
+	require.Equal(t, []int64{7}, repo.hardDeletedIDs)
+}
+
+func TestAdminService_DeleteUser_RegularChildRecalculatesParentAgentQuota(t *testing.T) {
+	parentID := int64(3)
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser, ParentUserID: &parentID}}
+	cleanup := &agentUserDeletionCleanupRepoStub{}
+	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, repo.hardDeletedIDs)
+	require.Equal(t, []int64{3}, cleanup.recalculatedAgentIDs)
+}
+
+func TestAdminService_DeleteUser_EnterpriseUserHardDeletes(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 8, Role: RoleEnterprise}}
+	cleanup := &enterpriseAdminCleanupRepoStub{affectedUserIDs: []int64{8, 9, 10}}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := &adminServiceImpl{userRepo: repo, enterpriseCleanupRepo: cleanup, authCacheInvalidator: cache}
+
+	err := svc.DeleteUser(context.Background(), 8)
+	require.NoError(t, err)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
+	require.Equal(t, []int64{8}, cleanup.hardDeleteEnterpriseIDs)
+	require.ElementsMatch(t, []int64{8, 9, 10}, cache.userIDs)
+}
+
+func TestAdminService_DeleteUser_EmployeeReturnsAllocationToEnterprise(t *testing.T) {
+	enterpriseID := int64(3)
+	repo := &userRepoStub{user: &User{ID: 9, Role: RoleEmployee, ParentUserID: &enterpriseID}}
+	cleanup := &enterpriseAdminCleanupRepoStub{affectedUserIDs: []int64{3, 9}}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := &adminServiceImpl{userRepo: repo, enterpriseCleanupRepo: cleanup, authCacheInvalidator: cache}
+
+	err := svc.DeleteUser(context.Background(), 9)
+	require.NoError(t, err)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
+	require.Len(t, cleanup.deleteEmployeeCalls, 1)
+	require.Equal(t, enterpriseID, cleanup.deleteEmployeeCalls[0].enterpriseID)
+	require.Equal(t, int64(9), cleanup.deleteEmployeeCalls[0].employeeID)
+	require.Equal(t, enterpriseID, cleanup.deleteEmployeeCalls[0].operatorID)
+	require.ElementsMatch(t, []int64{3, 9}, cache.userIDs)
+}
+
+func TestAdminService_UpdateUser_EnterpriseStatusCascadesToEmployees(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 8, Role: RoleEnterprise, Status: StatusActive}}
+	cleanup := &enterpriseAdminCleanupRepoStub{affectedUserIDs: []int64{8, 9, 10}}
+	cache := &agentManagementAuthInvalidatorStub{}
+	svc := &adminServiceImpl{userRepo: repo, enterpriseCleanupRepo: cleanup, authCacheInvalidator: cache}
+
+	updated, err := svc.UpdateUser(context.Background(), 8, &UpdateUserInput{Status: StatusDisabled})
+	require.NoError(t, err)
+	require.Equal(t, StatusDisabled, updated.Status)
+	require.Len(t, cleanup.cascadeStatusCalls, 1)
+	require.Equal(t, int64(8), cleanup.cascadeStatusCalls[0].enterpriseID)
+	require.Equal(t, StatusDisabled, cleanup.cascadeStatusCalls[0].status)
+	require.Empty(t, repo.updated)
+	require.ElementsMatch(t, []int64{8, 9, 10}, cache.userIDs)
+}
+
+func TestAdminService_DeleteUser_AgentUsesCleanupRepositoryForTrueDelete(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleAgentLevel1}}
+	cleanup := &agentUserDeletionCleanupRepoStub{}
+	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, cleanup.calls)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
+}
+
+func TestAdminService_DeleteUser_AgentCleanupErrorSkipsGenericDelete(t *testing.T) {
+	cleanupErr := errors.New("agent cleanup failed")
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleAgentLevel1}}
+	cleanup := &agentUserDeletionCleanupRepoStub{err: cleanupErr}
+	svc := &adminServiceImpl{userRepo: repo, agentDeletionCleanupRepo: cleanup}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.ErrorIs(t, err, cleanupErr)
+	require.Equal(t, []int64{7}, cleanup.calls)
+	require.Empty(t, repo.deletedIDs)
+	require.Empty(t, repo.hardDeletedIDs)
 }
 
 func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
@@ -581,7 +818,8 @@ func TestAdminService_DeleteUser_DeleteError(t *testing.T) {
 
 	err := svc.DeleteUser(context.Background(), 9)
 	require.ErrorIs(t, err, deleteErr)
-	require.Equal(t, []int64{9}, repo.deletedIDs)
+	require.Empty(t, repo.deletedIDs)
+	require.Equal(t, []int64{9}, repo.hardDeletedIDs)
 }
 
 func TestAdminService_DeleteGroup_Success_WithCacheInvalidation(t *testing.T) {

@@ -63,6 +63,8 @@ export interface UserProfileSourceContext {
   provider_label?: string | null
 }
 
+export type UserRole = 'admin' | 'agent_level1' | 'enterprise' | 'employee' | 'user'
+
 export interface User {
   id: number
   username: string
@@ -84,7 +86,7 @@ export interface User {
   linuxdo_bound?: boolean
   oidc_bound?: boolean
   wechat_bound?: boolean
-  role: 'admin' | 'user' // User role for authorization
+  role: UserRole // User role for authorization
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
@@ -248,6 +250,353 @@ export interface AuthResponse {
 
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
+}
+
+export interface AgentManagedUser {
+  id: number
+  email: string
+  username: string
+  role: UserRole
+  parent_user_id?: number | null
+  balance: number
+  concurrency: number
+  rpm_limit: number
+  allocated_concurrency: number
+  allocated_rpm: number
+  pool_concurrency: number
+  pool_rpm: number
+  agent_income?: number
+  notes?: string
+  group_rates?: Record<number, number>
+  invite_default_concurrency: number
+  invite_default_rpm: number
+  status: 'active' | 'disabled'
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentDirectChildrenResponse {
+  items: AgentManagedUser[]
+  pagination: {
+    total?: number
+    page?: number
+    page_size?: number
+    pages?: number
+    Total?: number
+    Page?: number
+    PageSize?: number
+    Pages?: number
+  }
+}
+
+export interface AgentAdminTreeEnterprise {
+  enterprise: AgentManagedUser
+  employees: AgentManagedUser[]
+}
+
+export interface AgentAdminTreeAgent {
+  agent: AgentManagedUser
+  users: AgentManagedUser[]
+  enterprises: AgentAdminTreeEnterprise[]
+}
+
+export interface AgentAdminTreeResponse {
+  items: AgentAdminTreeAgent[]
+}
+
+export interface AgentStructureResponse {
+  owner_options: AgentManagedUser[]
+  selected_owner: AgentManagedUser
+  users: AgentManagedUser[]
+  enterprises: AgentAdminTreeEnterprise[]
+}
+
+export interface AgentUsageLog extends UsageLog {}
+
+export interface AgentAllocationUpdate {
+  concurrency: number
+  rpm: number
+}
+
+export interface AgentDirectUserCreateRequest {
+  email: string
+  password: string
+  username?: string
+  allocated_concurrency: number
+  allocated_rpm: number
+}
+
+export interface AgentAllocationSummary {
+  total_concurrency: number
+  allocated_concurrency: number
+  remaining_concurrency: number
+  total_rpm: number
+  allocated_rpm: number
+  remaining_rpm: number
+  unlimited_capacity: boolean
+  unlimited_concurrency?: boolean
+  unlimited_rpm?: boolean
+}
+
+export interface AgentInviteDefaultsUpdate {
+  invite_default_concurrency: number
+  invite_default_rpm: number
+}
+
+export interface AgentProfile {
+  user_id: number
+  pool_concurrency: number
+  pool_rpm: number
+  invite_default_concurrency: number
+  invite_default_rpm: number
+}
+
+export interface AgentManagementSummary {
+  allocation: AgentAllocationSummary
+  invite_defaults?: AgentInviteDefaultsUpdate
+}
+
+export type AgentUpgradeTargetRole = 'agent_level1' | 'enterprise'
+
+export interface AgentUpgradeRequest {
+  target_role: AgentUpgradeTargetRole
+  pool_concurrency?: number
+  pool_rpm?: number
+}
+
+export type AgentGroupRateSource = 'public' | 'admin_exclusive' | 'delegated'
+
+export interface AgentGroupRate {
+  group: Group
+  effective_rate: number
+  can_delegate: boolean
+  source: AgentGroupRateSource
+}
+
+export interface AgentChildGroupDelegationOption extends AgentGroupRate {
+  assigned: boolean
+  child_rate_multiplier: number
+  child_can_delegate: boolean
+}
+
+export interface AgentGroupDelegationRequest {
+  rate_multiplier: number
+  can_delegate: boolean
+}
+
+export interface AgentGroupDelegationBatchRequest extends AgentGroupDelegationRequest {
+  group_ids: number[]
+  all: boolean
+}
+
+export interface AgentDirectChildrenGroupDelegationBatchRequest {
+  group_ids: number[]
+  all: boolean
+  child_ids: number[]
+  all_children: boolean
+  can_delegate: boolean
+}
+
+export interface AgentDirectChildrenGroupQuery {
+  group_id: number
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export interface AgentDirectChildrenGroupsQuery {
+  group_ids: number[]
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export interface AgentDirectChildrenGroupDelegationUpdateRequest {
+  group_id: number
+  child_ids: number[]
+  all: boolean
+  rate_multiplier?: number
+  can_delegate?: boolean
+}
+
+export interface AgentDirectChildrenGroupDelegationReclaimRequest {
+  group_id: number
+  child_ids: number[]
+  all: boolean
+}
+
+export interface AgentInviteGroupDefaultRequest {
+  rate_multiplier: number
+}
+
+export interface AgentInviteGroupDefaultBatchRequest extends AgentInviteGroupDefaultRequest {
+  group_ids: number[]
+  all: boolean
+}
+
+export interface AgentGroupDelegationResponse {
+  child_id: number
+  group_id: number
+}
+
+export interface AgentGroupDelegationBatchResponse {
+  child_id: number
+  group_ids: number[]
+  all: boolean
+}
+
+export interface AgentIncomeSetRequest {
+  agent_income: number
+  reason?: string
+}
+
+export type AgentDirectChildKind = 'users' | 'agents' | 'enterprises'
+
+export interface AgentDirectChildrenGroupDelegationBatchResponse {
+  kind: AgentDirectChildKind
+  group_ids: number[]
+  all: boolean
+  child_ids?: number[]
+  all_children?: boolean
+  updated_children: number
+}
+
+export interface AgentDirectChildrenGroupDelegationUpdateResponse {
+  kind: AgentDirectChildKind
+  group_id: number
+  requested_child_ids: number[]
+  all: boolean
+  updated_children: number
+  skipped_children: number
+}
+
+export interface AgentDirectChildrenGroupDelegationReclaimResponse {
+  kind: AgentDirectChildKind
+  group_id: number
+  requested_child_ids: number[]
+  all: boolean
+  removed_children: number
+  skipped_children: number
+}
+
+export interface AgentInviteGroupDefaultResponse {
+  group_id: number
+}
+
+export interface AgentInviteGroupDefaultBatchResponse {
+  group_ids: number[]
+  all: boolean
+}
+
+export interface EnterpriseEmployee extends AgentManagedUser {
+  role: 'employee'
+  enterprise_id?: number | null
+}
+
+export interface EnterpriseEmployeesResponse {
+  items: EnterpriseEmployee[]
+  pagination: AgentDirectChildrenResponse['pagination']
+}
+
+export interface EnterpriseEmployeeCreateRequest {
+  email: string
+  password: string
+  username?: string
+  balance: number
+  concurrency: number
+  rpm: number
+}
+
+export interface EnterpriseEmployeeImportRecord {
+  email?: unknown
+  username?: unknown
+  password?: unknown
+  concurrency?: unknown
+  rpm?: unknown
+}
+
+export interface EnterpriseEmployeeImportRequest {
+  employees: EnterpriseEmployeeImportRecord[]
+}
+
+export interface EnterpriseEmployeeImportSkip {
+  row: number
+  email?: string
+  reason: string
+}
+
+export interface EnterpriseEmployeeImportResult {
+  created: EnterpriseEmployee[]
+  created_count: number
+  skipped: EnterpriseEmployeeImportSkip[]
+  skipped_count: number
+  allocation: EnterpriseAllocationSummary
+}
+
+export interface EnterpriseEmployeeAllocationUpdate {
+  balance: number
+  concurrency: number
+  rpm: number
+}
+
+export interface EnterpriseEmployeeBalanceInitializationRequest {
+  balance: number
+}
+
+export interface EnterpriseEmployeeBalanceInitializationResult {
+  employee_count: number
+  target_balance: number
+  current_balance: number
+  required_balance: number
+  enterprise_balance_before: number
+  enterprise_balance_after: number
+}
+
+export type EnterpriseAllocationSummary = AgentAllocationSummary
+
+export type EnterpriseGroupRate = AgentGroupRate
+
+export interface EnterpriseEmployeeGroupOption extends AgentChildGroupDelegationOption {
+  assigned: boolean
+}
+
+export interface EnterpriseEmployeeGroupRequest {
+  assigned: boolean
+}
+
+export interface EnterpriseEmployeeGroupResponse {
+  employee_id: number
+  group_id: number
+}
+
+export type EnterpriseEmployeeGroupDefaultOption = EnterpriseEmployeeGroupOption
+
+export interface EnterpriseEmployeeGroupDefaultResponse {
+  group_id: number
+}
+
+export interface EnterpriseManagementSummary {
+  allocation: EnterpriseAllocationSummary
+}
+
+export interface PurchaseInfoCard {
+  id: number
+  owner_user_id?: number | null
+  title: string
+  description: string
+  purchase_url: string
+  contact: string
+  sort_order: number
+  enabled: boolean
+}
+
+export interface PurchaseInfoCardInput {
+  title: string
+  description: string
+  purchase_url: string
+  contact: string
+  sort_order: number
+  enabled: boolean
 }
 
 // ==================== Subscription Types ====================
@@ -491,6 +840,8 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type GroupSchedulingStrategy = 'weighted' | 'strict_priority'
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -528,6 +879,7 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   created_at: string
   updated_at: string
 }
@@ -650,6 +1002,7 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -685,6 +1038,7 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  scheduling_strategy?: GroupSchedulingStrategy
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -1889,6 +2243,8 @@ export interface ScheduledTestPlan {
   enabled: boolean
   max_results: number
   auto_recover: boolean
+  auto_schedulable_control: boolean
+  first_token_timeout_ms: number
   last_run_at: string | null
   next_run_at: string | null
   created_at: string
@@ -1902,6 +2258,9 @@ export interface ScheduledTestResult {
   response_text: string
   error_message: string
   latency_ms: number
+  first_token_ms: number | null
+  decision: string
+  decision_reason: string
   started_at: string
   finished_at: string
   created_at: string
@@ -1914,6 +2273,8 @@ export interface CreateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+  auto_schedulable_control?: boolean
+  first_token_timeout_ms?: number
 }
 
 export interface UpdateScheduledTestPlanRequest {
@@ -1922,6 +2283,8 @@ export interface UpdateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+  auto_schedulable_control?: boolean
+  first_token_timeout_ms?: number
 }
 
 // Payment types

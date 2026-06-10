@@ -29,10 +29,16 @@ type User struct {
 	PasswordHash string `json:"password_hash,omitempty"`
 	// Role holds the value of the "role" field.
 	Role string `json:"role,omitempty"`
+	// ParentUserID holds the value of the "parent_user_id" field.
+	ParentUserID *int64 `json:"parent_user_id,omitempty"`
 	// Balance holds the value of the "balance" field.
 	Balance float64 `json:"balance,omitempty"`
 	// Concurrency holds the value of the "concurrency" field.
 	Concurrency int `json:"concurrency,omitempty"`
+	// AllocatedConcurrency holds the value of the "allocated_concurrency" field.
+	AllocatedConcurrency int `json:"allocated_concurrency,omitempty"`
+	// AllocatedRpm holds the value of the "allocated_rpm" field.
+	AllocatedRpm int `json:"allocated_rpm,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Username holds the value of the "username" field.
@@ -85,6 +91,8 @@ type UserEdges struct {
 	AllowedGroups []*Group `json:"allowed_groups,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
+	// AgentIncomeUsageLogs holds the value of the agent_income_usage_logs edge.
+	AgentIncomeUsageLogs []*UsageLog `json:"agent_income_usage_logs,omitempty"`
 	// AttributeValues holds the value of the attribute_values edge.
 	AttributeValues []*UserAttributeValue `json:"attribute_values,omitempty"`
 	// PromoCodeUsages holds the value of the promo_code_usages edge.
@@ -95,13 +103,17 @@ type UserEdges struct {
 	AuthIdentities []*AuthIdentity `json:"auth_identities,omitempty"`
 	// PendingAuthSessions holds the value of the pending_auth_sessions edge.
 	PendingAuthSessions []*PendingAuthSession `json:"pending_auth_sessions,omitempty"`
+	// ManagedGroupDelegations holds the value of the managed_group_delegations edge.
+	ManagedGroupDelegations []*AgentGroupDelegation `json:"managed_group_delegations,omitempty"`
+	// ReceivedGroupDelegations holds the value of the received_group_delegations edge.
+	ReceivedGroupDelegations []*AgentGroupDelegation `json:"received_group_delegations,omitempty"`
 	// PlatformQuotas holds the value of the platform_quotas edge.
 	PlatformQuotas []*UserPlatformQuota `json:"platform_quotas,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [14]bool
+	loadedTypes [17]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -167,10 +179,19 @@ func (e UserEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 	return nil, &NotLoadedError{edge: "usage_logs"}
 }
 
+// AgentIncomeUsageLogsOrErr returns the AgentIncomeUsageLogs value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) AgentIncomeUsageLogsOrErr() ([]*UsageLog, error) {
+	if e.loadedTypes[7] {
+		return e.AgentIncomeUsageLogs, nil
+	}
+	return nil, &NotLoadedError{edge: "agent_income_usage_logs"}
+}
+
 // AttributeValuesOrErr returns the AttributeValues value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) AttributeValuesOrErr() ([]*UserAttributeValue, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[8] {
 		return e.AttributeValues, nil
 	}
 	return nil, &NotLoadedError{edge: "attribute_values"}
@@ -179,7 +200,7 @@ func (e UserEdges) AttributeValuesOrErr() ([]*UserAttributeValue, error) {
 // PromoCodeUsagesOrErr returns the PromoCodeUsages value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PromoCodeUsagesOrErr() ([]*PromoCodeUsage, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[9] {
 		return e.PromoCodeUsages, nil
 	}
 	return nil, &NotLoadedError{edge: "promo_code_usages"}
@@ -188,7 +209,7 @@ func (e UserEdges) PromoCodeUsagesOrErr() ([]*PromoCodeUsage, error) {
 // PaymentOrdersOrErr returns the PaymentOrders value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PaymentOrdersOrErr() ([]*PaymentOrder, error) {
-	if e.loadedTypes[9] {
+	if e.loadedTypes[10] {
 		return e.PaymentOrders, nil
 	}
 	return nil, &NotLoadedError{edge: "payment_orders"}
@@ -197,7 +218,7 @@ func (e UserEdges) PaymentOrdersOrErr() ([]*PaymentOrder, error) {
 // AuthIdentitiesOrErr returns the AuthIdentities value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) AuthIdentitiesOrErr() ([]*AuthIdentity, error) {
-	if e.loadedTypes[10] {
+	if e.loadedTypes[11] {
 		return e.AuthIdentities, nil
 	}
 	return nil, &NotLoadedError{edge: "auth_identities"}
@@ -206,16 +227,34 @@ func (e UserEdges) AuthIdentitiesOrErr() ([]*AuthIdentity, error) {
 // PendingAuthSessionsOrErr returns the PendingAuthSessions value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PendingAuthSessionsOrErr() ([]*PendingAuthSession, error) {
-	if e.loadedTypes[11] {
+	if e.loadedTypes[12] {
 		return e.PendingAuthSessions, nil
 	}
 	return nil, &NotLoadedError{edge: "pending_auth_sessions"}
 }
 
+// ManagedGroupDelegationsOrErr returns the ManagedGroupDelegations value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ManagedGroupDelegationsOrErr() ([]*AgentGroupDelegation, error) {
+	if e.loadedTypes[13] {
+		return e.ManagedGroupDelegations, nil
+	}
+	return nil, &NotLoadedError{edge: "managed_group_delegations"}
+}
+
+// ReceivedGroupDelegationsOrErr returns the ReceivedGroupDelegations value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ReceivedGroupDelegationsOrErr() ([]*AgentGroupDelegation, error) {
+	if e.loadedTypes[14] {
+		return e.ReceivedGroupDelegations, nil
+	}
+	return nil, &NotLoadedError{edge: "received_group_delegations"}
+}
+
 // PlatformQuotasOrErr returns the PlatformQuotas value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PlatformQuotasOrErr() ([]*UserPlatformQuota, error) {
-	if e.loadedTypes[12] {
+	if e.loadedTypes[15] {
 		return e.PlatformQuotas, nil
 	}
 	return nil, &NotLoadedError{edge: "platform_quotas"}
@@ -224,7 +263,7 @@ func (e UserEdges) PlatformQuotasOrErr() ([]*UserPlatformQuota, error) {
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[13] {
+	if e.loadedTypes[16] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
@@ -239,7 +278,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged:
 			values[i] = new(sql.NullFloat64)
-		case user.FieldID, user.FieldConcurrency, user.FieldRpmLimit:
+		case user.FieldID, user.FieldParentUserID, user.FieldConcurrency, user.FieldAllocatedConcurrency, user.FieldAllocatedRpm, user.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
 		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
 			values[i] = new(sql.NullString)
@@ -303,6 +342,13 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Role = value.String
 			}
+		case user.FieldParentUserID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field parent_user_id", values[i])
+			} else if value.Valid {
+				_m.ParentUserID = new(int64)
+				*_m.ParentUserID = value.Int64
+			}
 		case user.FieldBalance:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field balance", values[i])
@@ -314,6 +360,18 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field concurrency", values[i])
 			} else if value.Valid {
 				_m.Concurrency = int(value.Int64)
+			}
+		case user.FieldAllocatedConcurrency:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field allocated_concurrency", values[i])
+			} else if value.Valid {
+				_m.AllocatedConcurrency = int(value.Int64)
+			}
+		case user.FieldAllocatedRpm:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field allocated_rpm", values[i])
+			} else if value.Valid {
+				_m.AllocatedRpm = int(value.Int64)
 			}
 		case user.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -458,6 +516,11 @@ func (_m *User) QueryUsageLogs() *UsageLogQuery {
 	return NewUserClient(_m.config).QueryUsageLogs(_m)
 }
 
+// QueryAgentIncomeUsageLogs queries the "agent_income_usage_logs" edge of the User entity.
+func (_m *User) QueryAgentIncomeUsageLogs() *UsageLogQuery {
+	return NewUserClient(_m.config).QueryAgentIncomeUsageLogs(_m)
+}
+
 // QueryAttributeValues queries the "attribute_values" edge of the User entity.
 func (_m *User) QueryAttributeValues() *UserAttributeValueQuery {
 	return NewUserClient(_m.config).QueryAttributeValues(_m)
@@ -481,6 +544,16 @@ func (_m *User) QueryAuthIdentities() *AuthIdentityQuery {
 // QueryPendingAuthSessions queries the "pending_auth_sessions" edge of the User entity.
 func (_m *User) QueryPendingAuthSessions() *PendingAuthSessionQuery {
 	return NewUserClient(_m.config).QueryPendingAuthSessions(_m)
+}
+
+// QueryManagedGroupDelegations queries the "managed_group_delegations" edge of the User entity.
+func (_m *User) QueryManagedGroupDelegations() *AgentGroupDelegationQuery {
+	return NewUserClient(_m.config).QueryManagedGroupDelegations(_m)
+}
+
+// QueryReceivedGroupDelegations queries the "received_group_delegations" edge of the User entity.
+func (_m *User) QueryReceivedGroupDelegations() *AgentGroupDelegationQuery {
+	return NewUserClient(_m.config).QueryReceivedGroupDelegations(_m)
 }
 
 // QueryPlatformQuotas queries the "platform_quotas" edge of the User entity.
@@ -536,11 +609,22 @@ func (_m *User) String() string {
 	builder.WriteString("role=")
 	builder.WriteString(_m.Role)
 	builder.WriteString(", ")
+	if v := _m.ParentUserID; v != nil {
+		builder.WriteString("parent_user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("balance=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Balance))
 	builder.WriteString(", ")
 	builder.WriteString("concurrency=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Concurrency))
+	builder.WriteString(", ")
+	builder.WriteString("allocated_concurrency=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllocatedConcurrency))
+	builder.WriteString(", ")
+	builder.WriteString("allocated_rpm=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllocatedRpm))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

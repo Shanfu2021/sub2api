@@ -1578,6 +1578,29 @@ func HasAllowedUsersWith(preds ...predicate.User) predicate.Group {
 	})
 }
 
+// HasAgentGroupDelegations applies the HasEdge predicate on the "agent_group_delegations" edge.
+func HasAgentGroupDelegations() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, AgentGroupDelegationsTable, AgentGroupDelegationsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAgentGroupDelegationsWith applies the HasEdge predicate on the "agent_group_delegations" edge with a given conditions (other predicates).
+func HasAgentGroupDelegationsWith(preds ...predicate.AgentGroupDelegation) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newAgentGroupDelegationsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccountGroups applies the HasEdge predicate on the "account_groups" edge.
 func HasAccountGroups() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

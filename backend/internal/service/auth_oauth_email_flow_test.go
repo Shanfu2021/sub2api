@@ -147,8 +147,277 @@ func newOAuthEmailFlowAuthService(
 	)
 }
 
+func TestRegisterOAuthEmailAccountAcceptsAffiliateInvitationCode(t *testing.T) {
+	agentID := int64(2)
+	userRepo := &userRepoStub{
+		nextID: 44,
+		usersByEmail: map[string]*User{
+			"agent@example.com": {ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, Status: StatusActive},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyEmailVerifyEnabled:    "true",
+			SettingKeyAffiliateEnabled:      "true",
+		},
+		emailCache,
+		nil,
+	)
+	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: finiteAgentInviteProfile(agentID),
+	}
+	userRepo.onCreate = func(user *User) {
+		clone := *user
+		agentRepo.users[user.ID] = &clone
+	}
+	authService.SetAgentManagementService(NewAgentManagementService(agentRepo, userRepo, nil, nil))
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"AGENTAFF",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, agentID, *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 44, inviterID: agentID}}, affiliateRepo.bindCalls)
+}
+
+func TestRegisterOAuthEmailAccountUsesAgentInviteDefaultQuota(t *testing.T) {
+	rootID := int64(1)
+	agentID := int64(2)
+	userRepo := &userRepoStub{
+		nextID: 45,
+		usersByEmail: map[string]*User{
+			"admin@example.com": {ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+			"agent@example.com": {ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:                   "true",
+			SettingKeyInvitationCodeEnabled:                 "true",
+			SettingKeyEmailVerifyEnabled:                    "true",
+			SettingKeyAffiliateEnabled:                      "true",
+			SettingKeyAuthSourceDefaultOIDCConcurrency:      "9",
+			SettingKeyAuthSourceDefaultOIDCGrantOnSignup:    "true",
+			SettingKeyAuthSourceDefaultOIDCBalance:          "8",
+			SettingKeyAuthSourceDefaultOIDCSubscriptions:    "[]",
+			SettingKeyAuthSourcePlatformQuotas("oidc"):      "{}",
+			SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind: "false",
+			SettingKeyDefaultUserRPMLimit:                   "90",
+		},
+		emailCache,
+		nil,
+	)
+	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+	agentRepo := newAgentManagementRepoStub(
+		&User{ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+		&User{ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, ParentUserID: &rootID, Status: StatusActive},
+	)
+	agentRepo.agentProfiles = map[int64]AgentProfile{
+		agentID: {
+			UserID:                   agentID,
+			PoolConcurrency:          10,
+			PoolRPM:                  100,
+			InviteDefaultConcurrency: 4,
+			InviteDefaultRPM:         40,
+		},
+	}
+	userRepo.onCreate = func(user *User) {
+		clone := *user
+		agentRepo.users[user.ID] = &clone
+	}
+	authService.SetAgentManagementService(NewAgentManagementService(agentRepo, userRepo, nil, nil))
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"AGENTAFF",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Equal(t, 4, user.Concurrency)
+	require.Equal(t, 40, user.RPMLimit)
+}
+
+func TestRegisterOAuthEmailAccountWithoutInvitationAssignsParentToRootAdmin(t *testing.T) {
+	rootID := int64(1)
+	userRepo := &userRepoStub{
+		nextID: 47,
+		usersByEmail: map[string]*User{
+			"admin@example.com": {ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	emailCache := &emailCacheStub{
+		data: &VerificationCodeData{
+			Code:      "246810",
+			Attempts:  0,
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		},
+	}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled: "true",
+			SettingKeyEmailVerifyEnabled:  "true",
+		},
+		emailCache,
+		nil,
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"fresh@example.com",
+		"secret-123",
+		"246810",
+		"",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
+	require.Len(t, userRepo.created, 1)
+	require.NotNil(t, userRepo.created[0].ParentUserID)
+	require.Equal(t, rootID, *userRepo.created[0].ParentUserID)
+}
+
+func TestRegisterVerifiedOAuthEmailAccountBindsAffiliateInvitationCode(t *testing.T) {
+	rootID := int64(1)
+	ordinaryID := int64(2)
+	userRepo := &userRepoStub{
+		nextID: 46,
+		usersByEmail: map[string]*User{
+			"admin@example.com":    {ID: rootID, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+			"ordinary@example.com": {ID: ordinaryID, Email: "ordinary@example.com", Role: RoleUser, ParentUserID: &rootID, Status: StatusActive},
+		},
+	}
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"USERAFF": ordinaryID}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyAffiliateEnabled:      "true",
+		},
+		&emailCacheStub{},
+		nil,
+	)
+	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+
+	tokenPair, user, err := authService.RegisterVerifiedOAuthEmailAccount(
+		context.Background(),
+		"verified@example.com",
+		"secret-123",
+		"USERAFF",
+		"oidc",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootID, *user.ParentUserID)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 46, inviterID: ordinaryID}}, affiliateRepo.bindCalls)
+}
+
+func TestFinalizeOAuthEmailAccountBindsAffiliateInvitationCode(t *testing.T) {
+	agentID := int64(2)
+	affiliateRepo := &authAffiliateRepoStub{codeOwners: map[string]int64{"AGENTAFF": agentID}}
+	authService := newOAuthEmailFlowAuthService(
+		&userRepoStub{
+			usersByEmail: map[string]*User{
+				"agent@example.com": {ID: agentID, Email: "agent@example.com", Role: RoleAgentLevel1, Status: StatusActive},
+			},
+		},
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyInvitationCodeEnabled: "true",
+			SettingKeyAffiliateEnabled:      "true",
+		},
+		&emailCacheStub{},
+		nil,
+	)
+	authService.affiliateService = NewAffiliateService(affiliateRepo, authService.settingService, nil, nil)
+
+	err := authService.FinalizeOAuthEmailAccount(
+		context.Background(),
+		&User{ID: 44, Email: "fresh@example.com", Role: RoleUser, Status: StatusActive},
+		"AGENTAFF",
+		"oidc",
+		"",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []struct {
+		userID    int64
+		inviterID int64
+	}{{userID: 44, inviterID: agentID}}, affiliateRepo.bindCalls)
+}
+
 func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFails(t *testing.T) {
-	userRepo := &userRepoStub{nextID: 42}
+	userRepo := &userRepoStub{
+		nextID: 42,
+		usersByEmail: map[string]*User{
+			"admin@example.com": {ID: 1, Email: "admin@example.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
 	redeemRepo := &redeemCodeRepoStub{
 		codesByCode: map[string]*RedeemCode{
 			"INVITE123": {

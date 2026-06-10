@@ -148,8 +148,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldUsername,
 				user.FieldStatus,
 				user.FieldRole,
+				user.FieldParentUserID,
 				user.FieldBalance,
 				user.FieldConcurrency,
+				user.FieldAllocatedConcurrency,
+				user.FieldAllocatedRpm,
 				user.FieldBalanceNotifyEnabled,
 				user.FieldBalanceNotifyThresholdType,
 				user.FieldBalanceNotifyThreshold,
@@ -203,7 +206,21 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.applyAgentAllocationForAuth(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *apiKeyRepository) applyAgentAllocationForAuth(ctx context.Context, key *service.APIKey) error {
+	if key == nil || key.User == nil {
+		return nil
+	}
+	concurrency, rpm := service.EffectiveAPIUsageCapacity(key.User)
+	key.User.Concurrency = concurrency
+	key.User.RPMLimit = rpm
+	return nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
@@ -750,8 +767,11 @@ func userEntityToService(u *dbent.User) *service.User {
 		Notes:                      u.Notes,
 		PasswordHash:               u.PasswordHash,
 		Role:                       u.Role,
+		ParentUserID:               u.ParentUserID,
 		Balance:                    u.Balance,
 		Concurrency:                u.Concurrency,
+		AllocatedConcurrency:       u.AllocatedConcurrency,
+		AllocatedRPM:               u.AllocatedRpm,
 		Status:                     u.Status,
 		SignupSource:               u.SignupSource,
 		LastLoginAt:                u.LastLoginAt,
@@ -810,6 +830,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOauthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
+		SchedulingStrategy:              service.GroupSchedulingStrategyWeighted,
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelsListConfig:                g.ModelsListConfig,

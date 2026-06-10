@@ -35,12 +35,34 @@ func TestAdminService_CreateUser_Success(t *testing.T) {
 	require.Equal(t, input.Notes, user.Notes)
 	require.Equal(t, balance, user.Balance)
 	require.Equal(t, input.Concurrency, user.Concurrency)
+	require.Equal(t, input.Concurrency, user.AllocatedConcurrency)
 	require.Equal(t, input.AllowedGroups, user.AllowedGroups)
 	require.Equal(t, RoleUser, user.Role)
 	require.Equal(t, StatusActive, user.Status)
 	require.True(t, user.CheckPassword(input.Password))
 	require.Len(t, repo.created, 1)
 	require.Equal(t, user, repo.created[0])
+}
+
+func TestAdminService_CreateUser_SyncsConcurrencyAndRPMToAllocationFields(t *testing.T) {
+	repo := &userRepoStub{nextID: 14}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:       "native-created@test.com",
+		Password:    "strong-pass",
+		Concurrency: 10,
+		RPMLimit:    120,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 10, user.Concurrency)
+	require.Equal(t, 10, user.AllocatedConcurrency)
+	require.Equal(t, 120, user.RPMLimit)
+	require.Equal(t, 120, user.AllocatedRPM)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, 10, repo.created[0].AllocatedConcurrency)
+	require.Equal(t, 120, repo.created[0].AllocatedRPM)
 }
 
 func TestAdminService_CreateUser_UsesDefaultBalanceWhenBalanceOmitted(t *testing.T) {
@@ -91,6 +113,48 @@ func TestAdminService_CreateUser_ExplicitZeroBalanceOverridesDefault(t *testing.
 	require.Equal(t, 0.0, user.Balance)
 	require.Len(t, repo.created, 1)
 	require.Equal(t, 0.0, repo.created[0].Balance)
+}
+
+func TestAdminService_CreateUser_AssignsParentUserIDWhenProvided(t *testing.T) {
+	repo := &userRepoStub{nextID: 13}
+	svc := &adminServiceImpl{userRepo: repo}
+	rootAdminID := int64(1)
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:        "owned-by-admin@test.com",
+		Password:     "strong-pass",
+		ParentUserID: &rootAdminID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootAdminID, *user.ParentUserID)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ParentUserID)
+	require.Equal(t, rootAdminID, *repo.created[0].ParentUserID)
+}
+
+func TestAdminService_CreateUser_DefaultsParentUserIDToRootAdmin(t *testing.T) {
+	rootAdminID := int64(1)
+	repo := &userRepoStub{
+		nextID: 15,
+		usersByEmail: map[string]*User{
+			"admin@test.com": {ID: rootAdminID, Email: "admin@test.com", Role: RoleAdmin, Status: StatusActive},
+		},
+	}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "owned-by-root-admin@test.com",
+		Password: "strong-pass",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, user.ParentUserID)
+	require.Equal(t, rootAdminID, *user.ParentUserID)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ParentUserID)
+	require.Equal(t, rootAdminID, *repo.created[0].ParentUserID)
 }
 
 func TestAdminService_CreateUser_EmailExists(t *testing.T) {

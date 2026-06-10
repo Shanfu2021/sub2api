@@ -230,6 +230,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/purchase-info',
+    name: 'PurchaseInfo',
+    component: () => import('@/views/user/PurchaseInfoView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Purchase Info',
+      titleKey: 'purchaseInfo.title',
+      descriptionKey: 'purchaseInfo.description'
+    }
+  },
+  {
     path: '/affiliate',
     name: 'Affiliate',
     component: () => import('@/views/user/AffiliateView.vue'),
@@ -370,6 +382,114 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Custom Page',
       titleKey: 'customPage.title',
+    }
+  },
+
+  // ==================== Agent Management Routes ====================
+  {
+    path: '/agent',
+    redirect: '/agent/direct-users'
+  },
+  {
+    path: '/agent/direct-users',
+    name: 'AgentDirectUsers',
+    component: () => import('@/views/agent/DirectUsersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Direct Users',
+      titleKey: 'nav.agentDirectUsers'
+    }
+  },
+  {
+    path: '/agent/admin-overview',
+    name: 'AgentAdminOverview',
+    component: () => import('@/views/agent/AdminOverviewView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Agent Overview',
+      titleKey: 'nav.agentAdminOverview'
+    }
+  },
+  {
+    path: '/agent/usage',
+    name: 'AgentUsage',
+    component: () => import('@/views/agent/UsageView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      requiresAgent: true,
+      title: 'Subordinate Usage',
+      titleKey: 'nav.agentUsage'
+    }
+  },
+  {
+    path: '/agent/direct-agents',
+    name: 'AgentDirectAgents',
+    component: () => import('@/views/agent/DirectAgentsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      requiresAgentManagement: true,
+      title: 'Direct Agents',
+      titleKey: 'nav.agentDirectAgents'
+    }
+  },
+  {
+    path: '/agent/direct-enterprises',
+    name: 'AgentDirectEnterprises',
+    component: () => import('@/views/agent/DirectEnterprisesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Direct Enterprises',
+      titleKey: 'nav.agentDirectEnterprises'
+    }
+  },
+  {
+    path: '/agent/groups',
+    name: 'AgentGroups',
+    component: () => import('@/views/agent/MyGroupsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAgentManagement: true,
+      title: 'Groups and Rates',
+      titleKey: 'nav.agentGroups'
+    }
+  },
+
+  // ==================== Enterprise Management Routes ====================
+  {
+    path: '/enterprise',
+    redirect: '/enterprise/employees',
+    meta: {
+      requiresAuth: true,
+      requiresEnterpriseManagement: true,
+      title: 'Enterprise Management',
+      titleKey: 'nav.enterpriseManagement'
+    }
+  },
+  {
+    path: '/enterprise/employees',
+    name: 'EnterpriseEmployees',
+    component: () => import('@/views/enterprise/EmployeesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresEnterpriseManagement: true,
+      title: 'Enterprise Employees',
+      titleKey: 'nav.enterpriseEmployees'
+    }
+  },
+  {
+    path: '/enterprise/groups',
+    name: 'EnterpriseGroups',
+    component: () => import('@/views/enterprise/GroupsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresEnterpriseManagement: true,
+      title: 'Enterprise Groups',
+      titleKey: 'nav.enterpriseGroups'
     }
   },
 
@@ -752,6 +872,9 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresAgent = to.meta.requiresAgent === true
+  const requiresAgentManagement = to.meta.requiresAgentManagement === true
+  const requiresEnterpriseManagement = to.meta.requiresEnterpriseManagement === true
 
   if (to.path === '/setup') {
     try {
@@ -840,6 +963,23 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  if (authStore.isEmployee) {
+    const employeeRestrictedPaths = [
+      '/subscriptions',
+      '/purchase',
+      '/orders',
+      '/payment/qrcode',
+      '/redeem',
+      '/purchase-info',
+      '/affiliate',
+    ]
+
+    if (employeeRestrictedPaths.some((path) => to.path.startsWith(path))) {
+      next('/dashboard')
+      return
+    }
+  }
+
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
@@ -847,7 +987,8 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
-      '/redeem'
+      '/redeem',
+      '/purchase-info',
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
@@ -857,9 +998,17 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
-  // Backend mode: admin gets full access, non-admin blocked
+  // Backend mode keeps ordinary user pages hidden, but agent management remains
+  // available to admins and promoted agents.
   if (appStore.backendModeEnabled) {
-    if (authStore.isAuthenticated && authStore.isAdmin) {
+    if (
+      authStore.isAuthenticated &&
+      (
+        authStore.isAdmin ||
+        (requiresAgentManagement && authStore.canUseAgentManagement) ||
+        (requiresEnterpriseManagement && authStore.canUseEnterpriseManagement)
+      )
+    ) {
       next()
       return
     }

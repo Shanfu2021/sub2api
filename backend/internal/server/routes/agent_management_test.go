@@ -1,0 +1,80 @@
+package routes
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/handler"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+func TestAgentManagementRoutesAreRegisteredUnderAuthenticatedUserRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	v1 := router.Group("/api/v1")
+	RegisterUserRoutes(
+		v1,
+		&handler.Handlers{AgentManagement: handler.NewAgentManagementHandler(&service.AgentManagementService{})},
+		servermiddleware.JWTAuthMiddleware(func(c *gin.Context) {
+			c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 42})
+			c.Next()
+		}),
+		nil,
+	)
+
+	registered := make(map[string]struct{})
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/agent-management/summary"},
+		{http.MethodGet, "/api/v1/agent-management/direct-users"},
+		{http.MethodPost, "/api/v1/agent-management/direct-users"},
+		{http.MethodGet, "/api/v1/agent-management/direct-users/groups/assigned"},
+		{http.MethodGet, "/api/v1/agent-management/direct-users/groups/unassigned"},
+		{http.MethodPut, "/api/v1/agent-management/direct-users/groups/batch"},
+		{http.MethodPut, "/api/v1/agent-management/direct-users/groups/existing"},
+		{http.MethodPost, "/api/v1/agent-management/direct-users/groups/reclaim"},
+		{http.MethodGet, "/api/v1/agent-management/direct-agents"},
+		{http.MethodGet, "/api/v1/agent-management/direct-agents/groups/assigned"},
+		{http.MethodGet, "/api/v1/agent-management/direct-agents/groups/unassigned"},
+		{http.MethodPut, "/api/v1/agent-management/direct-agents/groups/batch"},
+		{http.MethodPut, "/api/v1/agent-management/direct-agents/groups/existing"},
+		{http.MethodPost, "/api/v1/agent-management/direct-agents/groups/reclaim"},
+		{http.MethodGet, "/api/v1/agent-management/direct-enterprises"},
+		{http.MethodGet, "/api/v1/agent-management/direct-enterprises/groups/assigned"},
+		{http.MethodGet, "/api/v1/agent-management/direct-enterprises/groups/unassigned"},
+		{http.MethodPut, "/api/v1/agent-management/direct-enterprises/groups/batch"},
+		{http.MethodPut, "/api/v1/agent-management/direct-enterprises/groups/existing"},
+		{http.MethodPost, "/api/v1/agent-management/direct-enterprises/groups/reclaim"},
+		{http.MethodGet, "/api/v1/agent-management/admin-agent-tree"},
+		{http.MethodGet, "/api/v1/agent-management/structure"},
+		{http.MethodGet, "/api/v1/agent-management/usage"},
+		{http.MethodGet, "/api/v1/agent-management/usage/stats"},
+		{http.MethodGet, "/api/v1/agent-management/usage/users"},
+		{http.MethodPut, "/api/v1/agent-management/children/:id/allocation"},
+		{http.MethodPut, "/api/v1/agent-management/children/:id/agent-income"},
+		{http.MethodPut, "/api/v1/agent-management/invite-defaults"},
+		{http.MethodPost, "/api/v1/agent-management/children/:id/upgrade"},
+		{http.MethodDelete, "/api/v1/agent-management/children/:id"},
+		{http.MethodGet, "/api/v1/agent-management/groups"},
+		{http.MethodGet, "/api/v1/agent-management/invite-default-groups"},
+		{http.MethodPut, "/api/v1/agent-management/invite-default-groups/batch"},
+		{http.MethodPut, "/api/v1/agent-management/invite-default-groups/:group_id"},
+		{http.MethodDelete, "/api/v1/agent-management/invite-default-groups/:group_id"},
+		{http.MethodGet, "/api/v1/agent-management/children/:id/groups"},
+		{http.MethodPut, "/api/v1/agent-management/children/:id/groups/batch"},
+		{http.MethodPut, "/api/v1/agent-management/children/:id/groups/:group_id"},
+		{http.MethodDelete, "/api/v1/agent-management/children/:id/groups/:group_id"},
+	} {
+		_, ok := registered[tc.method+" "+tc.path]
+		require.True(t, ok, "%s %s", tc.method, tc.path)
+	}
+}

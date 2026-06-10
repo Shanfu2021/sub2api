@@ -27,10 +27,16 @@ const (
 	FieldPasswordHash = "password_hash"
 	// FieldRole holds the string denoting the role field in the database.
 	FieldRole = "role"
+	// FieldParentUserID holds the string denoting the parent_user_id field in the database.
+	FieldParentUserID = "parent_user_id"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldAllocatedConcurrency holds the string denoting the allocated_concurrency field in the database.
+	FieldAllocatedConcurrency = "allocated_concurrency"
+	// FieldAllocatedRpm holds the string denoting the allocated_rpm field in the database.
+	FieldAllocatedRpm = "allocated_rpm"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldUsername holds the string denoting the username field in the database.
@@ -75,6 +81,8 @@ const (
 	EdgeAllowedGroups = "allowed_groups"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgeAgentIncomeUsageLogs holds the string denoting the agent_income_usage_logs edge name in mutations.
+	EdgeAgentIncomeUsageLogs = "agent_income_usage_logs"
 	// EdgeAttributeValues holds the string denoting the attribute_values edge name in mutations.
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
@@ -85,6 +93,10 @@ const (
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
 	EdgePendingAuthSessions = "pending_auth_sessions"
+	// EdgeManagedGroupDelegations holds the string denoting the managed_group_delegations edge name in mutations.
+	EdgeManagedGroupDelegations = "managed_group_delegations"
+	// EdgeReceivedGroupDelegations holds the string denoting the received_group_delegations edge name in mutations.
+	EdgeReceivedGroupDelegations = "received_group_delegations"
 	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
 	EdgePlatformQuotas = "platform_quotas"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
@@ -138,6 +150,13 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "user_id"
+	// AgentIncomeUsageLogsTable is the table that holds the agent_income_usage_logs relation/edge.
+	AgentIncomeUsageLogsTable = "usage_logs"
+	// AgentIncomeUsageLogsInverseTable is the table name for the UsageLog entity.
+	// It exists in this package in order to avoid circular dependency with the "usagelog" package.
+	AgentIncomeUsageLogsInverseTable = "usage_logs"
+	// AgentIncomeUsageLogsColumn is the table column denoting the agent_income_usage_logs relation/edge.
+	AgentIncomeUsageLogsColumn = "agent_owner_user_id"
 	// AttributeValuesTable is the table that holds the attribute_values relation/edge.
 	AttributeValuesTable = "user_attribute_values"
 	// AttributeValuesInverseTable is the table name for the UserAttributeValue entity.
@@ -173,6 +192,20 @@ const (
 	PendingAuthSessionsInverseTable = "pending_auth_sessions"
 	// PendingAuthSessionsColumn is the table column denoting the pending_auth_sessions relation/edge.
 	PendingAuthSessionsColumn = "target_user_id"
+	// ManagedGroupDelegationsTable is the table that holds the managed_group_delegations relation/edge.
+	ManagedGroupDelegationsTable = "agent_group_delegations"
+	// ManagedGroupDelegationsInverseTable is the table name for the AgentGroupDelegation entity.
+	// It exists in this package in order to avoid circular dependency with the "agentgroupdelegation" package.
+	ManagedGroupDelegationsInverseTable = "agent_group_delegations"
+	// ManagedGroupDelegationsColumn is the table column denoting the managed_group_delegations relation/edge.
+	ManagedGroupDelegationsColumn = "manager_user_id"
+	// ReceivedGroupDelegationsTable is the table that holds the received_group_delegations relation/edge.
+	ReceivedGroupDelegationsTable = "agent_group_delegations"
+	// ReceivedGroupDelegationsInverseTable is the table name for the AgentGroupDelegation entity.
+	// It exists in this package in order to avoid circular dependency with the "agentgroupdelegation" package.
+	ReceivedGroupDelegationsInverseTable = "agent_group_delegations"
+	// ReceivedGroupDelegationsColumn is the table column denoting the received_group_delegations relation/edge.
+	ReceivedGroupDelegationsColumn = "child_user_id"
 	// PlatformQuotasTable is the table that holds the platform_quotas relation/edge.
 	PlatformQuotasTable = "user_platform_quotas"
 	// PlatformQuotasInverseTable is the table name for the UserPlatformQuota entity.
@@ -198,8 +231,11 @@ var Columns = []string{
 	FieldEmail,
 	FieldPasswordHash,
 	FieldRole,
+	FieldParentUserID,
 	FieldBalance,
 	FieldConcurrency,
+	FieldAllocatedConcurrency,
+	FieldAllocatedRpm,
 	FieldStatus,
 	FieldUsername,
 	FieldNotes,
@@ -259,6 +295,10 @@ var (
 	DefaultBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
+	// DefaultAllocatedConcurrency holds the default value on creation for the "allocated_concurrency" field.
+	DefaultAllocatedConcurrency int
+	// DefaultAllocatedRpm holds the default value on creation for the "allocated_rpm" field.
+	DefaultAllocatedRpm int
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -325,6 +365,11 @@ func ByRole(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRole, opts...).ToFunc()
 }
 
+// ByParentUserID orders the results by the parent_user_id field.
+func ByParentUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldParentUserID, opts...).ToFunc()
+}
+
 // ByBalance orders the results by the balance field.
 func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalance, opts...).ToFunc()
@@ -333,6 +378,16 @@ func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+}
+
+// ByAllocatedConcurrency orders the results by the allocated_concurrency field.
+func ByAllocatedConcurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllocatedConcurrency, opts...).ToFunc()
+}
+
+// ByAllocatedRpm orders the results by the allocated_rpm field.
+func ByAllocatedRpm(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllocatedRpm, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.
@@ -508,6 +563,20 @@ func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByAgentIncomeUsageLogsCount orders the results by agent_income_usage_logs count.
+func ByAgentIncomeUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAgentIncomeUsageLogsStep(), opts...)
+	}
+}
+
+// ByAgentIncomeUsageLogs orders the results by agent_income_usage_logs terms.
+func ByAgentIncomeUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAgentIncomeUsageLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAttributeValuesCount orders the results by attribute_values count.
 func ByAttributeValuesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -575,6 +644,34 @@ func ByPendingAuthSessionsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByPendingAuthSessions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newPendingAuthSessionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByManagedGroupDelegationsCount orders the results by managed_group_delegations count.
+func ByManagedGroupDelegationsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newManagedGroupDelegationsStep(), opts...)
+	}
+}
+
+// ByManagedGroupDelegations orders the results by managed_group_delegations terms.
+func ByManagedGroupDelegations(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newManagedGroupDelegationsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByReceivedGroupDelegationsCount orders the results by received_group_delegations count.
+func ByReceivedGroupDelegationsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newReceivedGroupDelegationsStep(), opts...)
+	}
+}
+
+// ByReceivedGroupDelegations orders the results by received_group_delegations terms.
+func ByReceivedGroupDelegations(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newReceivedGroupDelegationsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -654,6 +751,13 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
 	)
 }
+func newAgentIncomeUsageLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AgentIncomeUsageLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, AgentIncomeUsageLogsTable, AgentIncomeUsageLogsColumn),
+	)
+}
 func newAttributeValuesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -687,6 +791,20 @@ func newPendingAuthSessionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PendingAuthSessionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PendingAuthSessionsTable, PendingAuthSessionsColumn),
+	)
+}
+func newManagedGroupDelegationsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ManagedGroupDelegationsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ManagedGroupDelegationsTable, ManagedGroupDelegationsColumn),
+	)
+}
+func newReceivedGroupDelegationsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ReceivedGroupDelegationsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ReceivedGroupDelegationsTable, ReceivedGroupDelegationsColumn),
 	)
 }
 func newPlatformQuotasStep() *sqlgraph.Step {

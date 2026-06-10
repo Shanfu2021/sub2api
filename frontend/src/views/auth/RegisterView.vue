@@ -787,11 +787,15 @@ function validateForm(): boolean {
     isValid = false
   }
 
-  // Invitation code validation (required when enabled)
+  const affiliateInvitationCode = formData.aff_code.trim() || loadAffiliateReferralCode()
+
+  // Invitation code validation (required when enabled unless an affiliate code is present)
   if (invitationCodeEnabled.value) {
     if (!formData.invitation_code.trim()) {
-      errors.invitation_code = t('auth.invitationCodeRequired')
-      isValid = false
+      if (!affiliateInvitationCode) {
+        errors.invitation_code = t('auth.invitationCodeRequired')
+        isValid = false
+      }
     }
   }
 
@@ -829,8 +833,10 @@ async function handleRegister(): Promise<void> {
     }
   }
 
-  // Check invitation code validation status (if enabled and code provided)
-  if (invitationCodeEnabled.value) {
+  const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
+
+  // Check official invitation code validation status (if enabled and code provided)
+  if (invitationCodeEnabled.value && formData.invitation_code.trim()) {
     // If still validating, wait
     if (invitationValidating.value) {
       errorMessage.value = t('auth.invitationCodeValidating')
@@ -856,7 +862,6 @@ async function handleRegister(): Promise<void> {
   isLoading.value = true
 
   try {
-    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
     if (affCode) {
       formData.aff_code = affCode
     }
@@ -906,7 +911,8 @@ async function handleRegister(): Promise<void> {
 
     // Handle registration error
     errorMessage.value = buildAuthErrorMessage(error, {
-      fallback: t('auth.registrationFailed')
+      fallback: t('auth.registrationFailed'),
+      t,
     })
 
     // Also show error toast

@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -48,6 +49,7 @@ type OpenAIAccountScheduleRequest struct {
 	RequiredCapability      OpenAIEndpointCapability
 	RequiredImageCapability OpenAIImagesCapability
 	RequireCompact          bool
+	StrictPriority          bool
 	ExcludedIDs             map[int64]struct{}
 }
 
@@ -661,6 +663,31 @@ func buildOpenAIWeightedSelectionOrder(
 	return order
 }
 
+// isOpenAIImageUpstreamPreferredAccount reports whether image requests should
+// prefer this account over the local OAuth image path.
+func isOpenAIImageUpstreamPreferredAccount(account *Account) bool {
+	return account != nil && account.IsOpenAI() && account.Type == AccountTypeAPIKey
+}
+
+func prioritizeOpenAIImagePreferredCandidateScores(candidates []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+	if len(candidates) == 0 {
+		return nil
+	}
+	preferred := make([]openAIAccountCandidateScore, 0, len(candidates))
+	fallback := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if isOpenAIImageUpstreamPreferredAccount(candidate.account) {
+			preferred = append(preferred, candidate)
+			continue
+		}
+		fallback = append(fallback, candidate)
+	}
+	out := make([]openAIAccountCandidateScore, 0, len(candidates))
+	out = append(out, preferred...)
+	out = append(out, fallback...)
+	return out
+}
+
 func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	req OpenAIAccountScheduleRequest,
 	filtered []*Account,
@@ -848,6 +875,63 @@ func sortOpenAICompactRetryCandidates(pool []openAIAccountCandidateScore) []open
 	return ordered
 }
 
+func sortOpenAIStrictPriorityBucketCandidates(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+	if len(pool) == 0 {
+		return nil
+	}
+	ordered := append([]openAIAccountCandidateScore(nil), pool...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		a, b := ordered[i], ordered[j]
+		aRate := 1.0
+		if a.account != nil {
+			aRate = a.account.BillingRateMultiplier()
+		}
+		bRate := 1.0
+		if b.account != nil {
+			bRate = b.account.BillingRateMultiplier()
+		}
+		if aRate != bRate {
+			return aRate < bRate
+		}
+		aLoad, bLoad := 0, 0
+		if a.loadInfo != nil {
+			aLoad = a.loadInfo.LoadRate
+		}
+		if b.loadInfo != nil {
+			bLoad = b.loadInfo.LoadRate
+		}
+		if aLoad != bLoad {
+			return aLoad < bLoad
+		}
+		aWaiting, bWaiting := 0, 0
+		if a.loadInfo != nil {
+			aWaiting = a.loadInfo.WaitingCount
+		}
+		if b.loadInfo != nil {
+			bWaiting = b.loadInfo.WaitingCount
+		}
+		if aWaiting != bWaiting {
+			return aWaiting < bWaiting
+		}
+		switch {
+		case a.account == nil || b.account == nil:
+			return a.account != nil
+		case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
+			return true
+		case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
+			return false
+		case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
+			return a.account.ID < b.account.ID
+		default:
+			if a.account.LastUsedAt.Equal(*b.account.LastUsedAt) {
+				return a.account.ID < b.account.ID
+			}
+			return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
+		}
+	})
+	return ordered
+}
+
 func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrder(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -957,6 +1041,13 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	if req.RequireCompact && len(plan.candidates) == 0 && len(plan.staleSnapshotCompactRetry) == 0 {
 		return nil, 0, 0, 0, ErrNoAvailableCompactAccounts
 	}
+	if req.StrictPriority {
+		strictCandidates := append([]openAIAccountCandidateScore(nil), plan.candidates...)
+		if req.RequireCompact && len(plan.staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
+			strictCandidates = append(strictCandidates, plan.staleSnapshotCompactRetry...)
+		}
+		return s.selectStrictPriorityFromOrder(ctx, req, strictCandidates, candidateCount, topK, loadSkew)
+	}
 	if req.RequireCompact && len(selectionOrder) == 0 && s.service.schedulerSnapshot == nil {
 		return nil, candidateCount, topK, loadSkew, ErrNoAvailableCompactAccounts
 	}
@@ -1012,6 +1103,103 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      fresh.ID,
 				MaxConcurrency: fresh.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			},
+		}, candidateCount, topK, loadSkew, nil
+	}
+
+	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked)
+}
+
+func (s *defaultOpenAIAccountScheduler) selectStrictPriorityFromOrder(
+	ctx context.Context,
+	req OpenAIAccountScheduleRequest,
+	selectionOrder []openAIAccountCandidateScore,
+	candidateCount int,
+	topK int,
+	loadSkew float64,
+) (*AccountSelectionResult, int, int, float64, error) {
+	priorityBuckets := make(map[int][]openAIAccountCandidateScore)
+	priorities := make([]int, 0)
+	for _, candidate := range selectionOrder {
+		if _, ok := priorityBuckets[candidate.account.Priority]; !ok {
+			priorities = append(priorities, candidate.account.Priority)
+		}
+		priorityBuckets[candidate.account.Priority] = append(priorityBuckets[candidate.account.Priority], candidate)
+	}
+	sort.Ints(priorities)
+
+	compactBlocked := false
+	cfg := s.service.schedulingConfig()
+	var fallbackWaitAccount *Account
+	for _, priority := range priorities {
+		bucket := sortOpenAIStrictPriorityBucketCandidates(priorityBuckets[priority])
+		if req.RequiredImageCapability != "" {
+			bucket = prioritizeOpenAIImagePreferredCandidateScores(bucket)
+		}
+		waitCandidates := make([]*Account, 0, len(bucket))
+		for _, candidate := range bucket {
+			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false, req.RequiredCapability)
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+				continue
+			}
+			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, false, req.RequiredCapability)
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+				continue
+			}
+			if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
+				compactBlocked = true
+				continue
+			}
+			result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			if acquireErr != nil {
+				return nil, candidateCount, topK, loadSkew, acquireErr
+			}
+			if result != nil && result.Acquired {
+				if req.SessionHash != "" {
+					_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, fresh.ID)
+				}
+				return &AccountSelectionResult{
+					Account:     fresh,
+					Acquired:    true,
+					ReleaseFunc: result.ReleaseFunc,
+				}, candidateCount, topK, loadSkew, nil
+			}
+			waitCandidates = append(waitCandidates, fresh)
+		}
+		if len(waitCandidates) > 0 {
+			sort.SliceStable(waitCandidates, func(i, j int) bool {
+				a, b := waitCandidates[i], waitCandidates[j]
+				if a.Priority != b.Priority {
+					return a.Priority < b.Priority
+				}
+				switch {
+				case a.LastUsedAt == nil && b.LastUsedAt != nil:
+					return true
+				case a.LastUsedAt != nil && b.LastUsedAt == nil:
+					return false
+				case a.LastUsedAt == nil && b.LastUsedAt == nil:
+					return a.ID < b.ID
+				default:
+					if a.LastUsedAt.Equal(*b.LastUsedAt) {
+						return a.ID < b.ID
+					}
+					return a.LastUsedAt.Before(*b.LastUsedAt)
+				}
+			})
+			if fallbackWaitAccount == nil {
+				fallbackWaitAccount = waitCandidates[0]
+			}
+		}
+	}
+
+	if fallbackWaitAccount != nil {
+		return &AccountSelectionResult{
+			Account: fallbackWaitAccount,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      fallbackWaitAccount.ID,
+				MaxConcurrency: fallbackWaitAccount.Concurrency,
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			},
@@ -1226,7 +1414,19 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
 	decision := OpenAIAccountScheduleDecision{}
+	strictPriority := s.isOpenAIGroupStrictPriority(ctx, groupID)
 	scheduler := s.getOpenAIAccountScheduler(ctx)
+	if scheduler == nil && strictPriority {
+		s.openaiSchedulerOnce.Do(func() {
+			if s.openaiAccountStats == nil {
+				s.openaiAccountStats = newOpenAIAccountRuntimeStats()
+			}
+			if s.openaiScheduler == nil {
+				s.openaiScheduler = newDefaultOpenAIAccountScheduler(s, s.openaiAccountStats)
+			}
+		})
+		scheduler = s.openaiScheduler
+	}
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
@@ -1305,8 +1505,29 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		RequiredCapability:      requiredCapability,
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
+		StrictPriority:          strictPriority,
 		ExcludedIDs:             excludedIDs,
 	})
+}
+
+func (s *OpenAIGatewayService) isOpenAIGroupStrictPriority(ctx context.Context, groupID *int64) bool {
+	if s == nil || groupID == nil || *groupID <= 0 {
+		return false
+	}
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == *groupID {
+		if group.Platform != "" && group.Platform != PlatformOpenAI {
+			return false
+		}
+		if group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority {
+			return true
+		}
+	}
+	var group *Group
+	var err error
+	if s.schedulerSnapshot != nil {
+		group, err = s.schedulerSnapshot.GetGroupByID(ctx, *groupID)
+	}
+	return err == nil && group != nil && group.Platform == PlatformOpenAI && group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {

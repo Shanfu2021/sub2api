@@ -542,6 +542,89 @@ func (_u *UsageLogUpdate) AddRateMultiplier(v float64) *UsageLogUpdate {
 	return _u
 }
 
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (_u *UsageLogUpdate) SetAgentOwnerUserID(v int64) *UsageLogUpdate {
+	_u.mutation.SetAgentOwnerUserID(v)
+	return _u
+}
+
+// SetNillableAgentOwnerUserID sets the "agent_owner_user_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAgentOwnerUserID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetAgentOwnerUserID(*v)
+	}
+	return _u
+}
+
+// ClearAgentOwnerUserID clears the value of the "agent_owner_user_id" field.
+func (_u *UsageLogUpdate) ClearAgentOwnerUserID() *UsageLogUpdate {
+	_u.mutation.ClearAgentOwnerUserID()
+	return _u
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (_u *UsageLogUpdate) SetAgentUserRateMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.ResetAgentUserRateMultiplier()
+	_u.mutation.SetAgentUserRateMultiplier(v)
+	return _u
+}
+
+// SetNillableAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAgentUserRateMultiplier(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetAgentUserRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddAgentUserRateMultiplier adds value to the "agent_user_rate_multiplier" field.
+func (_u *UsageLogUpdate) AddAgentUserRateMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.AddAgentUserRateMultiplier(v)
+	return _u
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (_u *UsageLogUpdate) SetAgentCostRateMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.ResetAgentCostRateMultiplier()
+	_u.mutation.SetAgentCostRateMultiplier(v)
+	return _u
+}
+
+// SetNillableAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAgentCostRateMultiplier(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetAgentCostRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddAgentCostRateMultiplier adds value to the "agent_cost_rate_multiplier" field.
+func (_u *UsageLogUpdate) AddAgentCostRateMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.AddAgentCostRateMultiplier(v)
+	return _u
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (_u *UsageLogUpdate) SetAgentIncome(v float64) *UsageLogUpdate {
+	_u.mutation.ResetAgentIncome()
+	_u.mutation.SetAgentIncome(v)
+	return _u
+}
+
+// SetNillableAgentIncome sets the "agent_income" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAgentIncome(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetAgentIncome(*v)
+	}
+	return _u
+}
+
+// AddAgentIncome adds value to the "agent_income" field.
+func (_u *UsageLogUpdate) AddAgentIncome(v float64) *UsageLogUpdate {
+	_u.mutation.AddAgentIncome(v)
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdate) SetAccountRateMultiplier(v float64) *UsageLogUpdate {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -850,6 +933,25 @@ func (_u *UsageLogUpdate) SetSubscription(v *UserSubscription) *UsageLogUpdate {
 	return _u.SetSubscriptionID(v.ID)
 }
 
+// SetAgentOwnerID sets the "agent_owner" edge to the User entity by ID.
+func (_u *UsageLogUpdate) SetAgentOwnerID(id int64) *UsageLogUpdate {
+	_u.mutation.SetAgentOwnerID(id)
+	return _u
+}
+
+// SetNillableAgentOwnerID sets the "agent_owner" edge to the User entity by ID if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAgentOwnerID(id *int64) *UsageLogUpdate {
+	if id != nil {
+		_u = _u.SetAgentOwnerID(*id)
+	}
+	return _u
+}
+
+// SetAgentOwner sets the "agent_owner" edge to the User entity.
+func (_u *UsageLogUpdate) SetAgentOwner(v *User) *UsageLogUpdate {
+	return _u.SetAgentOwnerID(v.ID)
+}
+
 // Mutation returns the UsageLogMutation object of the builder.
 func (_u *UsageLogUpdate) Mutation() *UsageLogMutation {
 	return _u.mutation
@@ -882,6 +984,12 @@ func (_u *UsageLogUpdate) ClearGroup() *UsageLogUpdate {
 // ClearSubscription clears the "subscription" edge to the UserSubscription entity.
 func (_u *UsageLogUpdate) ClearSubscription() *UsageLogUpdate {
 	_u.mutation.ClearSubscription()
+	return _u
+}
+
+// ClearAgentOwner clears the "agent_owner" edge to the User entity.
+func (_u *UsageLogUpdate) ClearAgentOwner() *UsageLogUpdate {
+	_u.mutation.ClearAgentOwner()
 	return _u
 }
 
@@ -1126,6 +1234,24 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.AgentUserRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAgentUserRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAgentUserRateMultiplier(); ok {
+		_spec.AddField(usagelog.FieldAgentUserRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AgentCostRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAgentCostRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAgentCostRateMultiplier(); ok {
+		_spec.AddField(usagelog.FieldAgentCostRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AgentIncome(); ok {
+		_spec.SetField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAgentIncome(); ok {
+		_spec.AddField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 	}
@@ -1351,6 +1477,35 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AgentOwnerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   usagelog.AgentOwnerTable,
+			Columns: []string{usagelog.AgentOwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentOwnerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   usagelog.AgentOwnerTable,
+			Columns: []string{usagelog.AgentOwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1888,6 +2043,89 @@ func (_u *UsageLogUpdateOne) AddRateMultiplier(v float64) *UsageLogUpdateOne {
 	return _u
 }
 
+// SetAgentOwnerUserID sets the "agent_owner_user_id" field.
+func (_u *UsageLogUpdateOne) SetAgentOwnerUserID(v int64) *UsageLogUpdateOne {
+	_u.mutation.SetAgentOwnerUserID(v)
+	return _u
+}
+
+// SetNillableAgentOwnerUserID sets the "agent_owner_user_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAgentOwnerUserID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetAgentOwnerUserID(*v)
+	}
+	return _u
+}
+
+// ClearAgentOwnerUserID clears the value of the "agent_owner_user_id" field.
+func (_u *UsageLogUpdateOne) ClearAgentOwnerUserID() *UsageLogUpdateOne {
+	_u.mutation.ClearAgentOwnerUserID()
+	return _u
+}
+
+// SetAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) SetAgentUserRateMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetAgentUserRateMultiplier()
+	_u.mutation.SetAgentUserRateMultiplier(v)
+	return _u
+}
+
+// SetNillableAgentUserRateMultiplier sets the "agent_user_rate_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAgentUserRateMultiplier(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetAgentUserRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddAgentUserRateMultiplier adds value to the "agent_user_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) AddAgentUserRateMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddAgentUserRateMultiplier(v)
+	return _u
+}
+
+// SetAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) SetAgentCostRateMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetAgentCostRateMultiplier()
+	_u.mutation.SetAgentCostRateMultiplier(v)
+	return _u
+}
+
+// SetNillableAgentCostRateMultiplier sets the "agent_cost_rate_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAgentCostRateMultiplier(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetAgentCostRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddAgentCostRateMultiplier adds value to the "agent_cost_rate_multiplier" field.
+func (_u *UsageLogUpdateOne) AddAgentCostRateMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddAgentCostRateMultiplier(v)
+	return _u
+}
+
+// SetAgentIncome sets the "agent_income" field.
+func (_u *UsageLogUpdateOne) SetAgentIncome(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetAgentIncome()
+	_u.mutation.SetAgentIncome(v)
+	return _u
+}
+
+// SetNillableAgentIncome sets the "agent_income" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAgentIncome(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetAgentIncome(*v)
+	}
+	return _u
+}
+
+// AddAgentIncome adds value to the "agent_income" field.
+func (_u *UsageLogUpdateOne) AddAgentIncome(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddAgentIncome(v)
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdateOne) SetAccountRateMultiplier(v float64) *UsageLogUpdateOne {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -2196,6 +2434,25 @@ func (_u *UsageLogUpdateOne) SetSubscription(v *UserSubscription) *UsageLogUpdat
 	return _u.SetSubscriptionID(v.ID)
 }
 
+// SetAgentOwnerID sets the "agent_owner" edge to the User entity by ID.
+func (_u *UsageLogUpdateOne) SetAgentOwnerID(id int64) *UsageLogUpdateOne {
+	_u.mutation.SetAgentOwnerID(id)
+	return _u
+}
+
+// SetNillableAgentOwnerID sets the "agent_owner" edge to the User entity by ID if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAgentOwnerID(id *int64) *UsageLogUpdateOne {
+	if id != nil {
+		_u = _u.SetAgentOwnerID(*id)
+	}
+	return _u
+}
+
+// SetAgentOwner sets the "agent_owner" edge to the User entity.
+func (_u *UsageLogUpdateOne) SetAgentOwner(v *User) *UsageLogUpdateOne {
+	return _u.SetAgentOwnerID(v.ID)
+}
+
 // Mutation returns the UsageLogMutation object of the builder.
 func (_u *UsageLogUpdateOne) Mutation() *UsageLogMutation {
 	return _u.mutation
@@ -2228,6 +2485,12 @@ func (_u *UsageLogUpdateOne) ClearGroup() *UsageLogUpdateOne {
 // ClearSubscription clears the "subscription" edge to the UserSubscription entity.
 func (_u *UsageLogUpdateOne) ClearSubscription() *UsageLogUpdateOne {
 	_u.mutation.ClearSubscription()
+	return _u
+}
+
+// ClearAgentOwner clears the "agent_owner" edge to the User entity.
+func (_u *UsageLogUpdateOne) ClearAgentOwner() *UsageLogUpdateOne {
+	_u.mutation.ClearAgentOwner()
 	return _u
 }
 
@@ -2502,6 +2765,24 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.AgentUserRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAgentUserRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAgentUserRateMultiplier(); ok {
+		_spec.AddField(usagelog.FieldAgentUserRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AgentCostRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAgentCostRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAgentCostRateMultiplier(); ok {
+		_spec.AddField(usagelog.FieldAgentCostRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AgentIncome(); ok {
+		_spec.SetField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAgentIncome(); ok {
+		_spec.AddField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 	}
@@ -2727,6 +3008,35 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AgentOwnerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   usagelog.AgentOwnerTable,
+			Columns: []string{usagelog.AgentOwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AgentOwnerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   usagelog.AgentOwnerTable,
+			Columns: []string{usagelog.AgentOwnerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

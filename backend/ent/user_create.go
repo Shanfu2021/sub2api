@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/agentgroupdelegation"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -102,6 +103,20 @@ func (_c *UserCreate) SetNillableRole(v *string) *UserCreate {
 	return _c
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (_c *UserCreate) SetParentUserID(v int64) *UserCreate {
+	_c.mutation.SetParentUserID(v)
+	return _c
+}
+
+// SetNillableParentUserID sets the "parent_user_id" field if the given value is not nil.
+func (_c *UserCreate) SetNillableParentUserID(v *int64) *UserCreate {
+	if v != nil {
+		_c.SetParentUserID(*v)
+	}
+	return _c
+}
+
 // SetBalance sets the "balance" field.
 func (_c *UserCreate) SetBalance(v float64) *UserCreate {
 	_c.mutation.SetBalance(v)
@@ -126,6 +141,34 @@ func (_c *UserCreate) SetConcurrency(v int) *UserCreate {
 func (_c *UserCreate) SetNillableConcurrency(v *int) *UserCreate {
 	if v != nil {
 		_c.SetConcurrency(*v)
+	}
+	return _c
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (_c *UserCreate) SetAllocatedConcurrency(v int) *UserCreate {
+	_c.mutation.SetAllocatedConcurrency(v)
+	return _c
+}
+
+// SetNillableAllocatedConcurrency sets the "allocated_concurrency" field if the given value is not nil.
+func (_c *UserCreate) SetNillableAllocatedConcurrency(v *int) *UserCreate {
+	if v != nil {
+		_c.SetAllocatedConcurrency(*v)
+	}
+	return _c
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (_c *UserCreate) SetAllocatedRpm(v int) *UserCreate {
+	_c.mutation.SetAllocatedRpm(v)
+	return _c
+}
+
+// SetNillableAllocatedRpm sets the "allocated_rpm" field if the given value is not nil.
+func (_c *UserCreate) SetNillableAllocatedRpm(v *int) *UserCreate {
+	if v != nil {
+		_c.SetAllocatedRpm(*v)
 	}
 	return _c
 }
@@ -445,6 +488,21 @@ func (_c *UserCreate) AddUsageLogs(v ...*UsageLog) *UserCreate {
 	return _c.AddUsageLogIDs(ids...)
 }
 
+// AddAgentIncomeUsageLogIDs adds the "agent_income_usage_logs" edge to the UsageLog entity by IDs.
+func (_c *UserCreate) AddAgentIncomeUsageLogIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddAgentIncomeUsageLogIDs(ids...)
+	return _c
+}
+
+// AddAgentIncomeUsageLogs adds the "agent_income_usage_logs" edges to the UsageLog entity.
+func (_c *UserCreate) AddAgentIncomeUsageLogs(v ...*UsageLog) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAgentIncomeUsageLogIDs(ids...)
+}
+
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
 func (_c *UserCreate) AddAttributeValueIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAttributeValueIDs(ids...)
@@ -518,6 +576,36 @@ func (_c *UserCreate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserCrea
 		ids[i] = v[i].ID
 	}
 	return _c.AddPendingAuthSessionIDs(ids...)
+}
+
+// AddManagedGroupDelegationIDs adds the "managed_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_c *UserCreate) AddManagedGroupDelegationIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddManagedGroupDelegationIDs(ids...)
+	return _c
+}
+
+// AddManagedGroupDelegations adds the "managed_group_delegations" edges to the AgentGroupDelegation entity.
+func (_c *UserCreate) AddManagedGroupDelegations(v ...*AgentGroupDelegation) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddManagedGroupDelegationIDs(ids...)
+}
+
+// AddReceivedGroupDelegationIDs adds the "received_group_delegations" edge to the AgentGroupDelegation entity by IDs.
+func (_c *UserCreate) AddReceivedGroupDelegationIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddReceivedGroupDelegationIDs(ids...)
+	return _c
+}
+
+// AddReceivedGroupDelegations adds the "received_group_delegations" edges to the AgentGroupDelegation entity.
+func (_c *UserCreate) AddReceivedGroupDelegations(v ...*AgentGroupDelegation) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddReceivedGroupDelegationIDs(ids...)
 }
 
 // AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
@@ -597,6 +685,14 @@ func (_c *UserCreate) defaults() error {
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
+	}
+	if _, ok := _c.mutation.AllocatedConcurrency(); !ok {
+		v := user.DefaultAllocatedConcurrency
+		_c.mutation.SetAllocatedConcurrency(v)
+	}
+	if _, ok := _c.mutation.AllocatedRpm(); !ok {
+		v := user.DefaultAllocatedRpm
+		_c.mutation.SetAllocatedRpm(v)
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := user.DefaultStatus
@@ -678,6 +774,12 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
+	}
+	if _, ok := _c.mutation.AllocatedConcurrency(); !ok {
+		return &ValidationError{Name: "allocated_concurrency", err: errors.New(`ent: missing required field "User.allocated_concurrency"`)}
+	}
+	if _, ok := _c.mutation.AllocatedRpm(); !ok {
+		return &ValidationError{Name: "allocated_rpm", err: errors.New(`ent: missing required field "User.allocated_rpm"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "User.status"`)}
@@ -775,6 +877,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
 		_node.Role = value
 	}
+	if value, ok := _c.mutation.ParentUserID(); ok {
+		_spec.SetField(user.FieldParentUserID, field.TypeInt64, value)
+		_node.ParentUserID = &value
+	}
 	if value, ok := _c.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 		_node.Balance = value
@@ -782,6 +888,14 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
+	}
+	if value, ok := _c.mutation.AllocatedConcurrency(); ok {
+		_spec.SetField(user.FieldAllocatedConcurrency, field.TypeInt, value)
+		_node.AllocatedConcurrency = value
+	}
+	if value, ok := _c.mutation.AllocatedRpm(); ok {
+		_spec.SetField(user.FieldAllocatedRpm, field.TypeInt, value)
+		_node.AllocatedRpm = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
@@ -959,6 +1073,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.AgentIncomeUsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AgentIncomeUsageLogsTable,
+			Columns: []string{user.AgentIncomeUsageLogsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.AttributeValuesIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1032,6 +1162,38 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ManagedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ManagedGroupDelegationsTable,
+			Columns: []string{user.ManagedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ReceivedGroupDelegationsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ReceivedGroupDelegationsTable,
+			Columns: []string{user.ReceivedGroupDelegationsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(agentgroupdelegation.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1173,6 +1335,30 @@ func (u *UserUpsert) UpdateRole() *UserUpsert {
 	return u
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (u *UserUpsert) SetParentUserID(v int64) *UserUpsert {
+	u.Set(user.FieldParentUserID, v)
+	return u
+}
+
+// UpdateParentUserID sets the "parent_user_id" field to the value that was provided on create.
+func (u *UserUpsert) UpdateParentUserID() *UserUpsert {
+	u.SetExcluded(user.FieldParentUserID)
+	return u
+}
+
+// AddParentUserID adds v to the "parent_user_id" field.
+func (u *UserUpsert) AddParentUserID(v int64) *UserUpsert {
+	u.Add(user.FieldParentUserID, v)
+	return u
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (u *UserUpsert) ClearParentUserID() *UserUpsert {
+	u.SetNull(user.FieldParentUserID)
+	return u
+}
+
 // SetBalance sets the "balance" field.
 func (u *UserUpsert) SetBalance(v float64) *UserUpsert {
 	u.Set(user.FieldBalance, v)
@@ -1206,6 +1392,42 @@ func (u *UserUpsert) UpdateConcurrency() *UserUpsert {
 // AddConcurrency adds v to the "concurrency" field.
 func (u *UserUpsert) AddConcurrency(v int) *UserUpsert {
 	u.Add(user.FieldConcurrency, v)
+	return u
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (u *UserUpsert) SetAllocatedConcurrency(v int) *UserUpsert {
+	u.Set(user.FieldAllocatedConcurrency, v)
+	return u
+}
+
+// UpdateAllocatedConcurrency sets the "allocated_concurrency" field to the value that was provided on create.
+func (u *UserUpsert) UpdateAllocatedConcurrency() *UserUpsert {
+	u.SetExcluded(user.FieldAllocatedConcurrency)
+	return u
+}
+
+// AddAllocatedConcurrency adds v to the "allocated_concurrency" field.
+func (u *UserUpsert) AddAllocatedConcurrency(v int) *UserUpsert {
+	u.Add(user.FieldAllocatedConcurrency, v)
+	return u
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (u *UserUpsert) SetAllocatedRpm(v int) *UserUpsert {
+	u.Set(user.FieldAllocatedRpm, v)
+	return u
+}
+
+// UpdateAllocatedRpm sets the "allocated_rpm" field to the value that was provided on create.
+func (u *UserUpsert) UpdateAllocatedRpm() *UserUpsert {
+	u.SetExcluded(user.FieldAllocatedRpm)
+	return u
+}
+
+// AddAllocatedRpm adds v to the "allocated_rpm" field.
+func (u *UserUpsert) AddAllocatedRpm(v int) *UserUpsert {
+	u.Add(user.FieldAllocatedRpm, v)
 	return u
 }
 
@@ -1559,6 +1781,34 @@ func (u *UserUpsertOne) UpdateRole() *UserUpsertOne {
 	})
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (u *UserUpsertOne) SetParentUserID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetParentUserID(v)
+	})
+}
+
+// AddParentUserID adds v to the "parent_user_id" field.
+func (u *UserUpsertOne) AddParentUserID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddParentUserID(v)
+	})
+}
+
+// UpdateParentUserID sets the "parent_user_id" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateParentUserID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateParentUserID()
+	})
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (u *UserUpsertOne) ClearParentUserID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearParentUserID()
+	})
+}
+
 // SetBalance sets the "balance" field.
 func (u *UserUpsertOne) SetBalance(v float64) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
@@ -1598,6 +1848,48 @@ func (u *UserUpsertOne) AddConcurrency(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateConcurrency() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (u *UserUpsertOne) SetAllocatedConcurrency(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAllocatedConcurrency(v)
+	})
+}
+
+// AddAllocatedConcurrency adds v to the "allocated_concurrency" field.
+func (u *UserUpsertOne) AddAllocatedConcurrency(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddAllocatedConcurrency(v)
+	})
+}
+
+// UpdateAllocatedConcurrency sets the "allocated_concurrency" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateAllocatedConcurrency() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAllocatedConcurrency()
+	})
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (u *UserUpsertOne) SetAllocatedRpm(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAllocatedRpm(v)
+	})
+}
+
+// AddAllocatedRpm adds v to the "allocated_rpm" field.
+func (u *UserUpsertOne) AddAllocatedRpm(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddAllocatedRpm(v)
+	})
+}
+
+// UpdateAllocatedRpm sets the "allocated_rpm" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateAllocatedRpm() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAllocatedRpm()
 	})
 }
 
@@ -2155,6 +2447,34 @@ func (u *UserUpsertBulk) UpdateRole() *UserUpsertBulk {
 	})
 }
 
+// SetParentUserID sets the "parent_user_id" field.
+func (u *UserUpsertBulk) SetParentUserID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetParentUserID(v)
+	})
+}
+
+// AddParentUserID adds v to the "parent_user_id" field.
+func (u *UserUpsertBulk) AddParentUserID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddParentUserID(v)
+	})
+}
+
+// UpdateParentUserID sets the "parent_user_id" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateParentUserID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateParentUserID()
+	})
+}
+
+// ClearParentUserID clears the value of the "parent_user_id" field.
+func (u *UserUpsertBulk) ClearParentUserID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearParentUserID()
+	})
+}
+
 // SetBalance sets the "balance" field.
 func (u *UserUpsertBulk) SetBalance(v float64) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
@@ -2194,6 +2514,48 @@ func (u *UserUpsertBulk) AddConcurrency(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateConcurrency() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateConcurrency()
+	})
+}
+
+// SetAllocatedConcurrency sets the "allocated_concurrency" field.
+func (u *UserUpsertBulk) SetAllocatedConcurrency(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAllocatedConcurrency(v)
+	})
+}
+
+// AddAllocatedConcurrency adds v to the "allocated_concurrency" field.
+func (u *UserUpsertBulk) AddAllocatedConcurrency(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddAllocatedConcurrency(v)
+	})
+}
+
+// UpdateAllocatedConcurrency sets the "allocated_concurrency" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateAllocatedConcurrency() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAllocatedConcurrency()
+	})
+}
+
+// SetAllocatedRpm sets the "allocated_rpm" field.
+func (u *UserUpsertBulk) SetAllocatedRpm(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAllocatedRpm(v)
+	})
+}
+
+// AddAllocatedRpm adds v to the "allocated_rpm" field.
+func (u *UserUpsertBulk) AddAllocatedRpm(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddAllocatedRpm(v)
+	})
+}
+
+// UpdateAllocatedRpm sets the "allocated_rpm" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateAllocatedRpm() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAllocatedRpm()
 	})
 }
 

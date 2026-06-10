@@ -1,0 +1,1522 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>天才程序员拼车站文档</title>
+    <meta name="description" content="这份文档面向第一次接入的用户。你只需要完成注册、创建 API Key、购买或兑换商品，就可以按 OpenAI 兼容方式直接接入你的脚本、客户端或服务端项目。" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f3f7fb;
+        --panel: rgba(255, 255, 255, 0.92);
+        --panel-strong: #ffffff;
+        --text: #152033;
+        --muted: #607087;
+        --line: rgba(18, 28, 45, 0.08);
+        --primary: #0f766e;
+        --primary-deep: #115e59;
+        --primary-soft: rgba(15, 118, 110, 0.1);
+        --shadow: 0 26px 70px rgba(15, 23, 42, 0.08);
+        --code-bg: #0c1628;
+        --code-text: #eff6ff;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: #07111f;
+          --panel: rgba(9, 18, 32, 0.92);
+          --panel-strong: #0b1527;
+          --text: #eef4ff;
+          --muted: #94a3b8;
+          --line: rgba(148, 163, 184, 0.14);
+          --primary: #49d0c2;
+          --primary-deep: #31b3a5;
+          --primary-soft: rgba(73, 208, 194, 0.12);
+          --shadow: 0 26px 70px rgba(0, 0, 0, 0.35);
+          --code-bg: #020817;
+          --code-text: #dbeafe;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei",
+          "Segoe UI",
+          sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 28%),
+          radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 24%),
+          linear-gradient(180deg, var(--bg), var(--bg));
+        line-height: 1.72;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page {
+        width: min(1240px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 24px 0 72px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .brand img {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+        object-fit: contain;
+      }
+
+      .brand-copy strong {
+        display: block;
+        font-size: 18px;
+        line-height: 1.2;
+      }
+
+      .brand-copy span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .top-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 11px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 700;
+        backdrop-filter: blur(12px);
+      }
+
+      .button.primary {
+        border-color: transparent;
+        background: linear-gradient(135deg, var(--primary-deep), var(--primary));
+        color: #fff;
+      }
+
+      .hero {
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        background:
+          linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(59, 130, 246, 0.08)),
+          var(--panel-strong);
+        box-shadow: var(--shadow);
+        padding: 28px 30px;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(30px, 4vw, 46px);
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+      }
+
+      .hero p {
+        margin: 14px 0 0;
+        max-width: 780px;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 24px;
+        margin-top: 24px;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 20px;
+        align-self: start;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        padding: 18px;
+        backdrop-filter: blur(14px);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(15, 118, 110, 0.34) transparent;
+      }
+
+      .sidebar::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .sidebar::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: rgba(15, 118, 110, 0.28);
+      }
+
+      .sidebar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .sidebar h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+      }
+
+      .toc {
+        display: grid;
+        gap: 8px;
+      }
+
+      .toc-item {
+        display: block;
+        padding: 10px 12px;
+        border-radius: 14px;
+        color: var(--muted);
+        font-size: 14px;
+        transition: 0.18s ease;
+      }
+
+      .toc-item:hover {
+        background: var(--primary-soft);
+        color: var(--primary);
+      }
+
+      .toc-depth-3 {
+        margin-left: 12px;
+        font-size: 13px;
+      }
+
+      .help {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+      }
+
+      .help p {
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .help img {
+        width: 100%;
+        max-width: 180px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .article-shell {
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        padding: 28px;
+        backdrop-filter: blur(14px);
+      }
+
+      .markdown-body h1 {
+        margin: 0 0 18px;
+        font-size: 36px;
+        line-height: 1.15;
+      }
+
+      .markdown-body h2 {
+        margin: 38px 0 14px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+        font-size: 28px;
+        line-height: 1.2;
+      }
+
+      .markdown-body h3 {
+        margin: 28px 0 10px;
+        font-size: 21px;
+      }
+
+      .markdown-body h4 {
+        margin: 22px 0 10px;
+        font-size: 17px;
+      }
+
+      .markdown-body p,
+      .markdown-body li {
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .markdown-body p {
+        margin: 0 0 14px;
+      }
+
+      .markdown-body ul,
+      .markdown-body ol {
+        margin: 0 0 16px;
+        padding-left: 22px;
+      }
+
+      .markdown-body li + li {
+        margin-top: 7px;
+      }
+
+      .markdown-body strong {
+        color: var(--text);
+      }
+
+      .markdown-body a {
+        color: var(--primary);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      .markdown-body img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        margin: 14px 0 20px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: var(--panel-strong);
+        box-shadow: var(--shadow);
+      }
+
+      .markdown-body pre {
+        margin: 14px 0 18px;
+        overflow-x: auto;
+        border-radius: 18px;
+        background: var(--code-bg);
+        color: var(--code-text);
+        padding: 16px 18px;
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .markdown-body code {
+        font-family:
+          "SFMono-Regular",
+          Consolas,
+          "Liberation Mono",
+          Menlo,
+          monospace;
+      }
+
+      .markdown-body :not(pre) > code {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--primary-soft);
+        color: var(--primary);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .markdown-body blockquote {
+        margin: 16px 0;
+        padding: 14px 16px;
+        border-left: 4px solid var(--primary);
+        border-radius: 0 16px 16px 0;
+        background: rgba(15, 118, 110, 0.06);
+      }
+
+      .markdown-body hr {
+        margin: 26px 0;
+        border: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .markdown-body table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 14px 0 18px;
+        min-width: 640px;
+      }
+
+      .markdown-body th,
+      .markdown-body td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      .markdown-body th {
+        color: var(--text);
+        background: rgba(148, 163, 184, 0.08);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .footer {
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 13px;
+        text-align: center;
+      }
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          position: static;
+          max-height: none;
+          overflow: visible;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          width: min(100% - 24px, 100%);
+          padding: 16px 0 48px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .top-actions {
+          justify-content: flex-start;
+        }
+
+        .hero,
+        .article-shell {
+          padding: 20px;
+        }
+
+        .markdown-body h1 {
+          font-size: 30px;
+        }
+
+        .markdown-body h2 {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <a class="brand" href="/home">
+          <img src="/logo.png" alt="天才程序员拼车站 Logo" />
+          <span class="brand-copy">
+            <strong>天才程序员拼车站</strong>
+            <span>一群程序员共建的高质量 AI API 拼车站</span>
+          </span>
+        </a>
+        <div class="top-actions">
+          <a class="button" href="/register">注册</a>
+          <a class="button" href="/login">登录</a>
+          <a class="button primary" href="/redeem">去兑换 / 去购买</a>
+        </div>
+      </header>
+
+      <section class="hero">
+        <h1>天才程序员拼车站文档</h1>
+        <p>这份文档面向第一次接入的用户。你只需要完成注册、创建 API Key、购买或兑换商品，就可以按 OpenAI 兼容方式直接接入你的脚本、客户端或服务端项目。</p>
+      </section>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <h2>目录</h2>
+          <nav class="toc">
+            <a class="toc-item toc-depth-2" href="#开始前先记住这三个地址">开始前先记住这三个地址</a>
+<a class="toc-item toc-depth-2" href="#3-分钟快速开始">3 分钟快速开始</a>
+<a class="toc-item toc-depth-2" href="#目录">目录</a>
+<a class="toc-item toc-depth-2" href="#1-平台说明">1. 平台说明</a>
+<a class="toc-item toc-depth-3" href="#适合谁">适合谁</a>
+<a class="toc-item toc-depth-3" href="#你会得到什么">你会得到什么</a>
+<a class="toc-item toc-depth-2" href="#2-注册与登录">2. 注册与登录</a>
+<a class="toc-item toc-depth-2" href="#3-创建-api-key">3. 创建 API Key</a>
+<a class="toc-item toc-depth-2" href="#4-api-接入与客户端配置">4. API 接入与客户端配置</a>
+<a class="toc-item toc-depth-3" href="#4-1-先记住这三个接入要素">4.1 先记住这三个接入要素</a>
+<a class="toc-item toc-depth-3" href="#4-2-直接用脚本-sdk-接入-openai-兼容">4.2 直接用脚本 / SDK 接入（OpenAI 兼容）</a>
+<a class="toc-item toc-depth-3" href="#4-3-codex-系列-cli-vscode-插件-app">4.3 Codex 系列（CLI / VSCode 插件 / APP）</a>
+<a class="toc-item toc-depth-3" href="#4-4-claude-code">4.4 Claude Code</a>
+<a class="toc-item toc-depth-3" href="#4-5-open-code">4.5 Open Code</a>
+<a class="toc-item toc-depth-3" href="#4-6-在-codex-里配置生图工具-ai阅读版">4.6 在 Codex 里配置生图工具(AI阅读版)</a>
+<a class="toc-item toc-depth-3" href="#4-7-在-codex-里配置生图工具-人类阅读版">4.7 在 Codex 里配置生图工具(人类阅读版)</a>
+<a class="toc-item toc-depth-2" href="#5-验证与排错">5. 验证与排错</a>
+<a class="toc-item toc-depth-3" href="#5-1-一行命令自检">5.1 一行命令自检</a>
+<a class="toc-item toc-depth-3" href="#5-2-常见报错对照表">5.2 常见报错对照表</a>
+<a class="toc-item toc-depth-3" href="#5-3-推荐排查顺序">5.3 推荐排查顺序</a>
+<a class="toc-item toc-depth-2" href="#6-购买与兑换">6. 购买与兑换</a>
+<a class="toc-item toc-depth-3" href="#6-1-余额卡商品">6.1 余额卡商品</a>
+<a class="toc-item toc-depth-3" href="#6-2-兑换规则">6.2 兑换规则</a>
+<a class="toc-item toc-depth-2" href="#7-订阅说明">7. 订阅说明</a>
+<a class="toc-item toc-depth-3" href="#日常使用版订阅">日常使用版订阅</a>
+<a class="toc-item toc-depth-3" href="#轻度开发版订阅">轻度开发版订阅</a>
+<a class="toc-item toc-depth-3" href="#强度开发版订阅">强度开发版订阅</a>
+<a class="toc-item toc-depth-3" href="#团队协作版订阅">团队协作版订阅</a>
+<a class="toc-item toc-depth-2" href="#8-常见问题">8. 常见问题</a>
+<a class="toc-item toc-depth-3" href="#为什么我创建-key-时看不到想要的分组">为什么我创建 Key 时看不到想要的分组？</a>
+<a class="toc-item toc-depth-3" href="#为什么我支付了-10-3-到账不是-10-3-对应的额度">为什么我支付了 10.3，到账不是 10.3 对应的额度？</a>
+<a class="toc-item toc-depth-3" href="#兑换码和优惠码有什么区别">兑换码和优惠码有什么区别？</a>
+<a class="toc-item toc-depth-3" href="#为什么返回-401-unauthorized">为什么返回 401 / Unauthorized？</a>
+<a class="toc-item toc-depth-3" href="#为什么模型调用失败">为什么模型调用失败？</a>
+<a class="toc-item toc-depth-3" href="#忘记密码怎么办">忘记密码怎么办？</a>
+<a class="toc-item toc-depth-2" href="#9-联系支持">9. 联系支持</a>
+          </nav>
+          <div class="help">
+            <p>支持入口：站内公告 / 购买渠道</p>
+          </div>
+        </aside>
+
+        <main class="article-shell">
+          <article class="markdown-body">
+            <h1 id="天才程序员拼车站文档">天才程序员拼车站文档</h1><p>这份文档面向第一次接入的用户。你只需要完成注册、创建 API Key、购买或兑换商品，就可以按 OpenAI 兼容方式直接接入你的脚本、客户端或服务端项目。</p>
+<h2 id="开始前先记住这三个地址">开始前先记住这三个地址</h2><ul>
+<li>站点地址：<code>https://api.ise.it.com</code></li>
+<li>OpenAI 兼容 Base URL：<code>https://codex.ise.it.com/v1</code></li>
+<li>说明：网页登录、兑换、购买入口用 <code>api.ise.it.com</code>；脚本、Codex、Claude Code 等 API 调用建议用 <code>codex.ise.it.com</code></li>
+<li>商品总入口：<code>https://pay.ldxp.cn/shop/CN8U85FN</code></li>
+</ul>
+<h2 id="3-分钟快速开始">3 分钟快速开始</h2><ol>
+<li>注册账号<br>使用邮箱注册并完成验证，后续忘记密码也可通过邮箱找回。</li>
+<li>创建 API Key<br>登录后到 API 密钥页创建一个你自己的 Key，用于脚本或客户端调用。</li>
+<li>购买或兑换<br>在链动小铺买余额卡或订阅卡，回到站内兑换页输入兑换码。</li>
+<li>开始调用<br>按 OpenAI 兼容方式填入 Base URL 和 API Key，即可开始使用。</li>
+</ol>
+<h2 id="目录">目录</h2><ol>
+<li><a href="#1-平台说明">平台说明</a></li>
+<li><a href="#2-注册与登录">注册与登录</a></li>
+<li><a href="#3-创建-api-key">创建 API Key</a></li>
+<li><a href="#4-api-接入与客户端配置">API 接入与客户端配置</a></li>
+<li><a href="#5-验证与排错">验证与排错</a></li>
+<li><a href="#6-购买与兑换">购买与兑换</a></li>
+<li><a href="#7-订阅说明">订阅说明</a></li>
+<li><a href="#8-常见问题">常见问题</a></li>
+<li><a href="#9-联系支持">联系支持</a></li>
+</ol>
+<hr>
+<h2 id="1-平台说明">1. 平台说明</h2><p>天才程序员拼车站面向程序员、学生和小团队，提供统一的 AI API 拼车接入入口。你注册后可以自己创建 API Key、购买商品、兑换余额卡、开通订阅，并在一个站内完成账号和用量管理。</p>
+<h3 id="适合谁">适合谁</h3><p>适合需要脚本调用、OpenAI SDK 调用、课程作业、日常开发测试和团队协作的人。</p>
+<h3 id="你会得到什么">你会得到什么</h3><p>统一账号、统一 Key、公开商品入口、站内兑换页、优惠码能力和站内支持入口。</p>
+<h2 id="2-注册与登录">2. 注册与登录</h2><ol>
+<li>进入到登录界面，点击注册账号。
+<img src="image.png" alt="alt text" /></li>
+<li>根据页面提示完成邮箱验证。
+<img src="image-1.png" alt="alt text" /></li>
+<li>如有优惠码，可在注册时填写；若忘记使用请联系客服处理</li>
+<li>忘记密码时，打开 <code>/forgot-password</code>，通过邮箱找回。
+<img src="image-2.png" alt="alt text" />
+快捷入口：</li>
+</ol>
+<ul>
+<li><a href="https://api.ise.it.com/register" target="_blank" rel="noopener noreferrer">去注册</a></li>
+<li><a href="https://api.ise.it.com/login" target="_blank" rel="noopener noreferrer">去登录</a></li>
+<li><a href="https://api.ise.it.com/forgot-password" target="_blank" rel="noopener noreferrer">忘记密码</a></li>
+</ul>
+<h2 id="3-创建-api-key">3. 创建 API Key</h2><ol>
+<li>登录后进入 <code>API 密钥</code> 页面。
+<img src="image-3.png" alt="alt text" /></li>
+<li>点击创建，给这个 Key 起一个方便你自己识别的名称。
+<img src="image-4.png" alt="alt text" /></li>
+<li>若你的账号已开通对应权限，创建时即可看到可选分组。</li>
+<li>创建后点击使用密钥，请把 Key 保存到脚本、客户端或服务端配置里即可，此处有教程。
+<img src="image-5.png" alt="alt text" /></li>
+</ol>
+<p>如果你创建 Key 时看不到预期分组，通常不是页面坏了，而是当前账号还没有对应的余额权限、分组授权或订阅权限。先确认商品是否购买并成功兑换。
+若有问题请按站内公告或购买渠道反馈。</p>
+<h2 id="4-api-接入与客户端配置">4. API 接入与客户端配置</h2><ol>
+<li>如果你是写脚本、跑服务、接 SDK，就看 <strong>4.2 OpenAI 兼容接入</strong></li>
+<li>如果你是用 Codex CLI、Claude Code、Open Code 这类客户端，就看 <strong>4.3 / 4.4 / 4.5</strong></li>
+</ol>
+<h3 id="4-1-先记住这三个接入要素">4.1 先记住这三个接入要素</h3><ul>
+<li>站点地址：<code>https://api.ise.it.com</code></li>
+<li>API Base URL：<code>https://codex.ise.it.com/v1</code></li>
+<li>API Key：在站内 <code>API 密钥</code> 页面创建，格式通常是 <code>sk-xxxx</code></li>
+</ul>
+<h3 id="4-2-直接用脚本-sdk-接入-openai-兼容">4.2 直接用脚本 / SDK 接入（OpenAI 兼容）</h3><p>推荐优先按 <strong>OpenAI 兼容</strong> 方式接入。大多数支持自定义 Base URL 的 SDK、客户端和第三方面板，都可以直接使用。</p>
+<h4 id="4-2-1-基本信息">4.2.1 基本信息</h4><ul>
+<li>Base URL：<code>https://codex.ise.it.com/v1</code></li>
+<li>认证方式：<code>Authorization: Bearer 你的 API Key</code></li>
+<li>模型名：以你站内当前可用模型和可见分组为准</li>
+</ul>
+<h4 id="4-2-2-curl-示例">4.2.2 Curl 示例</h4><pre><code class="language-bash">curl https://codex.ise.it.com/v1/chat/completions \
+  -H &quot;Content-Type: application/json&quot; \
+  -H &quot;Authorization: Bearer sk-你的密钥&quot; \
+  -d &#39;{
+    &quot;model&quot;: &quot;gpt-4.1-mini&quot;,
+    &quot;messages&quot;: [
+      {&quot;role&quot;: &quot;system&quot;, &quot;content&quot;: &quot;You are a helpful assistant.&quot;},
+      {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;你好，帮我写一个 Python 冒泡排序示例。&quot;}
+    ]
+  }&#39;
+</code></pre>
+<h4 id="4-2-3-python-openai-sdk-示例">4.2.3 Python OpenAI SDK 示例</h4><pre><code class="language-python">from openai import OpenAI
+
+client = OpenAI(
+    api_key=&quot;sk-你的密钥&quot;,
+    base_url=&quot;https://codex.ise.it.com/v1&quot;,
+)
+
+resp = client.chat.completions.create(
+    model=&quot;gpt-4.1-mini&quot;,
+    messages=[
+        {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;给我一个 FastAPI hello world 示例&quot;}
+    ],
+)
+
+print(resp.choices[0].message.content)
+</code></pre>
+<h4 id="4-2-4-node-js-示例">4.2.4 Node.js 示例</h4><pre><code class="language-js">import OpenAI from &quot;openai&quot;;
+
+const client = new OpenAI({
+  apiKey: &quot;sk-你的密钥&quot;,
+  baseURL: &quot;https://codex.ise.it.com/v1&quot;,
+});
+
+const resp = await client.chat.completions.create({
+  model: &quot;gpt-4.1-mini&quot;,
+  messages: [
+    { role: &quot;user&quot;, content: &quot;写一个 Express 最小服务示例&quot; }
+  ],
+});
+
+console.log(resp.choices[0].message.content);
+</code></pre>
+<p>示例里的模型名只是演示。你真实能否调用某个模型，取决于当前账号拥有的分组权限、订阅状态和余额情况。</p>
+<h3 id="4-3-codex-系列-cli-vscode-插件-app">4.3 Codex 系列（CLI / VSCode 插件 / APP）</h3><p>适用范围：<strong>Codex CLI、Codex VSCode 插件、Codex APP</strong>。这三类一般可以共用同一套站内生成的配置。</p>
+<h4 id="4-3-1-操作步骤">4.3.1 操作步骤</h4><ol>
+<li>打开站内 <code>API 密钥</code> 页面</li>
+<li>找到你的密钥，点击右侧 <code>使用密钥</code></li>
+<li>切换到 <code>Codex CLI</code> 或 <code>Codex CLI (WebSocket)</code> 标签
+<img src="image-9.png" alt="alt text" /></li>
+<li>按提示把内容填到本地文件里
+<img src="image-10.png" alt="alt text" /></li>
+</ol>
+<h4 id="4-3-2-配置目录">4.3.2 配置目录</h4><table>
+<thead>
+<tr>
+<th>系统</th>
+<th>配置目录</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Windows</td>
+<td><code>%USERPROFILE%\\.codex</code></td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>~/.codex</code></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>~/.codex</code></td>
+</tr>
+</tbody></table>
+<h4 id="4-3-3-config-toml">4.3.3 <code>config.toml</code></h4><pre><code class="language-toml">model_provider = &quot;OpenAI&quot;
+model = &quot;gpt-5.4&quot;
+review_model = &quot;gpt-5.4&quot;
+model_reasoning_effort = &quot;xhigh&quot;
+disable_response_storage = true
+network_access = &quot;enabled&quot;
+windows_wsl_setup_acknowledged = true
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+
+[model_providers.OpenAI]
+name = &quot;OpenAI&quot;
+base_url = &quot;https://codex.ise.it.com/v1&quot;
+wire_api = &quot;responses&quot;
+requires_openai_auth = true
+</code></pre>
+<p>如果你用的是站内弹窗里的 <code>Codex CLI (WebSocket)</code> 标签，则配置会多出：</p>
+<pre><code class="language-toml">supports_websockets = true
+
+[features]
+responses_websockets_v2 = true
+</code></pre>
+<h4 id="4-3-4-auth-json">4.3.4 <code>auth.json</code></h4><pre><code class="language-json">{
+  &quot;OPENAI_API_KEY&quot;: &quot;sk-你的密钥&quot;
+}
+</code></pre>
+<h4 id="4-3-5-提示">4.3.5 提示</h4><ul>
+<li>Windows 用户注意不要把文件误存成 <code>config.toml.txt</code></li>
+<li>最稳妥的方式是直接复制站内 <code>使用密钥</code> 弹窗里的内容，不要手敲</li>
+<li>如果你改完配置还是不生效，先完全退出客户端，再重新打开</li>
+</ul>
+<p>截图占位：这里放 <code>使用密钥 -&gt; Codex CLI</code> 的截图</p>
+<h3 id="4-4-claude-code">4.4 Claude Code</h3><p>如果你的账号开通了对应能力，可以直接使用站内 <code>使用密钥</code> 弹窗里的 <code>Claude Code</code> 配置。</p>
+<h4 id="4-4-1-操作步骤">4.4.1 操作步骤</h4><ol>
+<li>打开 <code>API 密钥</code></li>
+<li>点击 <code>使用密钥</code></li>
+<li>切换到 <code>Claude Code</code></li>
+<li>按你自己的系统复制对应命令</li>
+</ol>
+<h4 id="4-4-2-终端环境变量">4.4.2 终端环境变量</h4><p>Unix / macOS / Linux：</p>
+<pre><code class="language-bash">export ANTHROPIC_BASE_URL=&quot;https://codex.ise.it.com/v1&quot;
+export ANTHROPIC_AUTH_TOKEN=&quot;sk-你的密钥&quot;
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+</code></pre>
+<p>Windows CMD：</p>
+<pre><code class="language-bat">set ANTHROPIC_BASE_URL=https://codex.ise.it.com/v1
+set ANTHROPIC_AUTH_TOKEN=sk-你的密钥
+set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+</code></pre>
+<p>PowerShell：</p>
+<pre><code class="language-powershell">$env:ANTHROPIC_BASE_URL=&quot;https://codex.ise.it.com/v1&quot;
+$env:ANTHROPIC_AUTH_TOKEN=&quot;sk-你的密钥&quot;
+$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+</code></pre>
+<h4 id="4-4-3-settings-json">4.4.3 <code>settings.json</code></h4><p>Unix / macOS 路径：</p>
+<pre><code class="language-text">~/.claude/settings.json
+</code></pre>
+<p>Windows 路径：</p>
+<pre><code class="language-text">%USERPROFILE%\.claude\settings.json
+</code></pre>
+<p>配置内容示例：</p>
+<pre><code class="language-json">{
+  &quot;env&quot;: {
+    &quot;ANTHROPIC_BASE_URL&quot;: &quot;https://codex.ise.it.com/v1&quot;,
+    &quot;ANTHROPIC_AUTH_TOKEN&quot;: &quot;sk-你的密钥&quot;,
+    &quot;CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC&quot;: &quot;1&quot;,
+    &quot;CLAUDE_CODE_ATTRIBUTION_HEADER&quot;: &quot;0&quot;
+  }
+}
+</code></pre>
+<h4 id="4-4-4-提示">4.4.4 提示</h4><ul>
+<li>终端变量修改后，要<strong>新开一个终端窗口</strong>才会读取</li>
+<li>建议优先以站内弹窗给出的内容为准</li>
+<li>如果你当前账号没有 Claude Code 对应分组，看不到相关能力是正常的</li>
+</ul>
+<p>截图占位：这里放 <code>使用密钥 -&gt; Claude Code</code> 的截图</p>
+<h3 id="4-5-open-code">4.5 Open Code</h3><p>Open Code 也可以直接通过站内 <code>使用密钥</code> 弹窗生成配置。</p>
+<h4 id="4-5-1-配置文件位置">4.5.1 配置文件位置</h4><table>
+<thead>
+<tr>
+<th>系统</th>
+<th>配置路径</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Windows</td>
+<td><code>%USERPROFILE%\\.config\\opencode\\opencode.json</code></td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>~/.config/opencode/opencode.json</code></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>~/.config/opencode/opencode.json</code></td>
+</tr>
+</tbody></table>
+<p>如果文件不存在，可以手动创建，也可以使用 <code>opencode.jsonc</code>。</p>
+<h4 id="4-5-2-写入配置文件">4.5.2 写入配置文件</h4><p>下面是一份可参考的最小配置示例：</p>
+<pre><code class="language-json">{
+  &quot;$schema&quot;: &quot;https://opencode.ai/config.json&quot;,
+  &quot;provider&quot;: {
+    &quot;openai&quot;: {
+      &quot;options&quot;: {
+        &quot;baseURL&quot;: &quot;https://codex.ise.it.com/v1&quot;,
+        &quot;apiKey&quot;: &quot;sk-你的密钥&quot;
+      }
+    }
+  }
+}
+</code></pre>
+<p>如果你想和站内完全一致，建议直接复制 <code>使用密钥 -&gt; Open Code</code> 标签页里自动生成的内容。</p>
+<h4 id="4-5-3-connect-命令方式-可选">4.5.3 <code>/connect</code> 命令方式（可选）</h4><p>如果你不想手改 JSON，也可以先启动 Open Code，然后输入：</p>
+<pre><code class="language-text">/connect
+</code></pre>
+<p>按提示填入：</p>
+<ul>
+<li><code>baseURL</code>：<code>https://codex.ise.it.com/v1</code></li>
+<li><code>apiKey</code>：你的 <code>sk-xxxx</code></li>
+</ul>
+<h4 id="4-5-4-提示">4.5.4 提示</h4><ul>
+<li>Open Code 的模型、provider 和 options 可以按需调整</li>
+<li>但第一次接入时，推荐先用站内生成的默认配置，成功后再改</li>
+</ul>
+<p>截图占位：这里放 <code>使用密钥 -&gt; Open Code</code> 的截图</p>
+<h3 id="4-6-在-codex-里配置生图工具-ai阅读版">4.6 在 Codex 里配置生图工具(AI阅读版)</h3><p>如果你的账号已经开通生图分组，可以把本站的 OpenAI-compatible Images API 配进 Codex。配置完成后，你在 Codex 对话里说“生成一张图”“画一张海报”“做一张头像”时，Codex 就可以调用真实生图接口，而不是用本地代码假装画图。</p>
+<h4 id="4-6-1-先理解这三件事">4.6.1 先理解这三件事</h4><table>
+<thead>
+<tr>
+<th>项目</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Codex 的 imagegen 能力</td>
+<td>告诉 Codex 遇到生图任务时应该走生图流程</td>
+</tr>
+<tr>
+<td>API Base URL + API Key</td>
+<td>真正访问本站生图接口需要的地址和密钥</td>
+</tr>
+<tr>
+<td>本地 wrapper 命令</td>
+<td>给 Codex 一个固定命令入口，避免每次手写 curl，也避免把 Key 暴露在对话里</td>
+</tr>
+</tbody></table>
+<p>只看到 Codex 有 imagegen 能力，不代表它已经能调用本站生图接口。你还需要配置自己的 API Key。</p>
+<h4 id="4-6-2-准备-api-信息">4.6.2 准备 API 信息</h4><p>你需要准备：</p>
+<pre><code class="language-text">OPENAI_BASE_URL=&quot;https://codex.ise.it.com/v1&quot;
+OPENAI_API_KEY=&quot;你的 API Key&quot;
+OPENAI_IMAGE_MODEL=&quot;gpt-image-2&quot;
+</code></pre>
+<p>推荐默认模型使用 <code>gpt-image-2</code>。这是官方兼容写法，也是本站给普通用户准备的默认入口；你按 OpenAI 官方 Images API 的习惯填写它即可。</p>
+<p>本站用户文档只公开 <code>gpt-image-2</code> 这一个入口。官方 Images API 也是这个使用方式，普通用户不要填写其他模型名。</p>
+<p>如果你是高级用户，已经从管理员或 <code>/v1/models</code> 明确知道自己有特殊模型名，也可以自行指定。查询模型列表：</p>
+<pre><code class="language-bash">curl -sS \
+  -H &quot;Authorization: Bearer sk-你的密钥&quot; \
+  &quot;https://codex.ise.it.com/v1/models&quot;
+</code></pre>
+<p>能在 <code>/v1/models</code> 返回里看到的模型，才说明当前 Key 有对应权限。看不懂或不确定时，始终使用 <code>gpt-image-2</code>。</p>
+<p>图片比例和分辨率通过 <code>size</code> 参数控制，不要通过改模型名控制。本站当前推荐这些尺寸：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐 size</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>方图</td>
+<td><code>1024x1024</code></td>
+</tr>
+<tr>
+<td>常用竖图</td>
+<td><code>1024x1536</code></td>
+</tr>
+<tr>
+<td>常用横图</td>
+<td><code>1536x1024</code></td>
+</tr>
+<tr>
+<td>更高竖图</td>
+<td><code>1024x1792</code>、<code>720x1280</code>、<code>1088x1920</code>、<code>1152x2048</code></td>
+</tr>
+<tr>
+<td>更高横图</td>
+<td><code>1792x1024</code></td>
+</tr>
+<tr>
+<td>4K 方图</td>
+<td><code>2048x2048</code></td>
+</tr>
+<tr>
+<td>4K 竖图</td>
+<td><code>2048x3072</code>、<code>2160x3840</code></td>
+</tr>
+<tr>
+<td>4K 横图</td>
+<td><code>3072x2048</code>、<code>3840x2160</code></td>
+</tr>
+</tbody></table>
+<p>尺寸规则：宽高都必须是 16px 的倍数，最大边不超过 3840px，长边和短边比例不超过 3:1。例如 <code>1080x1920</code> 不是 16 的倍数，容易请求失败；应改成 <code>1088x1920</code>。</p>
+<p>如果你要求 4K、高分辨率、原始高分辨率、壁纸或海报级输出，必须显式传 <code>size</code>。只在 prompt 里写“4K quality / high resolution”不会改变实际像素，wrapper 默认仍是 <code>1024x1024</code>。例如横向 4K 用 <code>--size 3840x2160</code>，竖向 4K 用 <code>--size 2160x3840</code>。不要用 <code>4096x4096</code>，它超过当前最大边限制。</p>
+<h4 id="4-6-3-写入本地环境配置">4.6.3 写入本地环境配置</h4><p>推荐把配置放在用户目录，并设置成仅当前用户可读：</p>
+<pre><code class="language-bash">mkdir -p ~/.config/openai-image
+
+cat &gt; ~/.config/openai-image/env &lt;&lt;&#39;EOF&#39;
+export OPENAI_BASE_URL=&quot;https://codex.ise.it.com/v1&quot;
+export OPENAI_API_KEY=&quot;sk-你的密钥&quot;
+export OPENAI_IMAGE_MODEL=&quot;gpt-image-2&quot;
+EOF
+
+chmod 600 ~/.config/openai-image/env
+</code></pre>
+<p>本站推荐固定使用官方兼容的 <code>b64_json</code> 返回格式。普通程序直接按 OpenAI 官方写法请求也可以使用；本文提供的 wrapper 主要是为了让 Codex、Windows 和 4K 大图场景更稳定：接口响应先写入临时 JSON 文件，再从里面解析 <code>b64_json</code> 落盘成图片，避免把整张图片 JSON 直接挤进 PowerShell、<code>.cmd</code> 或终端 stdout 管道。</p>
+<p>注意：不要把真实 Key 写进项目仓库，也不要发给别人。</p>
+<h4 id="4-6-4-创建生图-wrapper-命令">4.6.4 创建生图 wrapper 命令</h4><p>创建命令：</p>
+<pre><code class="language-bash">mkdir -p ~/bin
+
+cat &gt; ~/bin/openai-image-generate &lt;&lt;&#39;PY&#39;
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+
+def safe_unlink(path: Path) -&gt; None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def load_env(path: Path) -&gt; None:
+    if not path.exists():
+        raise SystemExit(f&quot;Missing env file: {path}&quot;)
+    for raw in path.read_text(encoding=&quot;utf-8&quot;).splitlines():
+        line = raw.strip()
+        if not line or line.startswith(&quot;#&quot;):
+            continue
+        if line.startswith(&quot;export &quot;):
+            line = line[len(&quot;export &quot;):]
+        if &quot;=&quot; not in line:
+            continue
+        key, value = line.split(&quot;=&quot;, 1)
+        os.environ[key.strip()] = value.strip().strip(&quot;&#39;\&quot;&quot;)
+
+
+def iter_sse_payloads(raw: str):
+    normalized = raw.replace(&quot;\r\n&quot;, &quot;\n&quot;)
+    for block in normalized.split(&quot;\n\n&quot;):
+        data_lines = []
+        for line in block.splitlines():
+            if not line.startswith(&quot;data:&quot;):
+                continue
+            value = line[len(&quot;data:&quot;):].strip()
+            if value and value != &quot;[DONE]&quot;:
+                data_lines.append(value)
+        if data_lines:
+            yield &quot;\n&quot;.join(data_lines)
+
+
+def image_b64_from_obj(obj) -&gt; str:
+    if not isinstance(obj, dict):
+        return &quot;&quot;
+    if &quot;error&quot; in obj:
+        raise SystemExit(json.dumps(obj[&quot;error&quot;], ensure_ascii=False, indent=2))
+    data = obj.get(&quot;data&quot;)
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                b64 = item.get(&quot;b64_json&quot;) or item.get(&quot;base64&quot;) or item.get(&quot;image_base64&quot;)
+                if b64:
+                    return b64
+    b64 = obj.get(&quot;b64_json&quot;) or obj.get(&quot;base64&quot;) or obj.get(&quot;image_base64&quot;)
+    if b64:
+        return b64
+    response = obj.get(&quot;response&quot;)
+    if isinstance(response, dict):
+        output = response.get(&quot;output&quot;)
+        if isinstance(output, list):
+            for item in output:
+                if isinstance(item, dict):
+                    result = item.get(&quot;result&quot;)
+                    if isinstance(result, str) and result.startswith(&quot;data:image/&quot;) and &quot;;base64,&quot; in result:
+                        return result.split(&quot;,&quot;, 1)[1]
+    return &quot;&quot;
+
+
+def extract_image_b64(raw: str) -&gt; str:
+    raw = raw.strip()
+    if not raw:
+        return &quot;&quot;
+    try:
+        return image_b64_from_obj(json.loads(raw))
+    except json.JSONDecodeError:
+        pass
+
+    found = &quot;&quot;
+    for payload in iter_sse_payloads(raw):
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        b64 = image_b64_from_obj(obj)
+        if b64:
+            found = b64
+    return found
+
+
+def resolve_curl_binary() -&gt; str:
+    if os.name == &quot;nt&quot;:
+        system_root = os.environ.get(&quot;SystemRoot&quot;, r&quot;C:\Windows&quot;)
+        candidate = Path(system_root) / &quot;System32&quot; / &quot;curl.exe&quot;
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which(&quot;curl&quot;) or &quot;curl&quot;
+
+
+def validate_image_size(size: str) -&gt; str:
+    size = (size or &quot;&quot;).strip().lower()
+    if size == &quot;auto&quot;:
+        return size
+    parts = size.split(&quot;x&quot;)
+    if len(parts) != 2:
+        raise SystemExit(&quot;Invalid --size. Use WIDTHxHEIGHT, for example 1024x1024 or 1024x1536.&quot;)
+    try:
+        width = int(parts[0])
+        height = int(parts[1])
+    except ValueError:
+        raise SystemExit(&quot;Invalid --size. Width and height must be integers.&quot;)
+    if width &lt;= 0 or height &lt;= 0:
+        raise SystemExit(&quot;Invalid --size. Width and height must be positive.&quot;)
+    if width % 16 != 0 or height % 16 != 0:
+        raise SystemExit(f&quot;Invalid --size {size}. Width and height must both be multiples of 16.&quot;)
+    if max(width, height) &gt; 3840:
+        raise SystemExit(f&quot;Invalid --size {size}. The maximum side must not exceed 3840px.&quot;)
+    if max(width, height) / min(width, height) &gt; 3:
+        raise SystemExit(f&quot;Invalid --size {size}. The long/short side ratio must not exceed 3:1.&quot;)
+    return f&quot;{width}x{height}&quot;
+
+
+def main() -&gt; int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(&quot;--prompt&quot;, default=None)
+    parser.add_argument(&quot;--prompt-file&quot;, default=None)
+    parser.add_argument(&quot;--out&quot;, default=&quot;output/imagegen/output.png&quot;)
+    parser.add_argument(&quot;--model&quot;, default=None)
+    parser.add_argument(&quot;--size&quot;, default=&quot;1024x1024&quot;)
+    parser.add_argument(&quot;--n&quot;, type=int, default=1)
+    parser.add_argument(&quot;--force&quot;, action=&quot;store_true&quot;)
+    parser.add_argument(&quot;--dry-run&quot;, action=&quot;store_true&quot;)
+    parser.add_argument(&quot;--stream&quot;, action=&quot;store_true&quot;)
+    parser.add_argument(&quot;--max-time&quot;, type=int, default=1800)
+    parser.add_argument(&quot;--response-json-out&quot;, default=None)
+    parser.add_argument(&quot;--env-file&quot;, default=os.environ.get(&quot;OPENAI_IMAGE_ENV&quot;, &quot;~/.config/openai-image/env&quot;))
+    args = parser.parse_args()
+
+    load_env(Path(args.env_file).expanduser())
+
+    base_url = os.environ.get(&quot;OPENAI_BASE_URL&quot;, &quot;&quot;).rstrip(&quot;/&quot;)
+    api_key = os.environ.get(&quot;OPENAI_API_KEY&quot;)
+    model = args.model or os.environ.get(&quot;OPENAI_IMAGE_MODEL&quot;)
+
+    if not base_url:
+        raise SystemExit(&quot;OPENAI_BASE_URL is not set.&quot;)
+    if not api_key:
+        raise SystemExit(&quot;OPENAI_API_KEY is not set.&quot;)
+    if not model:
+        raise SystemExit(&quot;OPENAI_IMAGE_MODEL is not set.&quot;)
+
+    prompt = args.prompt or &quot;&quot;
+    if args.prompt_file:
+        prompt = Path(args.prompt_file).expanduser().read_text(encoding=&quot;utf-8&quot;)
+    prompt = prompt.strip()
+    if not prompt:
+        raise SystemExit(&quot;Prompt is required. Use --prompt or --prompt-file.&quot;)
+    size = validate_image_size(args.size)
+
+    out_path = Path(args.out).expanduser()
+    if out_path.exists() and not args.force:
+        raise SystemExit(f&quot;Output already exists: {out_path} (use --force to overwrite)&quot;)
+
+    payload = {
+        &quot;model&quot;: model,
+        &quot;prompt&quot;: prompt,
+        &quot;size&quot;: size,
+        &quot;n&quot;: args.n,
+        &quot;response_format&quot;: &quot;b64_json&quot;,
+        &quot;stream&quot;: bool(args.stream),
+    }
+
+    endpoint = f&quot;{base_url}/images/generations&quot;
+
+    if args.dry_run:
+        print(json.dumps({
+            &quot;endpoint&quot;: endpoint,
+            &quot;model&quot;: model,
+            &quot;prompt&quot;: prompt,
+            &quot;size&quot;: size,
+            &quot;n&quot;: args.n,
+            &quot;stream&quot;: args.stream,
+            &quot;response_format&quot;: &quot;b64_json&quot;,
+            &quot;out&quot;: str(out_path),
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    env = os.environ.copy()
+    env.pop(&quot;ALL_PROXY&quot;, None)
+    env.pop(&quot;all_proxy&quot;, None)
+
+    request_body = json.dumps(payload, ensure_ascii=False).encode(&quot;utf-8&quot;)
+    curl_bin = resolve_curl_binary()
+    with tempfile.NamedTemporaryFile(delete=False) as stdout_file, tempfile.NamedTemporaryFile(delete=False) as stderr_file:
+        stdout_name = stdout_file.name
+        stderr_name = stderr_file.name
+
+    try:
+        with open(stdout_name, &quot;wb&quot;) as stdout_file, open(stderr_name, &quot;wb&quot;) as stderr_file:
+            proc = subprocess.Popen(
+                [
+                    curl_bin, &quot;-sS&quot;, &quot;--connect-timeout&quot;, &quot;30&quot;, &quot;--max-time&quot;, str(args.max_time), &quot;-X&quot;, &quot;POST&quot;,
+                    &quot;-H&quot;, f&quot;Authorization: Bearer {api_key}&quot;,
+                    &quot;-H&quot;, &quot;Content-Type: application/json&quot;,
+                    &quot;--data-binary&quot;, &quot;@-&quot;,
+                    endpoint,
+                ],
+                stdin=subprocess.PIPE,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                env=env,
+            )
+            assert proc.stdin is not None
+            proc.stdin.write(request_body)
+            proc.stdin.close()
+
+            started_at = time.monotonic()
+            next_progress_at = started_at + 30
+            while proc.poll() is None:
+                now = time.monotonic()
+                if now &gt;= next_progress_at:
+                    elapsed = int(now - started_at)
+                    print(f&quot;Waiting for image generation... {elapsed}s&quot;, file=sys.stderr, flush=True)
+                    next_progress_at = now + 30
+                time.sleep(1)
+
+        raw_stdout = Path(stdout_name).read_text(encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;)
+        raw_stderr = Path(stderr_name).read_text(encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;)
+        if args.response_json_out:
+            response_path = Path(args.response_json_out).expanduser()
+            response_path.parent.mkdir(parents=True, exist_ok=True)
+            response_path.write_text(raw_stdout, encoding=&quot;utf-8&quot;)
+    finally:
+        safe_unlink(Path(stdout_name))
+        safe_unlink(Path(stderr_name))
+
+    if proc.returncode != 0:
+        raise SystemExit(raw_stderr.strip() or f&quot;curl exited with code {proc.returncode}&quot;)
+
+    b64 = extract_image_b64(raw_stdout)
+    if not b64:
+        raise SystemExit(&quot;No b64_json returned by image endpoint.&quot;)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(base64.b64decode(b64))
+    print(f&quot;Wrote {out_path}&quot;)
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+PY
+
+chmod 700 ~/bin/openai-image-generate
+</code></pre>
+<h4 id="4-6-5-测试配置">4.6.5 测试配置</h4><p>先 dry-run，不消耗额度：</p>
+<pre><code class="language-bash">~/bin/openai-image-generate \
+  --prompt &quot;A small test image: a single red apple on a neutral table, no text, no watermark.&quot; \
+  --out ~/output/imagegen/test.png \
+  --dry-run
+</code></pre>
+<p>再真实测试：</p>
+<pre><code class="language-bash">~/bin/openai-image-generate \
+  --prompt &quot;A small test image: a single red apple on a neutral table, no text, no watermark.&quot; \
+  --out ~/output/imagegen/test.png \
+  --force
+</code></pre>
+<p>检查文件：</p>
+<pre><code class="language-bash">file ~/output/imagegen/test.png
+</code></pre>
+<p>如果能看到 PNG/JPEG 等图片信息，就说明生图接口配置成功。</p>
+<p>Windows 用户注意：不要用 <code>.cmd</code> 批处理脚本转发很长、带换行的提示词。<code>.cmd</code> 的 <code>%*</code> 在复杂文本里容易丢参数边界，导致 Codex 多次尝试修复。推荐直接调用 Python 脚本，或使用 <code>--prompt-file</code>：</p>
+<pre><code class="language-powershell">$out = &quot;$env:USERPROFILE\Documents\Codex\output\imagegen\test.png&quot;
+$promptFile = &quot;$env:TEMP\openai-image-prompt.txt&quot;
+@&#39;
+A small test image: a single red apple on a neutral table, no text, no watermark.
+&#39;@ | Set-Content -Encoding UTF8 $promptFile
+
+python &quot;$env:USERPROFILE\bin\openai-image-generate&quot; `
+  --prompt-file $promptFile `
+  --out $out `
+  --force
+</code></pre>
+<p>wrapper 默认按 OpenAI Images API 的非流式方式调用，不需要你手动加 <code>stream</code>。本站已经对非流式生图做了长连接保活；wrapper 自己也会每 30 秒输出一次等待进度，避免 Codex 误判本地命令长时间无响应。</p>
+<p>复杂图片或通道排队时可能等待数分钟。wrapper 默认 <code>--max-time 1800</code>，并且把接口响应先写入临时文件再解码图片，避免大体积 <code>b64_json</code> 经过交互 stdout 管道导致断开。Windows 下 wrapper 会优先调用 <code>C:\Windows\System32\curl.exe</code>，避免 PowerShell 的 <code>curl</code> 别名干扰。</p>
+<p>wrapper 固定使用 <code>response_format=b64_json</code>，这是 OpenAI 官方兼容写法，也是本站推荐路径。普通程序直接等待接口返回也可以；wrapper 的额外价值是把大响应先写入临时文件，再解析 <code>b64_json</code> 落盘，避免 Windows、PowerShell、<code>.cmd</code> 或终端 stdout 管道在 4K 大图响应时卡住。</p>
+<p>如果你明确要调试上游流式返回，可以临时加 <code>--stream</code>。普通用户日常不需要加。</p>
+<h4 id="4-6-6-安装用户级生图-skill">4.6.6 安装用户级生图 Skill</h4><p>只配置 API 还不够。Codex 内置的 <code>image_gen</code> 不会自动读取你自己的 <code>OPENAI_BASE_URL</code> 和 <code>OPENAI_API_KEY</code>。如果你希望生图长期走本站或其他 OpenAI-compatible Images API，推荐安装一个<strong>用户级生图 Skill</strong>。</p>
+<p>这样做的好处是：</p>
+<ul>
+<li>不需要改每个项目的 <code>AGENTS.md</code></li>
+<li>不影响日常写代码、读项目、改 Bug 等任务</li>
+<li>只有当你要求“生成图片 / 画图 / 生图 / 做海报 / 做头像 / 生成视觉资产”时才会触发</li>
+<li>以后切换服务商时，只需要修改 <code>~/.config/openai-image/env</code> 里的 URL、Key 和模型名</li>
+</ul>
+<p>不要直接修改 Codex 自带的 <code>.system/imagegen</code>。系统 Skill 可能会被 Codex 更新覆盖。更稳妥的方式是创建自己的用户级 Skill：</p>
+<pre><code class="language-bash">mkdir -p ~/.codex/skills/openai-image-api
+
+cat &gt; ~/.codex/skills/openai-image-api/SKILL.md &lt;&lt;&#39;EOF&#39;
+---
+name: openai-image-api
+description: Use this skill when the user asks Codex to generate, draw, create, or edit raster images, posters, avatars, product images, covers, banners, illustrations, or visual assets through the user&#39;s configured OpenAI-compatible Images API wrapper. Prefer the wrapper command over Pillow, SVG, HTML, CSS, or canvas placeholders when the user wants a real AI-generated bitmap image.
+---
+
+# OpenAI-Compatible Images API
+
+When the user asks for real AI image generation, call the local wrapper:
+
+```bash
+~/bin/openai-image-generate
+</code></pre>
+<p>On Windows, avoid <code>.cmd</code> wrappers for long or multiline prompts. Prefer writing the prompt to a UTF-8 text file and call Python with <code>--prompt-file</code>:</p>
+<pre><code class="language-powershell">$promptFile = &quot;$env:TEMP\openai-image-prompt.txt&quot;
+Set-Content -Encoding UTF8 $promptFile &quot;&lt;the final image prompt&gt;&quot;
+python &quot;$env:USERPROFILE\bin\openai-image-generate&quot; --prompt-file $promptFile --out &quot;output\imagegen\generated-image.png&quot;
+</code></pre>
+<p>Default output directory:</p>
+<pre><code class="language-text">output/imagegen/
+</code></pre>
+<p>Use a clear filename based on the request, for example:</p>
+<pre><code class="language-bash">~/bin/openai-image-generate \
+  --prompt &quot;&lt;the final image prompt&gt;&quot; \
+  --out &quot;output/imagegen/generated-image.png&quot;
+</code></pre>
+<p>For long prompts, prefer <code>--prompt-file</code> on every platform:</p>
+<pre><code class="language-bash">cat &gt; /tmp/openai-image-prompt.txt &lt;&lt;&#39;PROMPT&#39;
+&lt;the final image prompt&gt;
+PROMPT
+
+~/bin/openai-image-generate \
+  --prompt-file /tmp/openai-image-prompt.txt \
+  --out &quot;output/imagegen/generated-image.png&quot;
+</code></pre>
+<p>Model selection:</p>
+<ul>
+<li>Default: do not pass <code>--model</code>; let the wrapper use <code>OPENAI_IMAGE_MODEL</code> from <code>~/.config/openai-image/env</code>.</li>
+<li>The recommended and documented model is <code>gpt-image-2</code>.</li>
+<li>Do not invent model names based on size, aspect ratio, or resolution.</li>
+<li>Only pass <code>--model</code> when the user explicitly provides a known available model name.</li>
+</ul>
+<p>Size selection:</p>
+<ul>
+<li>Use the <code>--size</code> parameter to control output dimensions.</li>
+<li>If the user asks for 4K, high-resolution, original high-resolution, wallpaper, poster-quality, or explicitly says the image must be generated at a high pixel resolution, you must pass an explicit <code>--size</code>. Do not only write &quot;4K&quot; or &quot;high resolution&quot; in the prompt.</li>
+<li>Recommended square: <code>--size 1024x1024</code>.</li>
+<li>Recommended portrait: <code>--size 1024x1536</code>.</li>
+<li>Recommended landscape: <code>--size 1536x1024</code>.</li>
+<li>Other tested sizes that may be used when explicitly needed: <code>1024x1792</code>, <code>1792x1024</code>, <code>720x1280</code>, <code>1152x2048</code>, <code>1088x1920</code>.</li>
+<li>4K-style sizes are also controlled by <code>--size</code>, not by changing the model: <code>2048x2048</code>, <code>2048x3072</code>, <code>3072x2048</code>, <code>2160x3840</code>, <code>3840x2160</code>.</li>
+<li>Do not use <code>4096x4096</code>; the wrapper rejects sizes whose maximum side exceeds 3840px. Use <code>2048x2048</code> for square high resolution, <code>3840x2160</code> for landscape 4K, or <code>2160x3840</code> for portrait 4K.</li>
+<li>Do not use <code>1080x1920</code>; it is not a multiple of 16 and may fail. Use <code>1088x1920</code> instead.</li>
+<li>Width and height must both be multiples of 16. The maximum side must not exceed 3840px. The long/short side ratio must not exceed 3:1.</li>
+</ul>
+<p>Rules:</p>
+<ul>
+<li>Read API URL, API Key, and default model from <code>~/.config/openai-image/env</code>.</li>
+<li>Do not print, reveal, or copy the API Key into chat or project files.</li>
+<li>Prefer <code>--prompt-file</code> for long, multiline, or quote-heavy prompts. This is required on Windows to avoid <code>.cmd</code> argument splitting issues.</li>
+<li>Use the wrapper default non-streaming mode. Do not add <code>--stream</code> unless explicitly debugging streaming behavior.</li>
+<li>Keep the local command timeout long enough for image generation. If Codex exposes a tool timeout, use about 30 minutes for complex prompts.</li>
+<li>Keep the wrapper fixed on <code>response_format=b64_json</code>. Do not request URL output for normal image generation.</li>
+<li>Do not pipe the raw image JSON through chat output. Let the wrapper write the response to a file or decode it directly to the output image.</li>
+<li>Do not call <code>/v1/models</code> before every image request. Use the default model first, and query <code>/v1/models</code> only when troubleshooting permissions or model names.</li>
+<li>Use <code>--model</code> only when the user explicitly provides a specific known model name.</li>
+<li>For size, use <code>--size</code> rather than changing model names. If the user asks for vertical, horizontal, square, 4K, high-resolution, poster, or wallpaper dimensions, choose a valid <code>--size</code>.</li>
+<li>Do not use Pillow, SVG, HTML, CSS, or canvas as a fake replacement for AI image generation unless the user explicitly asks for local programmatic drawing.</li>
+<li>If the wrapper returns <code>Upstream request failed</code>, HTTP 524, timeout, or a message that suggests the request ran for a long time before failing, do not automatically retry, compress the prompt, switch models, or rerun the generation. The upstream may still finish in the background and charge the user. Report the failure and ask the user whether to retry.</li>
+<li>If the user confirms a retry after a timeout-like failure, prefer <code>gpt-image-2</code> with a shorter prompt, and clearly say this is a new billable generation attempt.</li>
+<li>If the wrapper fails for any other reason, report the real error and stop. Do not silently pretend image generation succeeded.
+EOF</li>
+</ul>
+<pre><code>
+创建后新开一个 Codex 会话，让 Codex 重新加载 Skill。之后你在任意项目里要求生图时，它就能按这个 Skill 调用 `~/bin/openai-image-generate`。
+
+这套方案的核心是：
+
+| 配置位置 | 作用 | 是否需要每个项目都改 |
+|---|---|---|
+| `~/.config/openai-image/env` | 保存 API 地址、Key、默认模型 | 不需要 |
+| `~/bin/openai-image-generate` | 提供统一生图命令入口 | 不需要 |
+| `~/.codex/skills/openai-image-api/SKILL.md` | 只在生图任务触发时告诉 Codex 调用 wrapper | 不需要 |
+| 项目 `AGENTS.md` | 仅用于项目级特殊规则 | 通常不需要 |
+
+#### 4.6.7 日常使用示例
+
+在 Codex 对话里可以直接说：
+
+```text
+生成一张 35mm Kodak Portra 800 胶片感电影肖像，便利店荧光灯，窗外霓虹，真实胶片颗粒，高对比。
+</code></pre>
+<p>Codex 应该调用：</p>
+<pre><code class="language-bash">~/bin/openai-image-generate \
+  --prompt &quot;35mm Kodak Portra 800 film cinematic portrait, convenience store fluorescent lighting, neon outside the window, realistic film grain, high contrast&quot; \
+  --size 1024x1536 \
+  --out output/imagegen/portrait.png
+</code></pre>
+<p>如果你明确知道自己的 Key 有特殊模型名，也可以自行指定：</p>
+<pre><code class="language-bash">~/bin/openai-image-generate \
+  --model &quot;你明确可用的模型名&quot; \
+  --prompt &quot;电影感肖像，真实光影，胶片颗粒，无文字，无水印&quot; \
+  --out output/imagegen/portrait-custom.png
+</code></pre>
+<h4 id="4-6-8-常见问题">4.6.8 常见问题</h4><p><strong>能看到 Codex 的 imagegen 能力，为什么还是不能生图？</strong><br>因为 imagegen 只是流程能力，不包含你的 API Key。你仍然需要配置 <code>OPENAI_BASE_URL</code>、<code>OPENAI_API_KEY</code>、<code>OPENAI_IMAGE_MODEL</code>，并提供 <code>~/bin/openai-image-generate</code> 这个命令入口。</p>
+<p><strong>为什么默认模型写 <code>gpt-image-2</code>？</strong><br>本站按官方兼容写法提供生图入口。普通用户直接用 <code>gpt-image-2</code> 即可；如果你有特殊模型名，以 <code>/v1/models</code> 返回或管理员说明为准。</p>
+<p><strong>为什么不用 OpenAI SDK？</strong><br>可以用。但 wrapper 方式最透明，出问题时更容易排查 Base URL、Key、模型名和接口返回。</p>
+<p><strong>接口失败怎么办？</strong><br>先用下面命令确认模型列表能返回：</p>
+<pre><code class="language-bash">curl -sS \
+  -H &quot;Authorization: Bearer sk-你的密钥&quot; \
+  &quot;https://codex.ise.it.com/v1/models&quot;
+</code></pre>
+<p>如果 <code>/v1/models</code> 成功但生图失败，通常是账号没有生图分组、余额不足、模型名写错，或通道临时不可用。可以保留报错截图，按站内公告或购买渠道反馈。</p>
+<p><strong>为什么会出现 <code>Upstream request failed</code>？</strong><br>这表示请求已经到达本站，但图片通道本次没有成功返回。常见情况是生图耗时过长、通道临时不可用，或高分辨率生成压力较大。遇到这个错误时，不建议让 Codex 反复自动重试；可以稍后再试，或确认使用默认 <code>gpt-image-2</code> 后重新生成。</p>
+<p><strong>为什么小图可以成功，复杂图会在 120 秒左右断开？</strong><br>通常不是模型不可用，而是本地调用链路超时。请确认使用新版 wrapper：默认非流式、<code>--max-time 1800</code>、Windows 使用真实 <code>curl.exe</code>、响应先落盘再解码。如果你的 Codex 执行命令本身有超时限制，也需要把这次生图命令的超时调到 30 分钟左右。</p>
+<p>如果你在通道后台看到“本地断开后仍生成成功并计费”，通常是客户端、Cloudflare 或本地命令执行层在长时间等待时断开。请确认你使用的是 <code>https://codex.ise.it.com/v1</code>，并安装新版 wrapper；新版 wrapper 默认非流式调用，等待期间每 30 秒输出一次进度，本站服务端也会对非流式生图做长连接保活。</p>
+<p>如果错误发生在 100 秒以上，或者看到 HTTP 524，不要让 Codex 自动压缩提示词后直接重试。因为第一次请求可能还在通道后台继续生成并计费。正确做法是先停止，确认是否已经生成成功；如果要重试，需要用户明确同意，并理解这是一次新的生图请求。</p>
+<h3 id="4-7-在-codex-里配置生图工具-人类阅读版">4.7 在 Codex 里配置生图工具(人类阅读版)</h3><p>备注：一般一个plus一天只有15-20次生图请求，我们这里含多个pro + plus模型，目前小站的体量不大，在生图上能基本实现无限供应。</p>
+<h4 id="4-7-1-创建一个生图api-任何中转-官方api-只要能用image2的都行">4.7.1 创建一个生图API（任何中转、官方API，只要能用image2的都行）</h4><p><img src="image-11.png" alt="alt text" /></p>
+<h4 id="4-7-2-把api及文档链接给codex">4.7.2 把API及文档链接给codex</h4><p><img src="image-12.png" alt="alt text" />
+让codex去帮你配置。
+配置好之后，直接随时在codex里生图即可，支持2k/4k、任何尺寸，常见尺寸如下。本站当前推荐这些尺寸：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐 size</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>方图</td>
+<td><code>1024x1024</code></td>
+</tr>
+<tr>
+<td>常用竖图</td>
+<td><code>1024x1536</code></td>
+</tr>
+<tr>
+<td>常用横图</td>
+<td><code>1536x1024</code></td>
+</tr>
+<tr>
+<td>更高竖图</td>
+<td><code>1024x1792</code>、<code>720x1280</code>、<code>1088x1920</code>、<code>1152x2048</code></td>
+</tr>
+<tr>
+<td>更高横图</td>
+<td><code>1792x1024</code></td>
+</tr>
+<tr>
+<td>4K 方图</td>
+<td><code>2048x2048</code></td>
+</tr>
+<tr>
+<td>4K 竖图</td>
+<td><code>2048x3072</code>、<code>2160x3840</code></td>
+</tr>
+<tr>
+<td>4K 横图</td>
+<td><code>3072x2048</code>、<code>3840x2160</code></td>
+</tr>
+</tbody></table>
+<p>尺寸规则：宽高都必须是 16px 的倍数，最大边不超过 3840px，长边和短边比例不超过 3:1。例如 <code>1080x1920</code> 不是 16 的倍数，容易请求失败；应改成 <code>1088x1920</code>。</p>
+<h4 id="4-7-3-使用示例">4.7.3 使用示例</h4><p><img src="image-16.png" alt="alt text" />
+<img src="image-17.png" alt="alt text" />
+<img src="image-14.png" alt="alt text" /></p>
+<h2 id="5-验证与排错">5. 验证与排错</h2><p>配置完成后，建议先做一次最轻量的自检，再开始正式使用。</p>
+<h3 id="5-1-一行命令自检">5.1 一行命令自检</h3><p>把下面命令里的 <code>sk-xxxx</code> 换成你的真实密钥。能返回模型列表，说明你的 <code>Base URL</code> 和 <code>API Key</code> 至少是通的。</p>
+<pre><code class="language-bash">curl https://codex.ise.it.com/v1/models \
+  -H &quot;Authorization: Bearer sk-xxxx&quot;
+</code></pre>
+<p>如果你想进一步确认聊天接口可用，也可以再跑一条：</p>
+<pre><code class="language-bash">curl https://codex.ise.it.com/v1/chat/completions \
+  -H &quot;Content-Type: application/json&quot; \
+  -H &quot;Authorization: Bearer sk-xxxx&quot; \
+  -d &#39;{
+    &quot;model&quot;: &quot;gpt-4.1-mini&quot;,
+    &quot;messages&quot;: [
+      {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;你好，请回复一句测试成功&quot;}
+    ]
+  }&#39;
+</code></pre>
+<h3 id="5-2-常见报错对照表">5.2 常见报错对照表</h3><table>
+<thead>
+<tr>
+<th>报错</th>
+<th>常见原因</th>
+<th>处理方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>401 Unauthorized</code></td>
+<td>API Key 错了、复制不完整、已被删除</td>
+<td>回到 <code>API 密钥</code> 页面重新复制，必要时删掉重建</td>
+</tr>
+<tr>
+<td><code>404 Not Found</code></td>
+<td>Base URL 写错，或者漏了 <code>/v1</code></td>
+<td>检查是否写成 <code>https://codex.ise.it.com/v1</code></td>
+</tr>
+<tr>
+<td><code>model not found</code></td>
+<td>模型名写错，或当前账号没有对应分组</td>
+<td>先用 <code>/v1/models</code> 查看可见模型，再检查账号权限</td>
+</tr>
+<tr>
+<td><code>余额不足</code> / <code>quota exceeded</code></td>
+<td>余额已用完，或订阅未生效</td>
+<td>回站内查看余额、订阅状态，必要时重新兑换</td>
+</tr>
+<tr>
+<td>看不到想要的分组</td>
+<td>当前账号还没开通对应权限</td>
+<td>先确认是否购买并兑换成功，或联系管理员</td>
+</tr>
+<tr>
+<td>客户端没反应</td>
+<td>配置改完后客户端没重启</td>
+<td>完全关闭客户端，再打开</td>
+</tr>
+<tr>
+<td>Windows 文件名异常</td>
+<td>文件被保存成了 <code>.txt</code></td>
+<td>打开显示扩展名，改回 <code>config.toml</code>、<code>auth.json</code>、<code>settings.json</code></td>
+</tr>
+</tbody></table>
+<h3 id="5-3-推荐排查顺序">5.3 推荐排查顺序</h3><p>建议按下面顺序排：</p>
+<ol>
+<li>先看 <code>API Key</code> 是否复制对</li>
+<li>再看 <code>Base URL</code> 是否写成了 <code>https://codex.ise.it.com/v1</code></li>
+<li>再跑一遍 <code>curl /v1/models</code></li>
+<li>再确认当前账号有没有对应模型分组权限</li>
+<li>最后再去看客户端本地配置文件有没有写错</li>
+</ol>
+<p>如果以上都确认过仍有问题，直接带截图按站内公告或购买渠道反馈会更快。</p>
+<h2 id="6-购买与兑换">6. 购买与兑换</h2><p>目前商品统一放在链动小铺。购买后你会拿到兑换码，然后回站内兑换页输入即可。如果输入的不是兑换码而是优惠码，系统也会自动尝试按优惠码处理。</p>
+<p>快捷入口：</p>
+<ul>
+<li><a href="https://pay.ldxp.cn/shop/CN8U85FN" target="_blank" rel="noopener noreferrer">查看全部商品</a></li>
+<li><a href="https://api.ise.it.com/redeem" target="_blank" rel="noopener noreferrer">打开兑换页</a></li>
+</ul>
+<h3 id="6-1-余额卡商品">6.1 余额卡商品</h3><h4 id="codex-api-20-刀余额卡">Codex API 20 刀余额卡</h4><ul>
+<li>价格：¥4</li>
+<li>到账：20 USD</li>
+<li>类型：通用余额卡</li>
+<li>说明：适合首次体验和轻量调用，买完后直接回站内兑换。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/a7zg2a" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/a7zg2a</a></li>
+</ul>
+<h4 id="codex-api-100-刀余额卡">Codex API 100 刀余额卡</h4><ul>
+<li>价格：¥20</li>
+<li>到账：100 USD</li>
+<li>类型：通用余额卡</li>
+<li>说明：适合日常开发与稳定调用，是最常用的补给规格。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/lr5xqf" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/lr5xqf</a></li>
+</ul>
+<h4 id="codex-api-1000-刀余额卡">Codex API 1000 刀余额卡</h4><ul>
+<li>价格：¥200</li>
+<li>到账：1000 USD</li>
+<li>类型：通用余额卡</li>
+<li>说明：适合高频开发、长期使用或项目备量。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/myb6wq" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/myb6wq</a></li>
+</ul>
+<h4 id="codex-api-5000-刀余额卡">Codex API 5000 刀余额卡</h4><ul>
+<li>价格：¥1000</li>
+<li>到账：5000 USD</li>
+<li>类型：通用余额卡</li>
+<li>说明：适合团队囤货和长期高频调用。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/785rq4" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/785rq4</a></li>
+</ul>
+<h3 id="6-2-兑换规则">6.2 兑换规则</h3><ol>
+<li>购买后你会拿到兑换码。</li>
+<li>打开站内<code>兑换</code>页面。
+<img src="image-6.png" alt="alt text" /></li>
+<li>把兑换码直接输入即可。</li>
+<li>若平台收了手续费，<strong>手续费不会改变余额卡的卡面到账额度</strong>。
+小铺商品如下，大额可联系客服充值：
+<img src="image-7.png" alt="alt text" /></li>
+</ol>
+<h2 id="7-订阅说明">7. 订阅说明</h2><p>不想频繁手动补余额时，可以直接购买订阅卡。购买后同样回到兑换页输入兑换码，系统会为你的账号开通对应订阅能力。</p>
+<h3 id="日常使用版订阅">日常使用版订阅</h3><ul>
+<li>价格：¥39.9 / 月</li>
+<li>每日额度：10 刀</li>
+<li>类型：月付订阅</li>
+<li>说明：适合日常问答、轻量编码和课程作业等低频使用场景。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/fcymlb" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/fcymlb</a></li>
+</ul>
+<h3 id="轻度开发版订阅">轻度开发版订阅</h3><ul>
+<li>价格：¥99.9 / 月</li>
+<li>每日额度：30 刀</li>
+<li>类型：月付订阅</li>
+<li>说明：适合稳定开发与中等频率调用，兼顾成本和日常生产力。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/sadvgi" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/sadvgi</a></li>
+</ul>
+<h3 id="强度开发版订阅">强度开发版订阅</h3><ul>
+<li>价格：¥199 / 月</li>
+<li>每日额度：60 刀</li>
+<li>类型：月付订阅</li>
+<li>说明：适合高频编码、长时间开发和多模型协作的重度用户。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/hzios1" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/hzios1</a></li>
+</ul>
+<h3 id="团队协作版订阅">团队协作版订阅</h3><ul>
+<li>价格：¥399 / 月</li>
+<li>每日额度：100 刀</li>
+<li>类型：月付订阅</li>
+<li>说明：适合多人共享、项目制使用和高强度协作场景。</li>
+<li>购买链接：<a href="https://pay.ldxp.cn/item/ug4w7w" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/item/ug4w7w</a></li>
+</ul>
+<p>订阅的实际可用模型、组权限、倍率展示和刷新方式，以你站内账户页和当前配置为准。</p>
+<h2 id="8-常见问题">8. 常见问题</h2><h3 id="为什么我创建-key-时看不到想要的分组">为什么我创建 Key 时看不到想要的分组？</h3><p>通常是当前账号还没有对应分组权限。先确认你是否已经成功兑换了对应余额卡、订阅卡，或者管理员是否给你授权了对应分组。</p>
+<h3 id="为什么我支付了-10-3-到账不是-10-3-对应的额度">为什么我支付了 10.3，到账不是 10.3 对应的额度？</h3><p>余额卡按卡面规则到账，不按你实际支付总额到账。手续费不会放大到账金额，卡面写多少就按多少处理。</p>
+<h3 id="兑换码和优惠码有什么区别">兑换码和优惠码有什么区别？</h3><p>兑换码通常用于余额卡或订阅卡到账；优惠码通常用于给账号在注册时附加优惠</p>
+<h3 id="为什么返回-401-unauthorized">为什么返回 401 / Unauthorized？</h3><p>先检查 Base URL 和 API Key 是否填错，再确认请求头里是否带了 <code>Authorization: Bearer ...</code>。</p>
+<h3 id="为什么模型调用失败">为什么模型调用失败？</h3><p>常见原因包括：当前账号没有该模型所在分组、余额不足、订阅未生效，或者请求用了未开通的模型名。</p>
+<h3 id="忘记密码怎么办">忘记密码怎么办？</h3><p>在登录界面点击<code>忘记密码</code>，按照邮箱流程找回即可。
+<img src="image-8.png" alt="alt text" /></p>
+<h2 id="9-联系支持">9. 联系支持</h2><p>如果你遇到购买异常、兑换失败、分组权限问题、模型选择问题，建议按站内公告或购买渠道反馈。购买前也可以先看商品总入口，确认你买的是余额卡还是订阅卡。</p>
+<ul>
+<li>商品总链接：<a href="https://pay.ldxp.cn/shop/CN8U85FN" target="_blank" rel="noopener noreferrer">https://pay.ldxp.cn/shop/CN8U85FN</a></li>
+</ul>
+<p>快捷入口：</p>
+<ul>
+<li><a href="https://pay.ldxp.cn/shop/CN8U85FN" target="_blank" rel="noopener noreferrer">去小铺</a></li>
+<li><a href="https://api.ise.it.com/redeem" target="_blank" rel="noopener noreferrer">去兑换页</a></li>
+<li><a href="https://api.ise.it.com/keys" target="_blank" rel="noopener noreferrer">去 API 密钥页</a></li>
+</ul>
+<hr>
+<p>天才程序员拼车站文档页。若站内能力更新，以站内实际页面和公告为准。</p>
+
+          </article>
+        </main>
+      </div>
+
+      <div class="footer">
+        天才程序员拼车站文档页。若站内能力更新，以站内实际页面和公告为准。
+      </div>
+    </div>
+  </body>
+</html>

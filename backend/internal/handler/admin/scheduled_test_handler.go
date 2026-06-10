@@ -20,20 +20,24 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 }
 
 type createScheduledTestPlanRequest struct {
-	AccountID      int64  `json:"account_id" binding:"required"`
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression" binding:"required"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	AccountID              int64  `json:"account_id" binding:"required"`
+	ModelID                string `json:"model_id"`
+	CronExpression         string `json:"cron_expression" binding:"required"`
+	Enabled                *bool  `json:"enabled"`
+	MaxResults             int    `json:"max_results"`
+	AutoRecover            *bool  `json:"auto_recover"`
+	AutoSchedulableControl *bool  `json:"auto_schedulable_control"`
+	FirstTokenTimeoutMs    int64  `json:"first_token_timeout_ms"`
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID                string `json:"model_id"`
+	CronExpression         string `json:"cron_expression"`
+	Enabled                *bool  `json:"enabled"`
+	MaxResults             int    `json:"max_results"`
+	AutoRecover            *bool  `json:"auto_recover"`
+	AutoSchedulableControl *bool  `json:"auto_schedulable_control"`
+	FirstTokenTimeoutMs    *int64 `json:"first_token_timeout_ms"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -61,17 +65,21 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	}
 
 	plan := &service.ScheduledTestPlan{
-		AccountID:      req.AccountID,
-		ModelID:        req.ModelID,
-		CronExpression: req.CronExpression,
-		Enabled:        true,
-		MaxResults:     req.MaxResults,
+		AccountID:           req.AccountID,
+		ModelID:             req.ModelID,
+		CronExpression:      req.CronExpression,
+		Enabled:             true,
+		MaxResults:          req.MaxResults,
+		FirstTokenTimeoutMs: req.FirstTokenTimeoutMs,
 	}
 	if req.Enabled != nil {
 		plan.Enabled = *req.Enabled
 	}
 	if req.AutoRecover != nil {
 		plan.AutoRecover = *req.AutoRecover
+	}
+	if req.AutoSchedulableControl != nil {
+		plan.AutoSchedulableControl = *req.AutoSchedulableControl
 	}
 
 	created, err := h.scheduledTestSvc.CreatePlan(c.Request.Context(), plan)
@@ -116,6 +124,12 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 	}
 	if req.AutoRecover != nil {
 		existing.AutoRecover = *req.AutoRecover
+	}
+	if req.AutoSchedulableControl != nil {
+		existing.AutoSchedulableControl = *req.AutoSchedulableControl
+	}
+	if req.FirstTokenTimeoutMs != nil {
+		existing.FirstTokenTimeoutMs = *req.FirstTokenTimeoutMs
 	}
 
 	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)

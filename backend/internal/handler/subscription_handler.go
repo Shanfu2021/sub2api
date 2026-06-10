@@ -50,6 +50,9 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 		response.Unauthorized(c, "User not found in context")
 		return
 	}
+	if abortIfEmployeeFeatureRestricted(c) {
+		return
+	}
 
 	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), subject.UserID)
 	if err != nil {
@@ -72,6 +75,9 @@ func (h *SubscriptionHandler) GetActive(c *gin.Context) {
 		response.Unauthorized(c, "User not found in context")
 		return
 	}
+	if abortIfEmployeeFeatureRestricted(c) {
+		return
+	}
 
 	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
 	if err != nil {
@@ -92,6 +98,9 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not found in context")
+		return
+	}
+	if abortIfEmployeeFeatureRestricted(c) {
 		return
 	}
 
@@ -125,6 +134,9 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not found in context")
+		return
+	}
+	if abortIfEmployeeFeatureRestricted(c) {
 		return
 	}
 

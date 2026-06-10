@@ -71,25 +71,25 @@ func (e *OpenAIImagesUpstreamError) clientStatusCode() int {
 
 func (e *OpenAIImagesUpstreamError) clientErrorType() string {
 	if e == nil {
-		return "upstream_error"
+		return "api_error"
 	}
 	if trimmed := strings.TrimSpace(e.ErrorType); trimmed != "" {
 		return trimmed
 	}
-	return "upstream_error"
+	return "api_error"
 }
 
 func (e *OpenAIImagesUpstreamError) clientMessage() string {
 	if e == nil {
-		return "Upstream request failed"
+		return "Request failed"
 	}
-	if trimmed := strings.TrimSpace(e.Message); trimmed != "" {
-		return trimmed
+	if e.StatusCode > 0 {
+		return clientSafeUpstreamErrorMessage(e.StatusCode)
 	}
 	if trimmed := strings.TrimSpace(e.Code); trimmed != "" {
 		return trimmed
 	}
-	return "Upstream request failed"
+	return "Request failed"
 }
 
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
@@ -567,7 +567,7 @@ func openAIImagesUpstreamErrorFromGJSON(errorObj gjson.Result, upstreamRequestID
 		statusCode = http.StatusBadRequest
 	}
 	if message == "" {
-		message = "Upstream request failed"
+		message = "Request failed"
 	}
 	return &OpenAIImagesUpstreamError{
 		StatusCode:        statusCode,
@@ -807,9 +807,9 @@ func openAIImagesStreamPrefix(parsed *OpenAIImagesRequest) string {
 }
 
 func buildOpenAIImagesStreamErrorBody(message string) []byte {
-	body := []byte(`{"type":"error","error":{"type":"upstream_error","message":""}}`)
+	body := []byte(`{"type":"error","error":{"type":"api_error","message":""}}`)
 	if strings.TrimSpace(message) == "" {
-		message = "upstream request failed"
+		message = "Request failed"
 	}
 	body, _ = sjson.SetBytes(body, "error.message", message)
 	return body
@@ -1008,7 +1008,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		case "response.output_item.done":
 			img, itemID, ok, extractErr := extractOpenAIImageFromResponsesOutputItemDone(dataBytes)
 			if extractErr != nil {
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(extractErr.Error()))
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody("Failed to parse service response"))
 				processDataErr = extractErr
 				processDataDone = true
 				return
@@ -1030,7 +1030,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		case "response.completed":
 			results, _, usageRaw, firstMeta, extractErr := extractOpenAIImagesFromResponsesCompleted(dataBytes)
 			if extractErr != nil {
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(extractErr.Error()))
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody("Failed to parse service response"))
 				processDataErr = extractErr
 				processDataDone = true
 				return
@@ -1048,7 +1048,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			}
 			if len(finalResults) == 0 {
 				outputErr := fmt.Errorf("upstream did not return image output")
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(outputErr.Error()))
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody("Service did not return image output"))
 				processDataErr = outputErr
 				processDataDone = true
 				return
@@ -1120,7 +1120,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		}
 
 		streamErr := fmt.Errorf("stream disconnected before image generation completed")
-		s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(streamErr.Error()))
+		s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody("Stream disconnected before image generation completed"))
 		return streamErr
 	}
 
@@ -1146,7 +1146,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				} else if done {
 					return usage, imageCount, imageOutputSizes, firstTokenMs, nil
 				}
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody("Request failed"))
 				return usage, imageCount, imageOutputSizes, firstTokenMs, err
 			}
 		}
@@ -1239,7 +1239,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				} else if done {
 					return usage, imageCount, imageOutputSizes, firstTokenMs, nil
 				}
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(ev.err.Error()))
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody("Request failed"))
 				return usage, imageCount, imageOutputSizes, firstTokenMs, ev.err
 			}
 			done, processErr := processLine(ev.line)
@@ -1258,7 +1258,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				return usage, imageCount, imageOutputSizes, firstTokenMs, fmt.Errorf("image stream incomplete after timeout")
 			}
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images responses stream data interval timeout: interval=%s", streamInterval)
-			s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(fmt.Sprintf("upstream image stream idle for %s", streamInterval)))
+			s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBody(fmt.Sprintf("image stream idle for %s", streamInterval)))
 			return usage, imageCount, imageOutputSizes, firstTokenMs, fmt.Errorf("image stream data interval timeout")
 		case <-keepaliveCh:
 			if clientDisconnected || time.Since(lastDownstreamWriteAt) < keepaliveInterval {

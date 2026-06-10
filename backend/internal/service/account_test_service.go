@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -50,6 +51,55 @@ type TestEvent struct {
 	Error    string `json:"error,omitempty"`
 }
 
+type accountTestTimingContextKey struct{}
+
+type accountTestTimingTracker struct {
+	startedAt time.Time
+	mu        sync.Mutex
+	firstMs   *int64
+}
+
+func newAccountTestTimingTracker(startedAt time.Time) *accountTestTimingTracker {
+	return &accountTestTimingTracker{startedAt: startedAt}
+}
+
+func accountTestTimingFromContext(ctx context.Context) *accountTestTimingTracker {
+	if ctx == nil {
+		return nil
+	}
+	tracker, _ := ctx.Value(accountTestTimingContextKey{}).(*accountTestTimingTracker)
+	return tracker
+}
+
+func (t *accountTestTimingTracker) recordFirstContent(now time.Time) {
+	if t == nil {
+		return
+	}
+	elapsedMs := now.Sub(t.startedAt).Milliseconds()
+	if elapsedMs < 0 {
+		elapsedMs = 0
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.firstMs == nil {
+		t.firstMs = &elapsedMs
+	}
+}
+
+func (t *accountTestTimingTracker) firstTokenMs() *int64 {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.firstMs == nil {
+		return nil
+	}
+	value := *t.firstMs
+	return &value
+}
+
 const (
 	defaultGeminiTextTestPrompt  = "hi"
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
@@ -70,6 +120,7 @@ type AccountTestService struct {
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
+	runTestBackgroundFunc     func(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error)
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -1665,6 +1716,12 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "content" && event.Text != "" && c != nil && c.Request != nil {
+		if tracker := accountTestTimingFromContext(c.Request.Context()); tracker != nil {
+			tracker.recordFirstContent(time.Now())
+		}
+	}
+
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)
@@ -1683,7 +1740,15 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
 func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+	if s.runTestBackgroundFunc != nil {
+		return s.runTestBackgroundFunc(ctx, accountID, modelID)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	startedAt := time.Now()
+	timing := newAccountTestTimingTracker(startedAt)
+	ctx = context.WithValue(ctx, accountTestTimingContextKey{}, timing)
 
 	w := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(w)
@@ -1708,6 +1773,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 		ResponseText: responseText,
 		ErrorMessage: errMsg,
 		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
+		FirstTokenMs: timing.firstTokenMs(),
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 	}, nil

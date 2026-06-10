@@ -66,6 +66,14 @@ const (
 	FieldActualCost = "actual_cost"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldAgentOwnerUserID holds the string denoting the agent_owner_user_id field in the database.
+	FieldAgentOwnerUserID = "agent_owner_user_id"
+	// FieldAgentUserRateMultiplier holds the string denoting the agent_user_rate_multiplier field in the database.
+	FieldAgentUserRateMultiplier = "agent_user_rate_multiplier"
+	// FieldAgentCostRateMultiplier holds the string denoting the agent_cost_rate_multiplier field in the database.
+	FieldAgentCostRateMultiplier = "agent_cost_rate_multiplier"
+	// FieldAgentIncome holds the string denoting the agent_income field in the database.
+	FieldAgentIncome = "agent_income"
 	// FieldAccountRateMultiplier holds the string denoting the account_rate_multiplier field in the database.
 	FieldAccountRateMultiplier = "account_rate_multiplier"
 	// FieldBillingType holds the string denoting the billing_type field in the database.
@@ -106,6 +114,8 @@ const (
 	EdgeGroup = "group"
 	// EdgeSubscription holds the string denoting the subscription edge name in mutations.
 	EdgeSubscription = "subscription"
+	// EdgeAgentOwner holds the string denoting the agent_owner edge name in mutations.
+	EdgeAgentOwner = "agent_owner"
 	// Table holds the table name of the usagelog in the database.
 	Table = "usage_logs"
 	// UserTable is the table that holds the user relation/edge.
@@ -143,6 +153,13 @@ const (
 	SubscriptionInverseTable = "user_subscriptions"
 	// SubscriptionColumn is the table column denoting the subscription relation/edge.
 	SubscriptionColumn = "subscription_id"
+	// AgentOwnerTable is the table that holds the agent_owner relation/edge.
+	AgentOwnerTable = "usage_logs"
+	// AgentOwnerInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	AgentOwnerInverseTable = "users"
+	// AgentOwnerColumn is the table column denoting the agent_owner relation/edge.
+	AgentOwnerColumn = "agent_owner_user_id"
 )
 
 // Columns holds all SQL columns for usagelog fields.
@@ -174,6 +191,10 @@ var Columns = []string{
 	FieldTotalCost,
 	FieldActualCost,
 	FieldRateMultiplier,
+	FieldAgentOwnerUserID,
+	FieldAgentUserRateMultiplier,
+	FieldAgentCostRateMultiplier,
+	FieldAgentIncome,
 	FieldAccountRateMultiplier,
 	FieldBillingType,
 	FieldStream,
@@ -242,6 +263,12 @@ var (
 	DefaultActualCost float64
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultAgentUserRateMultiplier holds the default value on creation for the "agent_user_rate_multiplier" field.
+	DefaultAgentUserRateMultiplier float64
+	// DefaultAgentCostRateMultiplier holds the default value on creation for the "agent_cost_rate_multiplier" field.
+	DefaultAgentCostRateMultiplier float64
+	// DefaultAgentIncome holds the default value on creation for the "agent_income" field.
+	DefaultAgentIncome float64
 	// DefaultBillingType holds the default value on creation for the "billing_type" field.
 	DefaultBillingType int8
 	// DefaultStream holds the default value on creation for the "stream" field.
@@ -404,6 +431,26 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
 }
 
+// ByAgentOwnerUserID orders the results by the agent_owner_user_id field.
+func ByAgentOwnerUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAgentOwnerUserID, opts...).ToFunc()
+}
+
+// ByAgentUserRateMultiplier orders the results by the agent_user_rate_multiplier field.
+func ByAgentUserRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAgentUserRateMultiplier, opts...).ToFunc()
+}
+
+// ByAgentCostRateMultiplier orders the results by the agent_cost_rate_multiplier field.
+func ByAgentCostRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAgentCostRateMultiplier, opts...).ToFunc()
+}
+
+// ByAgentIncome orders the results by the agent_income field.
+func ByAgentIncome(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAgentIncome, opts...).ToFunc()
+}
+
 // ByAccountRateMultiplier orders the results by the account_rate_multiplier field.
 func ByAccountRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountRateMultiplier, opts...).ToFunc()
@@ -508,6 +555,13 @@ func BySubscriptionField(field string, opts ...sql.OrderTermOption) OrderOption 
 		sqlgraph.OrderByNeighborTerms(s, newSubscriptionStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByAgentOwnerField orders the results by agent_owner field.
+func ByAgentOwnerField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAgentOwnerStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -541,5 +595,12 @@ func newSubscriptionStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(SubscriptionInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, SubscriptionTable, SubscriptionColumn),
+	)
+}
+func newAgentOwnerStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AgentOwnerInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, AgentOwnerTable, AgentOwnerColumn),
 	)
 }

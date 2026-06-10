@@ -58,8 +58,40 @@ func TestGatewayHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "upstream_error", errField["type"])
-	assert.Equal(t, "Upstream request failed", errField["message"])
+	assert.Equal(t, "api_error", errField["type"])
+	assert.Equal(t, "Request failed", errField["message"])
+}
+
+func TestGatewayHandleErrorResponse_BadRequestDoesNotExposeUpstreamBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &GatewayService{}
+	respBody := []byte(`{"error":{"message":"private upstream url https://secret-upstream.example.com/v1/messages from 10.9.8.7","type":"invalid_request_error"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header:     http.Header{},
+	}
+	account := &Account{ID: 21, Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	body := rec.Body.String()
+	assert.NotContains(t, body, "secret-upstream.example.com")
+	assert.NotContains(t, body, "10.9.8.7")
+	assert.NotContains(t, body, "upstream")
+	assert.NotContains(t, body, "Upstream")
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	errField, ok := payload["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "invalid_request_error", errField["type"])
+	assert.Equal(t, "Invalid request", errField["message"])
 }
 
 func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
@@ -84,8 +116,45 @@ func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "upstream_error", errField["type"])
-	assert.Equal(t, "Upstream request failed", errField["message"])
+	assert.Equal(t, "api_error", errField["type"])
+	assert.Equal(t, "Request failed", errField["message"])
+}
+
+func TestOpenAIHandlePassthroughErrorResponseDoesNotExposeUpstreamBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &OpenAIGatewayService{}
+	respBody := []byte(`{"error":{"message":"private upstream url https://secret-openai.example.com/v1/responses?access_token=token from 172.16.1.5","type":"invalid_request_error"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+			"Server":       []string{"secret-openai"},
+		},
+	}
+	account := &Account{ID: 22, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	err := svc.handleErrorResponsePassthrough(context.Background(), resp, c, account, []byte(`{"model":"gpt-5"}`))
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	body := rec.Body.String()
+	assert.NotContains(t, body, "secret-openai.example.com")
+	assert.NotContains(t, body, "172.16.1.5")
+	assert.NotContains(t, body, "access_token")
+	assert.NotContains(t, body, "upstream")
+	assert.NotContains(t, body, "Upstream")
+	assert.Empty(t, rec.Header().Values("Server"))
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	errField, ok := payload["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "invalid_request_error", errField["type"])
+	assert.Equal(t, "Invalid request", errField["message"])
 }
 
 func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
@@ -106,7 +175,76 @@ func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "invalid_request_error", errField["type"])
-	assert.Equal(t, "Upstream request failed", errField["message"])
+	assert.Equal(t, "Request failed", errField["message"])
+}
+
+func TestSanitizeUpstreamErrorMessage_RedactsGenericUpstreamLocations(t *testing.T) {
+	msg := `upstream request failed: POST https://upstream.example.net/v1/chat/completions?api_key=secret&client_secret=top failed; base_url: http://10.2.3.4:8080/internal/path; mirror api.vendor.example.org/v1/models`
+
+	got := sanitizeUpstreamErrorMessage(msg)
+
+	assert.NotContains(t, got, "upstream.example.net")
+	assert.NotContains(t, got, "10.2.3.4")
+	assert.NotContains(t, got, "api.vendor.example.org")
+	assert.NotContains(t, got, "/v1/chat/completions")
+	assert.NotContains(t, got, "/internal/path")
+	assert.NotContains(t, got, "upstream.example.net")
+	assert.Contains(t, got, "[service]")
+}
+
+func TestApplyErrorPassthroughRule_RedactsURLWhenPassthroughBodyEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	rule := newNonFailoverPassthroughRule(http.StatusBadGateway, "connect failed", http.StatusBadGateway, "ignored")
+	rule.PassthroughBody = true
+	rule.CustomMessage = nil
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadGateway,
+		[]byte(`{"error":{"message":"connect failed to https://private-upstream.example.com/v1/responses?access_token=token from 172.16.0.5:8443"}}`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	assert.NotContains(t, errMsg, "private-upstream.example.com")
+	assert.NotContains(t, errMsg, "172.16.0.5")
+	assert.NotContains(t, errMsg, "access_token")
+	assert.Contains(t, errMsg, "[service]")
+}
+
+func TestApplyErrorPassthroughRule_KeepsCustomMessageLiteral(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	customMessage := "请查看 status.example.com 获取状态"
+	rule := newNonFailoverPassthroughRule(http.StatusBadGateway, "connect failed", http.StatusBadGateway, customMessage)
+	rule.PassthroughBody = false
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadGateway,
+		[]byte(`{"error":{"message":"connect failed to https://private-upstream.example.com/v1/responses"}}`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	assert.Equal(t, customMessage, errMsg)
 }
 
 func TestGatewayHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
@@ -135,7 +273,7 @@ func TestGatewayHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "upstream_error", errField["type"])
+	assert.Equal(t, "api_error", errField["type"])
 	assert.Equal(t, "上游请求失败", errField["message"])
 }
 
@@ -165,7 +303,7 @@ func TestOpenAIHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "upstream_error", errField["type"])
+	assert.Equal(t, "api_error", errField["type"])
 	assert.Equal(t, "OpenAI上游失败", errField["message"])
 }
 
@@ -190,7 +328,7 @@ func TestGeminiWriteGeminiMappedError_AppliesRuleFor422(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "upstream_error", errField["type"])
+	assert.Equal(t, "api_error", errField["type"])
 	assert.Equal(t, "Gemini上游失败", errField["message"])
 }
 

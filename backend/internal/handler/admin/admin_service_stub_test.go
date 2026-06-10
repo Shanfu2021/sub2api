@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -69,7 +70,8 @@ type stubAdminService struct {
 		sortOrder string
 		calls     int
 	}
-	mu sync.Mutex
+	lastCreateUser *service.CreateUserInput
+	mu             sync.Mutex
 }
 
 func newStubAdminService() *stubAdminService {
@@ -144,7 +146,25 @@ func (s *stubAdminService) ListUsers(ctx context.Context, page, pageSize int, fi
 	s.lastListUsers.sortBy = sortBy
 	s.lastListUsers.sortOrder = sortOrder
 	s.lastListUsers.calls++
-	return s.users, int64(len(s.users)), nil
+	users := make([]service.User, 0, len(s.users))
+	for i := range s.users {
+		if filters.Role != "" && s.users[i].Role != filters.Role {
+			continue
+		}
+		if filters.Status != "" && s.users[i].Status != filters.Status {
+			continue
+		}
+		users = append(users, s.users[i])
+	}
+	if strings.EqualFold(sortBy, "id") {
+		sort.Slice(users, func(i, j int) bool {
+			if strings.EqualFold(sortOrder, "asc") {
+				return users[i].ID < users[j].ID
+			}
+			return users[i].ID > users[j].ID
+		})
+	}
+	return users, int64(len(users)), nil
 }
 
 func (s *stubAdminService) GetUser(ctx context.Context, id int64) (*service.User, error) {
@@ -165,7 +185,13 @@ func (s *stubAdminService) GetUserIncludeDeleted(ctx context.Context, id int64) 
 }
 
 func (s *stubAdminService) CreateUser(ctx context.Context, input *service.CreateUserInput) (*service.User, error) {
-	user := service.User{ID: 100, Email: input.Email, Status: service.StatusActive}
+	copied := *input
+	if input.ParentUserID != nil {
+		parentID := *input.ParentUserID
+		copied.ParentUserID = &parentID
+	}
+	s.lastCreateUser = &copied
+	user := service.User{ID: 100, Email: input.Email, ParentUserID: copied.ParentUserID, Status: service.StatusActive}
 	return &user, nil
 }
 

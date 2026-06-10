@@ -1,11 +1,21 @@
 package migrations
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMigration001ChecksumMatchesAppliedEntBaseline(t *testing.T) {
+	content, err := FS.ReadFile("001_init.sql")
+	require.NoError(t, err)
+
+	sum := sha256.Sum256([]byte(strings.TrimSpace(string(content))))
+	require.Equal(t, "9ba0369779484625edcea7a7d1d4582397e31546db9149b05004990a3f16c630", hex.EncodeToString(sum[:]))
+}
 
 func TestMigration112UsesIdempotentAddColumn(t *testing.T) {
 	content, err := FS.ReadFile("112_add_payment_order_provider_key_snapshot.sql")

@@ -154,6 +154,10 @@ func (s *stubUserRepo) Delete(ctx context.Context, id int64) error {
 	panic("unexpected Delete call")
 }
 
+func (s *stubUserRepo) HardDelete(ctx context.Context, id int64) error {
+	panic("unexpected HardDelete call")
+}
+
 func (s *stubUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
 	return nil, nil
 }
