@@ -103,6 +103,14 @@ func ProvideAgentEnterpriseDeletionCleanupRepository(repo EnterpriseManagementRe
 	return repo
 }
 
+func ProvideAgentUserDeletionCleanupRepository(repo AgentManagementRepository) AgentUserDeletionCleanupRepository {
+	return repo
+}
+
+func ProvideEnterpriseAdminCleanupRepository(repo EnterpriseManagementRepository) EnterpriseAdminCleanupRepository {
+	return repo
+}
+
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -563,6 +571,8 @@ var ProviderSet = wire.NewSet(
 	ProvideAuthService,
 	NewUserService,
 	ProvideAgentManagementService,
+	ProvideAgentUserDeletionCleanupRepository,
+	ProvideEnterpriseAdminCleanupRepository,
 	ProvideAgentEnterpriseDeletionCleanupRepository,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,

@@ -931,6 +931,11 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  if (requiresAgent && !authStore.isAgent) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
+  }
+
   if (requiresAdmin && authStore.isAdmin) {
     const adminComplianceStore = useAdminComplianceStore()
     if (!adminComplianceStore.initialized) {

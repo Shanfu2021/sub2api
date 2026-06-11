@@ -28,6 +28,7 @@ RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
+COPY docs/legal/ /app/docs/legal/
 ENV NODE_OPTIONS=--max-old-space-size=2048
 RUN pnpm run build
 

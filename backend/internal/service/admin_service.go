@@ -790,6 +790,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
 	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
+	oldGroupRates := cloneFloat64Map(user.GroupRates)
+	if s.userGroupRateRepo != nil {
+		if rates, err := s.userGroupRateRepo.GetByUserID(ctx, user.ID); err == nil {
+			oldGroupRates = cloneFloat64Map(rates)
+		} else {
+			logger.LegacyPrintf("service.admin", "failed to load user group rates before update: user_id=%d err=%v", user.ID, err)
+		}
+	}
+	groupRates := cloneGroupRateInputs(input.GroupRates)
 
 	if input.Email != "" {
 		user.Email = input.Email
@@ -831,6 +840,13 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
+	removedAllowedGroups := removedGroupIDs(oldAllowedGroups, user.AllowedGroups)
+	if len(removedAllowedGroups) > 0 && groupRates == nil {
+		groupRates = make(map[int64]*float64, len(removedAllowedGroups))
+	}
+	for _, groupID := range removedAllowedGroups {
+		groupRates[groupID] = nil
+	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
@@ -859,9 +875,15 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if s.authCacheInvalidator != nil {
+		invalidatedUserAuthCache := false
+		if len(affectedGroupAccessUserIDs) > 0 || len(raisedRateFloorUserIDs) > 0 {
+			affectedUserIDs := append(append([]int64{}, affectedGroupAccessUserIDs...), raisedRateFloorUserIDs...)
+			s.invalidateDeletedUserAuthCache(ctx, user.ID, affectedUserIDs)
+			invalidatedUserAuthCache = true
+		}
 		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
 		// allowed_groups 参与 API Key 专属分组授权判断；不失效缓存会让修改在一个 L2 TTL 内失去效果。
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups) {
+		if !invalidatedUserAuthCache && (user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit || !sameInt64Set(user.AllowedGroups, oldAllowedGroups)) {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -910,6 +932,143 @@ func sameInt64Set(a, b []int64) bool {
 	return true
 }
 
+func removedGroupIDs(oldGroups, newGroups []int64) []int64 {
+	if len(oldGroups) == 0 {
+		return nil
+	}
+	newSet := make(map[int64]struct{}, len(newGroups))
+	for _, groupID := range newGroups {
+		if groupID > 0 {
+			newSet[groupID] = struct{}{}
+		}
+	}
+	removedSet := make(map[int64]struct{}, len(oldGroups))
+	for _, groupID := range oldGroups {
+		if groupID <= 0 {
+			continue
+		}
+		if _, ok := newSet[groupID]; ok {
+			continue
+		}
+		removedSet[groupID] = struct{}{}
+	}
+	return sortedInt64SetKeys(removedSet)
+}
+
+func cloneFloat64Map(in map[int64]float64) map[int64]float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[int64]float64, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneGroupRateInputs(in map[int64]*float64) map[int64]*float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[int64]*float64, len(in))
+	for key, value := range in {
+		if value == nil {
+			out[key] = nil
+			continue
+		}
+		v := *value
+		out[key] = &v
+	}
+	return out
+}
+
+func sortedInt64SetKeys(set map[int64]struct{}) []int64 {
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(set))
+	for value := range set {
+		out = append(out, value)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func (s *adminServiceImpl) raiseManagedGroupRateFloorsForAdminUserUpdate(ctx context.Context, user *User, oldRates map[int64]float64, newRates map[int64]*float64) ([]int64, error) {
+	if s.agentDeletionCleanupRepo == nil || user == nil || len(newRates) == 0 {
+		return nil, nil
+	}
+	affectedSet := make(map[int64]struct{})
+	for groupID, rate := range newRates {
+		if groupID <= 0 || rate == nil {
+			continue
+		}
+		oldRate, hadOldRate := oldRates[groupID]
+		if hadOldRate && *rate <= oldRate {
+			continue
+		}
+		affectedUserIDs, err := s.agentDeletionCleanupRepo.RaiseManagedGroupRateFloorForAdminUpdate(ctx, user.ID, groupID, *rate)
+		if err != nil {
+			return nil, err
+		}
+		for _, userID := range affectedUserIDs {
+			if userID > 0 {
+				affectedSet[userID] = struct{}{}
+			}
+		}
+	}
+	return sortedInt64SetKeys(affectedSet), nil
+}
+
+func (s *adminServiceImpl) deleteAgentFromAdminUsers(ctx context.Context, user *User) ([]int64, error) {
+	if s.agentDeletionCleanupRepo == nil {
+		return nil, errors.New("agent deletion cleanup repository is not configured")
+	}
+	return s.agentDeletionCleanupRepo.DeleteAgentForAdminUserDeletion(ctx, user)
+}
+
+func (s *adminServiceImpl) hardDeleteEnterpriseFromAdminUsers(ctx context.Context, userID int64) ([]int64, error) {
+	if s.enterpriseCleanupRepo == nil {
+		return nil, errors.New("enterprise cleanup repository is not configured")
+	}
+	return s.enterpriseCleanupRepo.HardDeleteEnterpriseWithEmployees(ctx, userID)
+}
+
+func (s *adminServiceImpl) deleteEmployeeFromAdminUsers(ctx context.Context, user *User) ([]int64, error) {
+	if user == nil || user.ParentUserID == nil {
+		return nil, ErrEnterpriseManagementNotEmployee
+	}
+	if s.enterpriseCleanupRepo == nil {
+		return nil, errors.New("enterprise cleanup repository is not configured")
+	}
+	return s.enterpriseCleanupRepo.DeleteEmployeeAndReturnAllocation(ctx, *user.ParentUserID, user.ID, *user.ParentUserID)
+}
+
+func (s *adminServiceImpl) cascadeEnterpriseStatusFromAdminUsers(ctx context.Context, enterpriseID int64, targetStatus string) ([]int64, error) {
+	if s.enterpriseCleanupRepo == nil {
+		return nil, errors.New("enterprise cleanup repository is not configured")
+	}
+	return s.enterpriseCleanupRepo.CascadeEnterpriseStatus(ctx, enterpriseID, targetStatus)
+}
+
+func (s *adminServiceImpl) invalidateDeletedUserAuthCache(ctx context.Context, userID int64, affectedUserIDs []int64) {
+	if s.authCacheInvalidator == nil {
+		return
+	}
+	ids := make(map[int64]struct{}, len(affectedUserIDs)+1)
+	if userID > 0 {
+		ids[userID] = struct{}{}
+	}
+	for _, affectedUserID := range affectedUserIDs {
+		if affectedUserID > 0 {
+			ids[affectedUserID] = struct{}{}
+		}
+	}
+	for _, affectedUserID := range sortedInt64SetKeys(ids) {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, affectedUserID)
+	}
+}
+
 func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	// Protect admin users: cannot delete admin accounts
 	user, err := s.userRepo.GetByID(ctx, id)
@@ -920,9 +1079,49 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		return errors.New("cannot delete admin user")
 	}
 
+	var affectedUserIDs []int64
+	switch user.Role {
+	case RoleAgentLevel1:
+		affectedUserIDs, err = s.deleteAgentFromAdminUsers(ctx, user)
+		if err != nil {
+			return err
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
+	case RoleEnterprise:
+		affectedUserIDs, err = s.hardDeleteEnterpriseFromAdminUsers(ctx, id)
+		if err != nil {
+			return err
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
+	case RoleEmployee:
+		affectedUserIDs, err = s.deleteEmployeeFromAdminUsers(ctx, user)
+		if err != nil {
+			return err
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
+	}
+
 	apiKeys, err := s.listUserAPIKeysForDeletion(ctx, id)
 	if err != nil {
 		return err
+	}
+
+	if s.apiKeyRepo == nil {
+		if err := s.userRepo.HardDelete(ctx, id); err != nil {
+			logger.LegacyPrintf("service.admin", "hard delete user failed: user_id=%d err=%v", id, err)
+			return err
+		}
+		if user.ParentUserID != nil && s.agentDeletionCleanupRepo != nil {
+			if recalcErr := s.agentDeletionCleanupRepo.RecalculateAgentQuota(ctx, *user.ParentUserID); recalcErr != nil {
+				return recalcErr
+			}
+			affectedUserIDs = append(affectedUserIDs, *user.ParentUserID)
+		}
+		s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
+		return nil
 	}
 
 	if s.entClient != nil {
@@ -951,7 +1150,12 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, keyValue)
 			}
 		}
-		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
+	}
+	if user.ParentUserID != nil && s.agentDeletionCleanupRepo != nil {
+		if recalcErr := s.agentDeletionCleanupRepo.RecalculateAgentQuota(ctx, *user.ParentUserID); recalcErr != nil {
+			return recalcErr
+		}
+		affectedUserIDs = append(affectedUserIDs, *user.ParentUserID)
 	}
 	s.invalidateDeletedUserAuthCache(ctx, id, affectedUserIDs)
 	return nil

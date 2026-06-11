@@ -52,6 +52,7 @@ interface MockAuthState {
   isAuthenticated: boolean
   isAdmin: boolean
   isEmployee?: boolean
+  isAgent?: boolean
   canUseAgentManagement?: boolean
   canUseEnterpriseManagement?: boolean
   isSimpleMode: boolean
@@ -70,6 +71,7 @@ function simulateGuard(
 ): string | null {
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
+  const requiresAgent = toMeta.requiresAgent === true
   const requiresAgentManagement = toMeta.requiresAgentManagement === true
   const requiresEnterpriseManagement = toMeta.requiresEnterpriseManagement === true
 
@@ -117,6 +119,10 @@ function simulateGuard(
   // 需要管理员但不是管理员
   if (requiresAdmin && !authState.isAdmin) {
     return '/dashboard'
+  }
+
+  if (requiresAgent && !authState.isAgent) {
+    return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
   }
 
   if (requiresAgentManagement && !authState.canUseAgentManagement) {
@@ -343,6 +349,20 @@ describe('路由守卫逻辑', () => {
       }
       const redirect = simulateGuard('/agent/direct-users', { requiresAgentManagement: true }, authState)
       expect(redirect).toBe('/dashboard')
+    })
+
+    it('管理员访问代理专属页面会回到管理员后台', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: true,
+        isAgent: false,
+        canUseAgentManagement: true,
+        isSimpleMode: false,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/agent/usage', { requiresAgentManagement: true, requiresAgent: true }, authState)
+      expect(redirect).toBe('/admin/dashboard')
     })
   })
 

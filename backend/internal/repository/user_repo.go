@@ -375,10 +375,18 @@ func normalizeEmailAuthIdentitySubject(email string) string {
 }
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
+	return r.delete(ctx, id, false)
+}
+
+func (r *userRepository) HardDelete(ctx context.Context, id int64) error {
+	return r.delete(ctx, id, true)
+}
+
+func (r *userRepository) delete(ctx context.Context, id int64, hard bool) error {
 	// 复用 context 中已存在的事务（如 AdminService.DeleteUser 把删 Key 与删 User 包在同一事务中），
 	// 由调用方负责提交/回滚，保证两者的原子性。
 	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
-		return r.deleteUser(ctx, existingTx.Client(), id)
+		return r.deleteUser(ctx, existingTx.Client(), id, hard)
 	}
 
 	tx, err := r.client.Tx(ctx)
@@ -392,7 +400,7 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 	}
 	// err == dbent.ErrTxStarted 时复用当前事务（exec = r.client）。
 
-	if err := r.deleteUser(ctx, exec, id); err != nil {
+	if err := r.deleteUser(ctx, exec, id, hard); err != nil {
 		return err
 	}
 
@@ -405,7 +413,7 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 }
 
 // deleteUser 在给定 client（可能是外部事务 client）上删除用户及其身份关联记录，自身不开启/提交事务。
-func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id int64) error {
+func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id int64, hard bool) error {
 	identityIDs, err := exec.AuthIdentity.Query().
 		Where(authidentity.UserIDEQ(id)).
 		IDs(ctx)
@@ -431,7 +439,11 @@ func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id 
 		}
 	}
 
-	affected, err := exec.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	deleteCtx := ctx
+	if hard {
+		deleteCtx = mixins.SkipSoftDelete(ctx)
+	}
+	affected, err := exec.User.Delete().Where(dbuser.IDEQ(id)).Exec(deleteCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}

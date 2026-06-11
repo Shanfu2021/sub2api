@@ -227,7 +227,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Role:                       apiKey.User.Role,
 			ParentUserID:               apiKey.User.ParentUserID,
 			Balance:                    apiKey.User.Balance,
-			Concurrency:                apiKey.User.Concurrency,
+			Concurrency:                effectiveConcurrency,
 			AllowedGroups:              apiKey.User.AllowedGroups,
 			Email:                      apiKey.User.Email,
 			Username:                   apiKey.User.Username,
