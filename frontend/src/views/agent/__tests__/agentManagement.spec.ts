@@ -681,6 +681,8 @@ describe('agent management pages', () => {
 
     expect(wrapper.find('[data-test="usage-filter-api-key"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="usage-filter-account"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="columns"]').text()).not.toContain('api_key')
+    expect(wrapper.get('[data-test="columns"]').text()).not.toContain('account')
     expect(wrapper.text()).toContain('admin.usage.userFilter')
   })
 

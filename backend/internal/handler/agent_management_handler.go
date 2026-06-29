@@ -253,6 +253,7 @@ func (h *AgentManagementHandler) ListUsage(c *gin.Context) {
 		}
 		item.UpstreamEndpoint = nil
 		item.AccountID = 0
+		item.APIKeyID = 0
 		item.APIKey = nil
 		out = append(out, *item)
 	}
@@ -342,16 +343,10 @@ func (h *AgentManagementHandler) SearchUsageAPIKeys(c *gin.Context) {
 }
 
 func (h *AgentManagementHandler) SearchUsageAccounts(c *gin.Context) {
-	actorID, ok := currentActorID(c)
-	if !ok {
+	if _, ok := currentActorID(c); !ok {
 		return
 	}
-	accounts, err := h.service.SearchAgentUsageAccounts(c.Request.Context(), actorID, c.Query("q"), 30)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, accounts)
+	response.Success(c, []service.AgentUsageAccountSummary{})
 }
 
 func (h *AgentManagementHandler) CreateDirectUser(c *gin.Context) {
@@ -932,12 +927,8 @@ func parseAgentUsageFilters(c *gin.Context, withDefaultPeriod bool) (usagestats.
 		apiKeyID = id
 	}
 	if raw := strings.TrimSpace(c.Query("account_id")); raw != "" {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || id <= 0 {
-			response.BadRequest(c, "Invalid account_id")
-			return usagestats.UsageLogFilters{}, false
-		}
-		accountID = id
+		response.BadRequest(c, "account_id filter is not available")
+		return usagestats.UsageLogFilters{}, false
 	}
 	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)

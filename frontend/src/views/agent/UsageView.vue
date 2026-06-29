@@ -33,8 +33,6 @@
         :show-api-key-filter="false"
         :show-account-filter="false"
         :search-users-fn="agentManagementAPI.searchUsageUsers"
-        :search-api-keys-fn="agentManagementAPI.searchUsageApiKeys"
-        :search-accounts-fn="agentManagementAPI.searchUsageAccounts"
         :load-groups-fn="loadAgentGroupOptions"
         @change="applyFilters"
         @refresh="refreshData"
@@ -138,8 +136,6 @@ const sortState = reactive({
 
 const visibleColumns = computed<Column[]>(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
-  { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
-  { key: 'account', label: t('admin.usage.account'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
   { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
@@ -287,12 +283,6 @@ function getRequestTypeLabel(log: AdminUsageLog): string {
   return t('usage.unknown')
 }
 
-function accountBilled(log: AdminUsageLog): number {
-  const base = log.account_stats_cost != null ? log.account_stats_cost : (log.total_cost ?? 0)
-  const result = base * (log.account_rate_multiplier ?? 1)
-  return Number.isFinite(result) ? result : 0
-}
-
 function cancelExport() {
   exportAbortController?.abort()
 }
@@ -309,14 +299,13 @@ async function exportToExcel() {
     let exportedCount = 0
     const XLSX = await import('xlsx')
     const headers = [
-      t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
-      t('admin.usage.account'), t('usage.model'), t('usage.reasoningEffort'), t('admin.usage.group'),
-      t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'), t('usage.type'),
+      t('usage.time'), t('admin.usage.user'), t('usage.model'), t('usage.reasoningEffort'), t('admin.usage.group'),
+      t('usage.inboundEndpoint'), t('usage.type'),
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
       t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
       t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
-      t('usage.rate'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
+      t('usage.rate'), t('usage.original'), t('usage.userBilled'),
       t('usage.firstToken'), t('usage.duration'), t('admin.usage.requestId'), t('usage.userAgent')
     ]
     const ws = XLSX.utils.aoa_to_sheet([headers])
@@ -333,13 +322,10 @@ async function exportToExcel() {
       const rows = ((res.items || []) as AdminUsageLog[]).map((log) => [
         log.created_at,
         log.user?.email || '',
-        log.api_key?.name || '',
-        log.account?.name || '',
         log.model || '',
         formatReasoningEffort(log.reasoning_effort),
         log.group?.name || '',
         log.inbound_endpoint || '',
-        log.upstream_endpoint || '',
         getRequestTypeLabel(log),
         log.input_tokens,
         log.output_tokens,
@@ -352,7 +338,6 @@ async function exportToExcel() {
         log.rate_multiplier?.toPrecision(4) || '1.00',
         log.total_cost?.toFixed(6) || '0.000000',
         log.actual_cost?.toFixed(6) || '0.000000',
-        accountBilled(log).toFixed(6),
         log.first_token_ms ?? '',
         log.duration_ms,
         log.request_id || '',

@@ -243,6 +243,7 @@ func (s *fakeAgentManagementService) ListAgentUsage(_ context.Context, actorID i
 		{
 			ID:                    9001,
 			UserID:                filters.UserID,
+			APIKeyID:              77,
 			AccountID:             88,
 			Model:                 "gpt-test",
 			UpstreamEndpoint:      &upstreamEndpoint,
@@ -495,6 +496,7 @@ func newAgentManagementHandlerTestRouter(svc *fakeAgentManagementService) *gin.E
 	r.GET("/structure", h.SubordinateStructure)
 	r.GET("/usage", h.ListUsage)
 	r.GET("/usage/stats", h.UsageStats)
+	r.GET("/usage/search-accounts", h.SearchUsageAccounts)
 	return r
 }
 
@@ -803,6 +805,34 @@ func TestAgentManagementHandlerListsAgentUsageWithFilters(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "account_rate_multiplier")
 	require.NotContains(t, rec.Body.String(), "ip_address")
 	require.Contains(t, rec.Body.String(), `"account_id":0`)
+	require.Contains(t, rec.Body.String(), `"api_key_id":0`)
+	require.NotContains(t, rec.Body.String(), `"api_key_id":77`)
+}
+
+func TestAgentManagementHandlerRejectsAgentUsageAccountFilter(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage?account_id=88", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, 0, svc.listUsageCalls)
+	require.Contains(t, rec.Body.String(), "account_id filter is not available")
+}
+
+func TestAgentManagementHandlerSearchUsageAccountsReturnsEmpty(t *testing.T) {
+	svc := &fakeAgentManagementService{}
+	router := newAgentManagementHandlerTestRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/search-accounts?q=hidden", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), "hidden-upstream-account")
+	require.Contains(t, rec.Body.String(), `"data":[]`)
 }
 
 func TestAgentManagementHandlerReturnsAgentUsageStats(t *testing.T) {

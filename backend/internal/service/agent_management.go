@@ -632,18 +632,8 @@ func (s *AgentManagementService) SearchAgentUsageAPIKeys(ctx context.Context, ac
 	return s.repo.SearchUsageAPIKeys(ctx, visibleIDs, userID, keyword, limit)
 }
 
-func (s *AgentManagementService) SearchAgentUsageAccounts(ctx context.Context, actorID int64, keyword string, limit int) ([]AgentUsageAccountSummary, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 30
-	}
-	visibleIDs, _, err := s.currentUsageVisibleUserScope(ctx, actorID)
-	if err != nil {
-		return nil, err
-	}
-	if len(visibleIDs) == 0 {
-		return []AgentUsageAccountSummary{}, nil
-	}
-	return s.repo.SearchUsageAccounts(ctx, visibleIDs, keyword, limit)
+func (s *AgentManagementService) SearchAgentUsageAccounts(_ context.Context, _ int64, _ string, _ int) ([]AgentUsageAccountSummary, error) {
+	return []AgentUsageAccountSummary{}, nil
 }
 
 func (s *AgentManagementService) CreateDirectUser(ctx context.Context, actorID int64, input CreateDirectUserInput) (*User, error) {

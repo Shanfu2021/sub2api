@@ -205,15 +205,17 @@ func TestIsFixedDailyPeriodExpired_ZeroPeriodStart(t *testing.T) {
 }
 
 func TestIsFixedDailyPeriodExpired_NotExpired(t *testing.T) {
-	now := time.Now()
-	resetHour := (now.UTC().Hour() + 23) % 24
+	now := time.Now().UTC()
+	resetHour := (now.Hour() + 23) % 24
 	a := &Account{Extra: map[string]any{
 		"quota_daily_reset_mode": "fixed",
 		"quota_daily_reset_hour": float64(resetHour),
 		"quota_reset_timezone":   "UTC",
 	}}
-	// Period started after the most recent reset → not expired
-	periodStart := now.Add(-1 * time.Minute)
+	// Anchor periodStart to today's 12:00 UTC: always strictly after today's
+	// 09:00 UTC reset (and yesterday's). Using time.Now().Add(-1*time.Minute)
+	// is flaky inside the 09:00-09:01 UTC reset window.
+	periodStart := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
 	assert.False(t, a.isFixedDailyPeriodExpired(periodStart))
 }
 
@@ -254,17 +256,20 @@ func TestIsFixedWeeklyPeriodExpired_ZeroPeriodStart(t *testing.T) {
 }
 
 func TestIsFixedWeeklyPeriodExpired_NotExpired(t *testing.T) {
-	now := time.Now()
-	resetDay := int(now.UTC().Weekday())
-	resetHour := (now.UTC().Hour() + 23) % 24
+	now := time.Now().UTC()
+	resetDay := int(now.Weekday())
+	resetHour := (now.Hour() + 23) % 24
 	a := &Account{Extra: map[string]any{
 		"quota_weekly_reset_mode": "fixed",
 		"quota_weekly_reset_day":  float64(resetDay),
 		"quota_weekly_reset_hour": float64(resetHour),
 		"quota_reset_timezone":    "UTC",
 	}}
-	// Period started 1 minute ago → not expired
-	periodStart := now.Add(-1 * time.Minute)
+	// Anchor periodStart to today's 12:00 UTC: always strictly after the most
+	// recent Monday 09:00 UTC reset, regardless of which weekday/hour the test
+	// runs. Using time.Now().Add(-1*time.Minute) is flaky inside the
+	// Monday 09:00-09:01 UTC reset window.
+	periodStart := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, time.UTC)
 	assert.False(t, a.isFixedWeeklyPeriodExpired(periodStart))
 }
 
