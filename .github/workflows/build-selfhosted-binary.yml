@@ -74,7 +74,7 @@ jobs:
           cp dist/sub2api package/
           cp deploy/config.example.yaml package/
           printf '%s\n' "$VERSION" > package/VERSION
-          sha256sum package/sub2api > package/sub2api.sha256
+          (cd package && sha256sum sub2api > sub2api.sha256)
           tar -C package -czf "sub2api-linux-amd64-${VERSION}.tar.gz" .
 
       - name: Upload build artifact
@@ -82,7 +82,7 @@ jobs:
         with:
           name: sub2api-linux-amd64
           path: |
-            dist/sub2api
+            package/sub2api
             package/sub2api.sha256
             package/VERSION
             sub2api-linux-amd64-*.tar.gz
