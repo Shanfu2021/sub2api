@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -22,16 +23,28 @@ type GroupRepoSuite struct {
 }
 
 type forbidSQLExecutor struct {
-	called bool
+	called          bool
+	forbiddenQuery string
+}
+
+func (s *forbidSQLExecutor) shouldForbid(query string) bool {
+	if s.forbiddenQuery == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(query), strings.ToLower(s.forbiddenQuery))
 }
 
 func (s *forbidSQLExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	s.called = true
+	if s.shouldForbid(query) {
+		s.called = true
+	}
 	return nil, errors.New("unexpected sql exec")
 }
 
 func (s *forbidSQLExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	s.called = true
+	if s.shouldForbid(query) {
+		s.called = true
+	}
 	return nil, errors.New("unexpected sql query")
 }
 
@@ -84,7 +97,7 @@ func (s *GroupRepoSuite) TestGetByIDLite_DoesNotUseAccountCount() {
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, group))
 
-	spy := &forbidSQLExecutor{}
+	spy := &forbidSQLExecutor{forbiddenQuery: "from account_groups"}
 	repo := newGroupRepositoryWithSQL(s.tx.Client(), spy)
 
 	got, err := repo.GetByIDLite(s.ctx, group.ID)
