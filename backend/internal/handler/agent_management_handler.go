@@ -252,6 +252,7 @@ func (h *AgentManagementHandler) ListUsage(c *gin.Context) {
 			continue
 		}
 		item.UpstreamEndpoint = nil
+		item.IPAddress = nil
 		item.AccountID = 0
 		item.APIKeyID = 0
 		item.APIKey = nil
