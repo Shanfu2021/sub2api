@@ -199,7 +199,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	preferOAuth := platform == PlatformGemini
-	strictPriority := s.isStrictPriorityGroupForSelection(ctx, groupID, group)
+	strictPriority, err := s.isStrictPriorityGroupForSelection(ctx, groupID, group)
+	if err != nil {
+		return nil, err
+	}
 	if s.debugModelRoutingEnabled() && platform == PlatformAnthropic && requestedModel != "" {
 		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
 	}
@@ -402,6 +405,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 			// Freeze the lowest eligible bucket before consulting concurrency state.
 			if strictPriority {
+				routingCandidates = s.filterAccountsBySessionEligibility(ctx, routingCandidates, sessionHash)
 				routingCandidates = filterAccountsByMinPriority(routingCandidates)
 			}
 
@@ -669,6 +673,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 	// Freeze the lowest eligible bucket before load lookup or slot acquisition.
 	if strictPriority {
+		candidates = s.filterAccountsBySessionEligibility(ctx, candidates, sessionHash)
 		candidates = filterAccountsByMinPriority(candidates)
 	}
 
@@ -821,18 +826,27 @@ func isStrictPriorityGroup(group *Group) bool {
 	return group != nil && group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority
 }
 
-func (s *GatewayService) isStrictPriorityGroupForSelection(ctx context.Context, groupID *int64, group *Group) bool {
-	if isStrictPriorityGroup(group) {
-		return true
+func hasExplicitGroupSchedulingStrategy(group *Group) bool {
+	return group != nil && (group.SchedulingStrategy == GroupSchedulingStrategyWeighted || group.SchedulingStrategy == GroupSchedulingStrategyStrictPriority)
+}
+
+func (s *GatewayService) isStrictPriorityGroupForSelection(ctx context.Context, groupID *int64, group *Group) (bool, error) {
+	if group != nil {
+		switch group.SchedulingStrategy {
+		case GroupSchedulingStrategyStrictPriority:
+			return true, nil
+		case GroupSchedulingStrategyWeighted:
+			return false, nil
+		}
 	}
 	if groupID == nil || *groupID <= 0 || s.groupRepo == nil {
-		return false
+		return false, nil
 	}
 	resolved, err := s.groupRepo.GetByIDLite(ctx, *groupID)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("get group failed: %w", err)
 	}
-	return isStrictPriorityGroup(resolved)
+	return isStrictPriorityGroup(resolved), nil
 }
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
@@ -1403,6 +1417,58 @@ func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int6
 	return err
 }
 
+// filterAccountsBySessionEligibility removes accounts that cannot accept a new
+// OAuth/SetupToken session without mutating session state. Registration remains
+// authoritative after slot acquisition to handle concurrent changes.
+func (s *GatewayService) filterAccountsBySessionEligibility(ctx context.Context, accounts []*Account, sessionID string) []*Account {
+	if len(accounts) == 0 || sessionID == "" || s.sessionLimitCache == nil {
+		return accounts
+	}
+
+	accountIDs := make([]int64, 0, len(accounts))
+	maxSessionsByID := make(map[int64]int, len(accounts))
+	idleTimeouts := make(map[int64]time.Duration, len(accounts))
+	for _, account := range accounts {
+		if !account.IsAnthropicOAuthOrSetupToken() {
+			continue
+		}
+		maxSessions := account.GetMaxSessions()
+		if maxSessions <= 0 {
+			continue
+		}
+		accountIDs = append(accountIDs, account.ID)
+		maxSessionsByID[account.ID] = maxSessions
+		idleTimeouts[account.ID] = time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
+	}
+	if len(accountIDs) == 0 {
+		return accounts
+	}
+
+	activeCounts, err := s.sessionLimitCache.GetActiveSessionCountBatch(ctx, accountIDs, idleTimeouts)
+	if err != nil {
+		return accounts
+	}
+
+	eligible := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		maxSessions, limited := maxSessionsByID[account.ID]
+		if !limited {
+			eligible = append(eligible, account)
+			continue
+		}
+		activeCount, ok := activeCounts[account.ID]
+		if !ok || activeCount < maxSessions {
+			eligible = append(eligible, account)
+			continue
+		}
+		active, activeErr := s.sessionLimitCache.IsSessionActive(ctx, account.ID, sessionID)
+		if activeErr != nil || active {
+			eligible = append(eligible, account)
+		}
+	}
+	return eligible
+}
+
 // checkAndRegisterSession 检查并注册会话，用于会话数量限制
 // 仅适用于 Anthropic OAuth/SetupToken 账号
 // sessionID: 会话标识符（使用粘性会话的 hash）
@@ -1854,8 +1920,15 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	// require_privacy_set: 获取分组信息
 	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+	if groupID != nil {
+		schedGroup = s.groupFromContext(ctx, *groupID)
+		if !hasExplicitGroupSchedulingStrategy(schedGroup) && s.groupRepo != nil {
+			resolved, err := s.groupRepo.GetByID(ctx, *groupID)
+			if err != nil {
+				return nil, fmt.Errorf("get group failed: %w", err)
+			}
+			schedGroup = resolved
+		}
 	}
 	strictPriority := isStrictPriorityGroup(schedGroup)
 
@@ -2127,8 +2200,15 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// require_privacy_set: 获取分组信息
 	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+	if groupID != nil {
+		schedGroup = s.groupFromContext(ctx, *groupID)
+		if !hasExplicitGroupSchedulingStrategy(schedGroup) && s.groupRepo != nil {
+			resolved, err := s.groupRepo.GetByID(ctx, *groupID)
+			if err != nil {
+				return nil, fmt.Errorf("get group failed: %w", err)
+			}
+			schedGroup = resolved
+		}
 	}
 	strictPriority := isStrictPriorityGroup(schedGroup)
 
