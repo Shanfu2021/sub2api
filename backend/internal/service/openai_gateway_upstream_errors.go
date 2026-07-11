@@ -256,29 +256,13 @@ func writeOpenAIClientSafeUpstreamError(c *gin.Context, statusCode int, fallback
 	})
 }
 
-// openAICompatClientErrorMessage preserves plain validation text such as
-// "invalid roles", but falls back to a stable local message whenever cleanup
-// detects an upstream location, path, or credential-shaped value.
+// openAICompatClientErrorMessage preserves only the known chat-fallback 400
+// validation message. Other no-rule errors keep the stable local default.
 func openAICompatClientErrorMessage(statusCode int, upstreamMessage string) string {
-	fallback := clientSafeUpstreamErrorMessage(statusCode)
-	rawMessage := strings.TrimSpace(upstreamMessage)
-	if rawMessage == "" {
-		return fallback
+	if statusCode == http.StatusBadRequest && strings.EqualFold(strings.TrimSpace(upstreamMessage), "invalid roles") {
+		return "invalid roles"
 	}
-	message := sanitizeUpstreamErrorMessage(rawMessage)
-	if message == "" || message != rawMessage || strings.ContainsAny(rawMessage, `/\`) {
-		return fallback
-	}
-	lowerMessage := strings.ToLower(rawMessage)
-	for _, marker := range []string{
-		"access_token", "refresh_token", "client_secret", "api_key", "apikey",
-		"authorization", "bearer ", "password", "secret", "token=", "key=", "sk-",
-	} {
-		if strings.Contains(lowerMessage, marker) {
-			return fallback
-		}
-	}
-	return message
+	return clientSafeUpstreamErrorMessage(statusCode)
 }
 
 // applyOpenAIStreamFailedErrorPassthroughRule normalizes response.failed for

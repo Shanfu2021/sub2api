@@ -307,6 +307,12 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonFailover400UsesSharedErrorHan
 	require.Equal(t, "invalid roles", events[0].Message)
 }
 
+func TestOpenAICompatClientErrorMessageOnlyAllowsInvalidRolesForBadRequest(t *testing.T) {
+	require.Equal(t, "invalid roles", openAICompatClientErrorMessage(http.StatusBadRequest, " invalid roles "))
+	require.Equal(t, "Invalid request", openAICompatClientErrorMessage(http.StatusBadRequest, "unrelated validation failure"))
+	require.Equal(t, "Request failed", openAICompatClientErrorMessage(http.StatusUnprocessableEntity, "invalid roles"))
+}
+
 // A broken upstream read mid-stream must surface an error and must NOT emit a
 // synthetic message_stop that would disguise the truncation as a completion.
 func TestForwardAsAnthropic_ForceChatCompletionsStreamReadErrorSkipsFinalize(t *testing.T) {
