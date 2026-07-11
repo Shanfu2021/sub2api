@@ -400,6 +400,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				}
 			}
 
+			// Freeze the lowest eligible bucket before consulting concurrency state.
+			if strictPriority {
+				routingCandidates = filterAccountsByMinPriority(routingCandidates)
+			}
+
 			// 2. 批量获取负载信息
 			routingLoads := make([]AccountWithConcurrency, 0, len(routingCandidates))
 			for _, acc := range routingCandidates {
@@ -662,6 +667,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	if len(candidates) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
+	// Freeze the lowest eligible bucket before load lookup or slot acquisition.
+	if strictPriority {
+		candidates = filterAccountsByMinPriority(candidates)
+	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
 	for _, acc := range candidates {
@@ -697,8 +706,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		// - weighted: 优先级 →（可选）最早重置 → 负载率 → LRU
 		// - strict_priority: 优先级 → 账号计费倍率 →（可选）最早重置 → 负载率 → LRU
 		for len(available) > 0 {
-			// 1. 取优先级最小的集合
-			candidates := filterByMinPriority(available)
+			candidates := available
+			if !strictPriority {
+				// 1. weighted 模式每轮取当前优先级最小的集合
+				candidates = filterByMinPriority(available)
+			}
 			// 2. 严格优先级模式下，优先选择计费倍率最低的账号
 			if strictPriority {
 				candidates = filterByMinBillingRate(candidates)
@@ -1469,6 +1481,25 @@ func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	for _, acc := range accounts {
 		if acc.account.Priority == minPriority {
 			result = append(result, acc)
+		}
+	}
+	return result
+}
+
+func filterAccountsByMinPriority(accounts []*Account) []*Account {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	minPriority := accounts[0].Priority
+	for _, account := range accounts[1:] {
+		if account.Priority < minPriority {
+			minPriority = account.Priority
+		}
+	}
+	result := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Priority == minPriority {
+			result = append(result, account)
 		}
 	}
 	return result

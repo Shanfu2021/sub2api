@@ -3523,6 +3523,86 @@ func TestGatewayService_StrictPriorityScheduling_AppliesWithinModelRouting(t *te
 	require.Equal(t, int64(2), result.Account.ID)
 }
 
+func TestGatewayService_StrictPriorityScheduling_DoesNotSpillWhenLowestPriorityBusy(t *testing.T) {
+	tests := []struct {
+		name         string
+		modelRouting bool
+		loadBatchErr error
+	}{
+		{name: "normal"},
+		{name: "model_routing", modelRouting: true},
+		{name: "load_query_error", loadBatchErr: errors.New("load batch unavailable")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			groupID := int64(95)
+			lowestBucketRate := 1.0
+			higherBucketRate := 0.1
+
+			repo := &mockAccountRepoForPlatform{
+				accounts: []Account{
+					{ID: 1, Platform: PlatformAnthropic, Priority: 1, RateMultiplier: &lowestBucketRate, Status: StatusActive, Schedulable: true, Concurrency: 5},
+					{ID: 2, Platform: PlatformAnthropic, Priority: 2, RateMultiplier: &higherBucketRate, Status: StatusActive, Schedulable: true, Concurrency: 5},
+				},
+				accountsByID: map[int64]*Account{},
+			}
+			for i := range repo.accounts {
+				repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+			}
+
+			group := &Group{
+				ID:                 groupID,
+				Platform:           PlatformAnthropic,
+				Status:             StatusActive,
+				Hydrated:           true,
+				SchedulingStrategy: GroupSchedulingStrategyStrictPriority,
+			}
+			if tt.modelRouting {
+				group.ModelRoutingEnabled = true
+				group.ModelRouting = map[string][]int64{
+					"claude-3-5-sonnet-20241022": {1, 2},
+				}
+			}
+
+			cfg := testConfig()
+			cfg.Gateway.Scheduling.LoadBatchEnabled = true
+			concurrencyCache := &mockConcurrencyCache{
+				acquireResults: map[int64]bool{
+					1: false,
+					2: true,
+				},
+				loadBatchErr: tt.loadBatchErr,
+				loadMap: map[int64]*AccountLoadInfo{
+					1: {AccountID: 1, LoadRate: 10},
+					2: {AccountID: 2, LoadRate: 0},
+				},
+			}
+
+			svc := &GatewayService{
+				accountRepo: repo,
+				groupRepo: &mockGroupRepoForGateway{
+					groups: map[int64]*Group{groupID: group},
+				},
+				cache:              &mockGatewayCacheForPlatform{},
+				cfg:                cfg,
+				concurrencyService: NewConcurrencyService(concurrencyCache),
+			}
+
+			result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, result.Account)
+			require.Equal(t, int64(1), result.Account.ID)
+			require.False(t, result.Acquired)
+			require.NotNil(t, result.WaitPlan)
+			require.Equal(t, int64(1), result.WaitPlan.AccountID)
+			require.Equal(t, 1, concurrencyCache.acquireAccountCalls)
+		})
+	}
+}
+
 func TestGatewayService_StrictPriorityScheduling_KeepsValidStickySession(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(93)
