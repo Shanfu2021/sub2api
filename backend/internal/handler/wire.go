@@ -118,6 +118,7 @@ func ProvideHandlers(
 	agentManagementHandler *AgentManagementHandler,
 	enterpriseManagementHandler *EnterpriseManagementHandler,
 	purchaseInfoHandler *PurchaseInfoHandler,
+	batchImageHandler *BatchImageHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -141,6 +142,7 @@ func ProvideHandlers(
 		AgentManagement:      agentManagementHandler,
 		EnterpriseManagement: enterpriseManagementHandler,
 		PurchaseInfo:         purchaseInfoHandler,
+		BatchImage:           batchImageHandler,
 	}
 }
 
@@ -165,6 +167,7 @@ var ProviderSet = wire.NewSet(
 	NewAgentManagementHandler,
 	NewEnterpriseManagementHandler,
 	NewPurchaseInfoHandler,
+	NewBatchImageHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

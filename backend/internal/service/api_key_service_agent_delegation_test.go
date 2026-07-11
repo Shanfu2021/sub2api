@@ -79,6 +79,9 @@ func (r *apiKeyDelegatedSubscriptionRepoStub) Create(context.Context, *UserSubsc
 func (r *apiKeyDelegatedSubscriptionRepoStub) GetByID(context.Context, int64) (*UserSubscription, error) {
 	panic("unexpected GetByID")
 }
+func (r *apiKeyDelegatedSubscriptionRepoStub) GetByIDIncludeDeleted(context.Context, int64) (*UserSubscription, error) {
+	panic("unexpected GetByIDIncludeDeleted")
+}
 func (r *apiKeyDelegatedSubscriptionRepoStub) GetByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
 	panic("unexpected GetByUserIDAndGroupID")
 }
@@ -90,6 +93,9 @@ func (r *apiKeyDelegatedSubscriptionRepoStub) Update(context.Context, *UserSubsc
 }
 func (r *apiKeyDelegatedSubscriptionRepoStub) Delete(context.Context, int64) error {
 	panic("unexpected Delete")
+}
+func (r *apiKeyDelegatedSubscriptionRepoStub) Restore(context.Context, int64, string) (*UserSubscription, error) {
+	panic("unexpected Restore")
 }
 func (r *apiKeyDelegatedSubscriptionRepoStub) ListByUserID(context.Context, int64) ([]UserSubscription, error) {
 	panic("unexpected ListByUserID")
@@ -106,6 +112,9 @@ func (r *apiKeyDelegatedSubscriptionRepoStub) List(context.Context, pagination.P
 func (r *apiKeyDelegatedSubscriptionRepoStub) ExistsByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
 	panic("unexpected ExistsByUserIDAndGroupID")
 }
+func (r *apiKeyDelegatedSubscriptionRepoStub) ExistsActiveByUserIDAndGroupID(context.Context, int64, int64) (bool, error) {
+	panic("unexpected ExistsActiveByUserIDAndGroupID")
+}
 func (r *apiKeyDelegatedSubscriptionRepoStub) ExtendExpiry(context.Context, int64, time.Time) error {
 	panic("unexpected ExtendExpiry")
 }
@@ -118,13 +127,16 @@ func (r *apiKeyDelegatedSubscriptionRepoStub) UpdateNotes(context.Context, int64
 func (r *apiKeyDelegatedSubscriptionRepoStub) ActivateWindows(context.Context, int64, time.Time) error {
 	panic("unexpected ActivateWindows")
 }
-func (r *apiKeyDelegatedSubscriptionRepoStub) ResetDailyUsage(context.Context, int64, time.Time) error {
+func (r *apiKeyDelegatedSubscriptionRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+	panic("unexpected ResetUsageWindows")
+}
+func (r *apiKeyDelegatedSubscriptionRepoStub) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetDailyUsage")
 }
-func (r *apiKeyDelegatedSubscriptionRepoStub) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+func (r *apiKeyDelegatedSubscriptionRepoStub) ResetWeeklyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetWeeklyUsage")
 }
-func (r *apiKeyDelegatedSubscriptionRepoStub) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+func (r *apiKeyDelegatedSubscriptionRepoStub) ResetMonthlyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetMonthlyUsage")
 }
 func (r *apiKeyDelegatedSubscriptionRepoStub) IncrementUsage(context.Context, int64, float64) error {
@@ -283,6 +295,35 @@ func TestAPIKeyServiceListHidesDelegatedExclusiveGroupUpstreamRate(t *testing.T)
 	svc := NewAPIKeyService(apiKeyRepo, nil, nil, nil, rateRepo, nil, &config.Config{})
 
 	keys, _, err := svc.List(context.Background(), userID, pagination.PaginationParams{Page: 1, PageSize: 10}, APIKeyListFilters{})
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+	require.NotNil(t, keys[0].Group)
+	require.Equal(t, 1.8, keys[0].Group.RateMultiplier)
+}
+
+func TestAPIKeyServiceListByCurrentConcurrencyHidesDelegatedExclusiveGroupUpstreamRate(t *testing.T) {
+	userID := int64(10)
+	groupID := int64(20)
+	apiKeyRepo := &apiKeyRepoStub{
+		allowListAllByUserID: true,
+		listAllByUserIDKeys: []APIKey{
+			{
+				ID:      99,
+				UserID:  userID,
+				GroupID: &groupID,
+				Group:   &Group{ID: groupID, Name: "exclusive", IsExclusive: true, Status: StatusActive, RateMultiplier: 0.5},
+			},
+		},
+	}
+	rateRepo := &apiKeyDelegatedRateRepoStub{delegated: map[int64]float64{groupID: 1.8}}
+	svc := NewAPIKeyService(apiKeyRepo, nil, nil, nil, rateRepo, nil, &config.Config{})
+
+	keys, _, err := svc.List(context.Background(), userID, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  10,
+		SortBy:    apiKeySortCurrentConcurrency,
+		SortOrder: pagination.SortOrderDesc,
+	}, APIKeyListFilters{})
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	require.NotNil(t, keys[0].Group)

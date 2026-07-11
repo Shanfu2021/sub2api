@@ -410,7 +410,7 @@ WHERE id = $1
 		BalanceDelta:       delta,
 		EnterpriseBalance:  enterpriseAfter,
 		EmployeeBalance:    target.Balance,
-		AffectedUserIDs:    uniqueInt64s([]int64{enterpriseID, employeeID}),
+		AffectedUserIDs:    uniqueEnterpriseInt64s([]int64{enterpriseID, employeeID}),
 		QuotaUsage:         usage,
 		RemainingQuotaUser: nil,
 	}
@@ -509,7 +509,7 @@ WHERE id = $1
 		RequiredBalance:         requiredBalance,
 		EnterpriseBalanceBefore: enterprise.Balance,
 		EnterpriseBalanceAfter:  enterpriseAfter,
-		AffectedUserIDs:         uniqueInt64s(affected),
+		AffectedUserIDs:         uniqueEnterpriseInt64s(affected),
 	}, nil
 }
 
@@ -563,7 +563,7 @@ func (r *enterpriseManagementRepository) DeleteEmployeeAndReturnAllocation(ctx c
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return uniqueInt64s([]int64{enterpriseID, employeeID}), nil
+	return uniqueEnterpriseInt64s([]int64{enterpriseID, employeeID}), nil
 }
 
 func (r *enterpriseManagementRepository) ListEmployeeGroupDefaults(ctx context.Context, enterpriseID int64) ([]int64, error) {
@@ -676,7 +676,7 @@ func (r *enterpriseManagementRepository) HardDeleteEnterpriseWithEmployees(ctx c
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return uniqueInt64s(affected), nil
+	return uniqueEnterpriseInt64s(affected), nil
 }
 
 func (r *enterpriseManagementRepository) CascadeEnterpriseStatus(ctx context.Context, enterpriseID int64, targetStatus string) ([]int64, error) {
@@ -736,7 +736,7 @@ WHERE id = $1
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return uniqueInt64s(affected), nil
+	return uniqueEnterpriseInt64s(affected), nil
 }
 
 func (r *enterpriseManagementRepository) ListGroupDelegationsForChild(ctx context.Context, childID int64) ([]service.AgentGroupDelegation, error) {
@@ -1045,7 +1045,7 @@ ORDER BY id`,
 }
 
 func (r *enterpriseManagementRepository) deleteEmployeeRows(ctx context.Context, exec sqlQueryExecutor, employeeIDs []int64) error {
-	employeeIDs = uniqueInt64s(employeeIDs)
+	employeeIDs = uniqueEnterpriseInt64s(employeeIDs)
 	if len(employeeIDs) == 0 {
 		return nil
 	}
@@ -1291,7 +1291,7 @@ func scanReturnedIDs(rows *sql.Rows) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-func uniqueInt64s(ids []int64) []int64 {
+func uniqueEnterpriseInt64s(ids []int64) []int64 {
 	if len(ids) == 0 {
 		return nil
 	}

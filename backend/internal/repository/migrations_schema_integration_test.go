@@ -21,9 +21,23 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM schema_migrations").Scan(&applied))
 	require.GreaterOrEqual(t, applied, 7, "expected schema_migrations to contain applied migrations")
 
-	// users: columns required by repository queries
+	// users: columns required by repository queries, plus upstream frozen-balance
+	// accounting and fork ownership/capacity fields.
 	requireColumn(t, tx, "users", "username", "character varying", 100, false)
 	requireColumn(t, tx, "users", "notes", "text", 0, false)
+	requireColumn(t, tx, "users", "frozen_balance", "numeric", 0, false)
+	requireColumn(t, tx, "users", "parent_user_id", "bigint", 0, true)
+	requireColumn(t, tx, "users", "allocated_concurrency", "integer", 0, false)
+	requireColumn(t, tx, "users", "allocated_rpm", "integer", 0, false)
+	requireForeignKeyOnDelete(t, tx, "users", "parent_user_id", "users", "SET NULL")
+
+	// groups: fork scheduling plus upstream peak, batch-image, and video controls.
+	requireColumn(t, tx, "groups", "scheduling_strategy", "character varying", 32, true)
+	requireColumn(t, tx, "groups", "peak_rate_enabled", "boolean", 0, false)
+	requireColumn(t, tx, "groups", "peak_rate_multiplier", "numeric", 0, false)
+	requireColumn(t, tx, "groups", "allow_batch_image_generation", "boolean", 0, false)
+	requireColumn(t, tx, "groups", "video_rate_independent", "boolean", 0, false)
+	requireColumn(t, tx, "groups", "video_rate_multiplier", "numeric", 0, false)
 
 	// accounts: schedulable and rate-limit fields
 	requireColumn(t, tx, "accounts", "notes", "text", 0, true)
@@ -41,14 +55,23 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "redeem_codes", "group_id", "bigint", 0, true)
 	requireColumn(t, tx, "redeem_codes", "validity_days", "integer", 0, false)
 
-	// usage_logs: billing_type used by filters/stats
+	// usage_logs: billing_type used by filters/stats, fork agent-income snapshots,
+	// and upstream per-second video billing.
 	requireColumn(t, tx, "usage_logs", "billing_type", "smallint", 0, false)
 	requireColumn(t, tx, "usage_logs", "request_type", "smallint", 0, false)
 	requireColumn(t, tx, "usage_logs", "openai_ws_mode", "boolean", 0, false)
+	requireColumn(t, tx, "usage_logs", "agent_owner_user_id", "bigint", 0, true)
+	requireColumn(t, tx, "usage_logs", "agent_user_rate_multiplier", "numeric", 0, false)
+	requireColumn(t, tx, "usage_logs", "agent_cost_rate_multiplier", "numeric", 0, false)
+	requireColumn(t, tx, "usage_logs", "agent_income", "numeric", 0, false)
 	requireColumn(t, tx, "usage_logs", "image_input_size", "character varying", 32, true)
 	requireColumn(t, tx, "usage_logs", "image_output_size", "character varying", 32, true)
 	requireColumn(t, tx, "usage_logs", "image_size_source", "character varying", 16, true)
 	requireColumn(t, tx, "usage_logs", "image_size_breakdown", "jsonb", 0, true)
+	requireColumn(t, tx, "usage_logs", "video_count", "integer", 0, false)
+	requireColumn(t, tx, "usage_logs", "video_resolution", "character varying", 10, true)
+	requireColumn(t, tx, "usage_logs", "video_duration_seconds", "integer", 0, true)
+	requireForeignKeyOnDelete(t, tx, "usage_logs", "agent_owner_user_id", "users", "SET NULL")
 	requireConstraintDefinitionContains(
 		t,
 		tx,
@@ -66,6 +89,9 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 		"usage_logs",
 		"usage_logs_image_billing_size_check",
 		"image_count",
+		"billing_mode",
+		"'video'",
+		"video_count",
 		"image_size IS NOT NULL",
 		"'1K'",
 		"'2K'",

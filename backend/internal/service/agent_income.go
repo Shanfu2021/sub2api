@@ -25,7 +25,7 @@ func NewAgentIncomeResolver(userRepo agentIncomeUserRepository, userGroupRateRep
 
 func (r *AgentIncomeResolver) Resolve(ctx context.Context, user *User, groupID *int64, actualCost float64, userRate float64, groupDefaultRate float64) AgentIncomeSnapshot {
 	snapshot := AgentIncomeSnapshot{UserRateMultiplier: userRate}
-	if r == nil || user == nil || groupID == nil || *groupID <= 0 || actualCost <= 0 || userRate <= 0 {
+	if r == nil || user == nil || groupID == nil || *groupID <= 0 {
 		return snapshot
 	}
 
@@ -43,6 +43,9 @@ func (r *AgentIncomeResolver) Resolve(ctx context.Context, user *User, groupID *
 
 	snapshot.AgentOwnerUserID = agentID
 	snapshot.AgentCostRateMultiplier = agentRate
+	if actualCost <= 0 || userRate <= 0 {
+		return snapshot
+	}
 	snapshot.AgentIncome = actualCost * (userRate - agentRate) / userRate
 	return snapshot
 }

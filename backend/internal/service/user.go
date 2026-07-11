@@ -20,6 +20,7 @@ type User struct {
 	Role                 string
 	ParentUserID         *int64
 	Balance              float64
+	FrozenBalance        float64
 	Concurrency          int
 	AllocatedConcurrency int
 	AllocatedRPM         int

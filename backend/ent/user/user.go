@@ -31,6 +31,8 @@ const (
 	FieldParentUserID = "parent_user_id"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
+	// FieldFrozenBalance holds the string denoting the frozen_balance field in the database.
+	FieldFrozenBalance = "frozen_balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
 	// FieldAllocatedConcurrency holds the string denoting the allocated_concurrency field in the database.
@@ -233,6 +235,7 @@ var Columns = []string{
 	FieldRole,
 	FieldParentUserID,
 	FieldBalance,
+	FieldFrozenBalance,
 	FieldConcurrency,
 	FieldAllocatedConcurrency,
 	FieldAllocatedRpm,
@@ -293,6 +296,8 @@ var (
 	RoleValidator func(string) error
 	// DefaultBalance holds the default value on creation for the "balance" field.
 	DefaultBalance float64
+	// DefaultFrozenBalance holds the default value on creation for the "frozen_balance" field.
+	DefaultFrozenBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
 	// DefaultAllocatedConcurrency holds the default value on creation for the "allocated_concurrency" field.
@@ -373,6 +378,11 @@ func ByParentUserID(opts ...sql.OrderTermOption) OrderOption {
 // ByBalance orders the results by the balance field.
 func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalance, opts...).ToFunc()
+}
+
+// ByFrozenBalance orders the results by the frozen_balance field.
+func ByFrozenBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFrozenBalance, opts...).ToFunc()
 }
 
 // ByConcurrency orders the results by the concurrency field.

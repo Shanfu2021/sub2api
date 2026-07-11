@@ -316,6 +316,58 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesUserParentForAgentIncome(t *te
 	require.Equal(t, parentID, *roundTrip.User.ParentUserID)
 }
 
+func TestAPIKeyService_SnapshotRoundTrip_PreservesMediaAuthorizationAndBillingFields(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(9)
+	imagePrice := 0.12
+	videoPrice := 0.19
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Key:     "k-media-billing",
+		Status:  StatusActive,
+		User:    &User{ID: 2, Status: StatusActive, Role: RoleUser},
+		Group: &Group{
+			ID:                           groupID,
+			AllowImageGeneration:         true,
+			AllowBatchImageGeneration:    true,
+			ImageRateIndependent:         true,
+			ImageRateMultiplier:          0.8,
+			BatchImageDiscountMultiplier: 0.5,
+			BatchImageHoldMultiplier:     0.6,
+			ImagePrice4K:                 &imagePrice,
+			VideoRateIndependent:         true,
+			VideoRateMultiplier:          0.7,
+			VideoPrice1080P:              &videoPrice,
+			PeakRateEnabled:              true,
+			PeakStart:                    "09:00",
+			PeakEnd:                      "18:00",
+			PeakRateMultiplier:           1.25,
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+
+	require.NotNil(t, roundTrip)
+	require.NotNil(t, roundTrip.Group)
+	require.True(t, roundTrip.Group.AllowImageGeneration)
+	require.True(t, roundTrip.Group.AllowBatchImageGeneration)
+	require.True(t, roundTrip.Group.ImageRateIndependent)
+	require.InDelta(t, 0.8, roundTrip.Group.ImageRateMultiplier, 1e-12)
+	require.InDelta(t, 0.5, roundTrip.Group.BatchImageDiscountMultiplier, 1e-12)
+	require.InDelta(t, 0.6, roundTrip.Group.BatchImageHoldMultiplier, 1e-12)
+	require.Equal(t, &imagePrice, roundTrip.Group.ImagePrice4K)
+	require.True(t, roundTrip.Group.VideoRateIndependent)
+	require.InDelta(t, 0.7, roundTrip.Group.VideoRateMultiplier, 1e-12)
+	require.Equal(t, &videoPrice, roundTrip.Group.VideoPrice1080P)
+	require.True(t, roundTrip.Group.PeakRateEnabled)
+	require.Equal(t, "09:00", roundTrip.Group.PeakStart)
+	require.Equal(t, "18:00", roundTrip.Group.PeakEnd)
+	require.InDelta(t, 1.25, roundTrip.Group.PeakRateMultiplier, 1e-12)
+}
+
 func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {
 	cache := &authCacheStub{}
 	var repoCalls int32

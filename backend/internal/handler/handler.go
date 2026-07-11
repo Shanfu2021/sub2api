@@ -61,6 +61,7 @@ type Handlers struct {
 	AgentManagement      *AgentManagementHandler
 	EnterpriseManagement *EnterpriseManagementHandler
 	PurchaseInfo         *PurchaseInfoHandler
+	BatchImage           *BatchImageHandler
 }
 
 // BuildInfo contains build-time information
