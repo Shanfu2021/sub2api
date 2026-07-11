@@ -58,7 +58,9 @@ func (r *PurchaseInfoRepository) ListCardsByOwner(ctx context.Context, ownerUser
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	cards := []service.PurchaseInfoCard{}
 	for rows.Next() {
