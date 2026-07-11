@@ -253,10 +253,15 @@ type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int
 	getByIDLiteCalls int
+	getByIDErr       error
+	getByIDLiteErr   error
 }
 
 func (m *mockGroupRepoForGateway) GetByID(ctx context.Context, id int64) (*Group, error) {
 	m.getByIDCalls++
+	if m.getByIDErr != nil {
+		return nil, m.getByIDErr
+	}
 	if g, ok := m.groups[id]; ok {
 		return g, nil
 	}
@@ -265,6 +270,9 @@ func (m *mockGroupRepoForGateway) GetByID(ctx context.Context, id int64) (*Group
 
 func (m *mockGroupRepoForGateway) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
 	m.getByIDLiteCalls++
+	if m.getByIDLiteErr != nil {
+		return nil, m.getByIDLiteErr
+	}
 	if g, ok := m.groups[id]; ok {
 		return g, nil
 	}
@@ -2002,6 +2010,38 @@ type mockConcurrencyCache struct {
 	skipDefaultLoad     bool
 }
 
+type mockSessionEligibilityCache struct {
+	SessionLimitCache
+	activeCounts   map[int64]int
+	activeSessions map[int64]bool
+	registerCalls  map[int64]int
+}
+
+func (m *mockSessionEligibilityCache) GetActiveSessionCountBatch(_ context.Context, accountIDs []int64, _ map[int64]time.Duration) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if count, ok := m.activeCounts[accountID]; ok {
+			result[accountID] = count
+		}
+	}
+	return result, nil
+}
+
+func (m *mockSessionEligibilityCache) IsSessionActive(_ context.Context, accountID int64, _ string) (bool, error) {
+	return m.activeSessions[accountID], nil
+}
+
+func (m *mockSessionEligibilityCache) RegisterSession(_ context.Context, accountID int64, _ string, maxSessions int, _ time.Duration) (bool, error) {
+	if m.registerCalls == nil {
+		m.registerCalls = make(map[int64]int)
+	}
+	m.registerCalls[accountID]++
+	if m.activeSessions[accountID] {
+		return true, nil
+	}
+	return m.activeCounts[accountID] < maxSessions, nil
+}
+
 func (m *mockConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	m.acquireAccountCalls++
 	if m.acquireResults != nil {
@@ -3227,10 +3267,11 @@ func TestGatewayService_GroupResolution_ReusesContextGroup(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(42)
 	group := &Group{
-		ID:       groupID,
-		Platform: PlatformAnthropic,
-		Status:   StatusActive,
-		Hydrated: true,
+		ID:                 groupID,
+		Platform:           PlatformAnthropic,
+		Status:             StatusActive,
+		Hydrated:           true,
+		SchedulingStrategy: GroupSchedulingStrategyWeighted,
 	}
 	ctx = context.WithValue(ctx, ctxkey.Group, group)
 
@@ -3257,8 +3298,93 @@ func TestGatewayService_GroupResolution_ReusesContextGroup(t *testing.T) {
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
 	require.NoError(t, err)
 	require.NotNil(t, account)
-	require.Equal(t, 1, groupRepo.getByIDCalls) // +1 for require_privacy_set check
+	require.Equal(t, 0, groupRepo.getByIDCalls)
 	require.Equal(t, 0, groupRepo.getByIDLiteCalls)
+}
+
+func TestGatewayService_StrictPriorityStrategyResolution(t *testing.T) {
+	groupID := int64(43)
+	lookupErr := errors.New("strategy lookup failed")
+	tests := []struct {
+		name        string
+		group       *Group
+		storedGroup *Group
+		lookupErr   error
+		wantStrict  bool
+		wantErr     error
+		wantCalls   int
+	}{
+		{
+			name:       "explicit_weighted_uses_resolved_group",
+			group:      &Group{SchedulingStrategy: GroupSchedulingStrategyWeighted},
+			wantStrict: false,
+		},
+		{
+			name:       "explicit_strict_uses_resolved_group",
+			group:      &Group{SchedulingStrategy: GroupSchedulingStrategyStrictPriority},
+			wantStrict: true,
+		},
+		{
+			name:        "missing_strategy_loads_strict_group",
+			storedGroup: &Group{SchedulingStrategy: GroupSchedulingStrategyStrictPriority},
+			wantStrict:  true,
+			wantCalls:   1,
+		},
+		{
+			name:      "lookup_error_is_propagated",
+			lookupErr: lookupErr,
+			wantErr:   lookupErr,
+			wantCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupRepo := &mockGroupRepoForGateway{
+				groups:         map[int64]*Group{groupID: tt.storedGroup},
+				getByIDLiteErr: tt.lookupErr,
+			}
+			svc := &GatewayService{groupRepo: groupRepo}
+
+			strict, err := svc.isStrictPriorityGroupForSelection(context.Background(), &groupID, tt.group)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.wantStrict, strict)
+			require.Equal(t, tt.wantCalls, groupRepo.getByIDLiteCalls)
+		})
+	}
+}
+
+func TestGatewayService_LegacySelection_PropagatesGroupLookupError(t *testing.T) {
+	groupID := int64(44)
+	lookupErr := errors.New("group lookup failed")
+
+	for _, name := range []string{"single_platform", "mixed_scheduling"} {
+		t.Run(name, func(t *testing.T) {
+			groupRepo := &mockGroupRepoForGateway{
+				groups:     map[int64]*Group{},
+				getByIDErr: lookupErr,
+			}
+			svc := &GatewayService{
+				accountRepo: &mockAccountRepoForPlatform{},
+				groupRepo:   groupRepo,
+				cfg:         testConfig(),
+			}
+
+			var err error
+			if name == "single_platform" {
+				_, err = svc.selectAccountForModelWithPlatform(context.Background(), &groupID, "", "", nil, PlatformAnthropic)
+			} else {
+				_, err = svc.selectAccountWithMixedScheduling(context.Background(), &groupID, "", "", nil, PlatformAnthropic)
+			}
+
+			require.ErrorIs(t, err, lookupErr)
+			require.Equal(t, 1, groupRepo.getByIDCalls)
+		})
+	}
 }
 
 func TestGatewayService_GroupResolution_IgnoresInvalidContextGroup(t *testing.T) {
@@ -3599,6 +3725,126 @@ func TestGatewayService_StrictPriorityScheduling_DoesNotSpillWhenLowestPriorityB
 			require.NotNil(t, result.WaitPlan)
 			require.Equal(t, int64(1), result.WaitPlan.AccountID)
 			require.Equal(t, 1, concurrencyCache.acquireAccountCalls)
+		})
+	}
+}
+
+func TestGatewayService_StrictPriorityScheduling_FiltersSessionEligibilityBeforeFreezingBucket(t *testing.T) {
+	tests := []struct {
+		name                   string
+		modelRouting           bool
+		lowestSessionCount     int
+		lowestAcquireResult    bool
+		wantAccountID          int64
+		wantAcquired           bool
+		wantLowestRegisterCall int
+	}{
+		{
+			name:                "normal_session_ineligible_uses_higher_bucket",
+			lowestSessionCount:  1,
+			lowestAcquireResult: true,
+			wantAccountID:       2,
+			wantAcquired:        true,
+		},
+		{
+			name:                "model_routing_session_ineligible_uses_higher_bucket",
+			modelRouting:        true,
+			lowestSessionCount:  1,
+			lowestAcquireResult: true,
+			wantAccountID:       2,
+			wantAcquired:        true,
+		},
+		{
+			name:                   "normal_concurrency_busy_stays_in_lowest_bucket",
+			lowestAcquireResult:    false,
+			wantAccountID:          1,
+			wantLowestRegisterCall: 1,
+		},
+		{
+			name:                   "model_routing_concurrency_busy_stays_in_lowest_bucket",
+			modelRouting:           true,
+			lowestAcquireResult:    false,
+			wantAccountID:          1,
+			wantLowestRegisterCall: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			groupID := int64(96)
+			accounts := []Account{
+				{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, Extra: map[string]any{"max_sessions": 1}},
+				{ID: 2, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5, Extra: map[string]any{"max_sessions": 1}},
+			}
+			repo := &mockAccountRepoForPlatform{
+				accounts:     accounts,
+				accountsByID: map[int64]*Account{},
+			}
+			for i := range repo.accounts {
+				repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+			}
+
+			group := &Group{
+				ID:                 groupID,
+				Platform:           PlatformAnthropic,
+				Status:             StatusActive,
+				Hydrated:           true,
+				SchedulingStrategy: GroupSchedulingStrategyStrictPriority,
+			}
+			if tt.modelRouting {
+				group.ModelRoutingEnabled = true
+				group.ModelRouting = map[string][]int64{
+					"claude-3-5-sonnet-20241022": {1, 2},
+				}
+			}
+
+			cfg := testConfig()
+			cfg.Gateway.Scheduling.LoadBatchEnabled = true
+			concurrencyCache := &mockConcurrencyCache{
+				acquireResults: map[int64]bool{
+					1: tt.lowestAcquireResult,
+					2: true,
+				},
+				loadMap: map[int64]*AccountLoadInfo{
+					1: {AccountID: 1, LoadRate: 10},
+					2: {AccountID: 2, LoadRate: 0},
+				},
+			}
+			sessionCache := &mockSessionEligibilityCache{
+				activeCounts: map[int64]int{
+					1: tt.lowestSessionCount,
+					2: 0,
+				},
+				activeSessions: map[int64]bool{},
+			}
+			svc := &GatewayService{
+				accountRepo: repo,
+				groupRepo: &mockGroupRepoForGateway{
+					groups: map[int64]*Group{groupID: group},
+				},
+				cache:              &mockGatewayCacheForPlatform{},
+				cfg:                cfg,
+				concurrencyService: NewConcurrencyService(concurrencyCache),
+				sessionLimitCache:  sessionCache,
+			}
+
+			result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "new-session", "claude-3-5-sonnet-20241022", nil, "", int64(0))
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, result.Account)
+			require.Equal(t, tt.wantAccountID, result.Account.ID)
+			require.Equal(t, tt.wantAcquired, result.Acquired)
+			require.Equal(t, 1, concurrencyCache.acquireAccountCalls)
+			require.Equal(t, tt.wantLowestRegisterCall, sessionCache.registerCalls[1])
+			if tt.wantAcquired {
+				require.Nil(t, result.WaitPlan)
+				require.Equal(t, 1, sessionCache.registerCalls[2])
+			} else {
+				require.NotNil(t, result.WaitPlan)
+				require.Equal(t, tt.wantAccountID, result.WaitPlan.AccountID)
+				require.Zero(t, sessionCache.registerCalls[2])
+			}
 		})
 	}
 }
