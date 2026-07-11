@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -42,4 +44,44 @@ func TestRequestBodyLimitTooLarge(t *testing.T) {
 
 	require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
 	require.Contains(t, recorder.Body.String(), buildBodyTooLargeMessage(limit))
+}
+
+func TestGatewaySplitHandlersRequestBodyTooLarge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const limit int64 = 64
+	cfg := &config.Config{}
+	cfg.Gateway.MaxBodySize = limit
+	gatewayHandler := &GatewayHandler{cfg: cfg}
+
+	router := gin.New()
+	router.Use(middleware.RequestBodyLimit(limit))
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 1})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1})
+		c.Next()
+	})
+	router.POST("/v1/chat/completions", gatewayHandler.ChatCompletions)
+	router.POST("/v1/responses", gatewayHandler.Responses)
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "chat_completions", path: "/v1/chat/completions"},
+		{name: "responses", path: "/v1/responses"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := bytes.Repeat([]byte("a"), int(limit+1))
+			req := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader(payload))
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, req)
+
+			require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+			require.Contains(t, recorder.Body.String(), "Request body too large, limit is 64B")
+		})
+	}
 }
