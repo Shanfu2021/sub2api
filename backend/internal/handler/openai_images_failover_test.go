@@ -140,7 +140,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 	)
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingService.Stop)
-	concurrencyService := service.NewConcurrencyService(nil)
+	concurrencyService := service.NewConcurrencyService(&helperConcurrencyCacheStub{userSeq: []bool{true}})
 	handler := NewOpenAIGatewayHandler(
 		gatewayService,
 		concurrencyService,
@@ -169,7 +169,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 		},
 		User: &service.User{ID: 100},
 	})
-	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 100, Concurrency: 0})
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 100, Concurrency: 1})
 
 	handler.Images(c)
 
