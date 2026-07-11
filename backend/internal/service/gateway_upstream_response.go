@@ -439,8 +439,8 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		resp.StatusCode,
 		body,
 		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed",
+		"api_error",
+		"Request failed",
 	); matched {
 		c.JSON(status, gin.H{
 			"type": "error",
@@ -466,7 +466,13 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": clientSafeUpstreamErrorMessage(resp.StatusCode),
+			},
+		})
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -477,28 +483,28 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
 	case 401:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream authentication failed, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 403:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream access forbidden, please contact administrator"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 429:
 		statusCode = http.StatusTooManyRequests
-		errType = "rate_limit_error"
-		errMsg = "Upstream rate limit exceeded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 529:
 		statusCode = http.StatusServiceUnavailable
-		errType = "overloaded_error"
-		errMsg = "Upstream service overloaded, please retry later"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	case 500, 502, 503, 504:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream service temporarily unavailable"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	default:
 		statusCode = http.StatusBadGateway
-		errType = "upstream_error"
-		errMsg = "Upstream request failed"
+		errType = clientSafeUpstreamErrorType(resp.StatusCode, "")
+		errMsg = clientSafeUpstreamErrorMessage(resp.StatusCode)
 	}
 
 	// 返回自定义错误响应

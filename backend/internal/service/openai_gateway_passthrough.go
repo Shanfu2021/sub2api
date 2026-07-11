@@ -478,9 +478,9 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	MarkResponseCommitted(c)
 	body := s.readUpstreamErrorBody(resp)
 
-	// cyber_policy：透传账号本就把原始 body 回给客户端（下方 c.Data），此处仅打标记，
-	// 供 handler 事后写风控/邮件。cyber 是上游网络安全策略拦截，不冷却账号，
-	// 故下方跳过 handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
+	// cyber_policy：错误体仍用于打标记和运维记录，但客户端只接收下方的本地安全错误。
+	// cyber 是上游网络安全策略拦截，不冷却账号，故下方跳过
+	// handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
 	cyberHit, cyberCode, cyberMsg := detectOpenAICyberPolicy(body)
 	if cyberHit {
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
@@ -503,8 +503,8 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
-	// 透传模式保留原始上游错误响应，但运行态账号状态仍需更新，
-	// 避免粘性路由继续复用刚被限流的账号。cyber 例外：不冷却账号。
+	// 透传模式的运行态账号状态仍需更新，避免粘性路由继续复用刚被限流的账号。
+	// cyber 例外：不冷却账号。
 	if !cyberHit {
 		reqModel, _, _ := extractOpenAIRequestMetaFromBody(requestBody)
 		_ = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, reqModel)
@@ -522,12 +522,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		UpstreamResponseBody: upstreamDetail,
 	})
 
-	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/json"
-	}
-	c.Data(resp.StatusCode, contentType, body)
+	writeOpenAIClientSafeUpstreamError(c, resp.StatusCode, "api_error")
 
 	if upstreamMsg == "" {
 		return fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -698,28 +693,6 @@ func openAIStreamFailedEventPassthroughBody(payload []byte, failedMessage string
 		return payload
 	}
 	return body
-}
-
-// applyOpenAIStreamFailedErrorPassthroughRule 对 response.failed 事件应用错误透传规则：
-// 归一化 body 供关键词匹配/消息提取，并推断语义状态码使按错误码配置的规则可以命中。
-// platform 必须传 account.Platform——本服务同时承载 openai 与 grok 平台账号，规则按平台匹配。
-func applyOpenAIStreamFailedErrorPassthroughRule(
-	c *gin.Context,
-	platform string,
-	payload []byte,
-	failedMessage string,
-) (status int, errType string, errMsg string, matched bool) {
-	ruleBody := openAIStreamFailedEventPassthroughBody(payload, failedMessage)
-	upstreamStatus := openAIStreamFailedEventSemanticStatus(payload, failedMessage)
-	return applyErrorPassthroughRule(
-		c,
-		platform,
-		upstreamStatus,
-		ruleBody,
-		http.StatusBadGateway,
-		"upstream_error",
-		"Upstream request failed",
-	)
 }
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {

@@ -242,6 +242,72 @@ func marshalOpenAIUpstreamJSON(v any) ([]byte, error) {
 	return out, nil
 }
 
+func openAIClientSafeUpstreamError(statusCode int, fallbackType string) (errType, message string) {
+	return clientSafeUpstreamErrorType(statusCode, fallbackType), clientSafeUpstreamErrorMessage(statusCode)
+}
+
+func writeOpenAIClientSafeUpstreamError(c *gin.Context, statusCode int, fallbackType string) {
+	errType, message := openAIClientSafeUpstreamError(statusCode, fallbackType)
+	c.JSON(statusCode, gin.H{
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+		},
+	})
+}
+
+// openAICompatClientErrorMessage preserves plain validation text such as
+// "invalid roles", but falls back to a stable local message whenever cleanup
+// detects an upstream location, path, or credential-shaped value.
+func openAICompatClientErrorMessage(statusCode int, upstreamMessage string) string {
+	fallback := clientSafeUpstreamErrorMessage(statusCode)
+	rawMessage := strings.TrimSpace(upstreamMessage)
+	if rawMessage == "" {
+		return fallback
+	}
+	message := sanitizeUpstreamErrorMessage(rawMessage)
+	if message == "" || message != rawMessage || strings.ContainsAny(rawMessage, `/\`) {
+		return fallback
+	}
+	lowerMessage := strings.ToLower(rawMessage)
+	for _, marker := range []string{
+		"access_token", "refresh_token", "client_secret", "api_key", "apikey",
+		"authorization", "bearer ", "password", "secret", "token=", "key=", "sk-",
+	} {
+		if strings.Contains(lowerMessage, marker) {
+			return fallback
+		}
+	}
+	return message
+}
+
+// applyOpenAIStreamFailedErrorPassthroughRule normalizes response.failed for
+// matching while preserving the OpenAI upstream_error contract of a matched
+// passthrough rule. The semantic status is for rule selection and response
+// status only; it must not recategorize the protocol-level error type.
+func applyOpenAIStreamFailedErrorPassthroughRule(
+	c *gin.Context,
+	platform string,
+	payload []byte,
+	failedMessage string,
+) (status int, errType string, errMsg string, matched bool) {
+	ruleBody := openAIStreamFailedEventPassthroughBody(payload, failedMessage)
+	upstreamStatus := openAIStreamFailedEventSemanticStatus(payload, failedMessage)
+	status, errType, errMsg, matched = applyErrorPassthroughRule(
+		c,
+		platform,
+		upstreamStatus,
+		ruleBody,
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+	if matched {
+		errType = "upstream_error"
+	}
+	return status, errType, errMsg, matched
+}
+
 func openAIUpstreamErrorBodyReadLimitForConfig(cfg *config.Config) int64 {
 	limit := openAIUpstreamErrorBodyReadLimit
 	if cfg != nil && cfg.Gateway.LogUpstreamErrorBody && cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
@@ -495,11 +561,12 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
 	}
 
-	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-	if upstreamMsg == "" {
-		upstreamMsg = fmt.Sprintf("service error: %d", resp.StatusCode)
+	rawUpstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg := sanitizeUpstreamErrorMessage(rawUpstreamMsg)
+	upstreamSummary := upstreamMsg
+	if upstreamSummary == "" {
+		upstreamSummary = fmt.Sprintf("service error: %d", resp.StatusCode)
 	}
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -509,7 +576,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		}
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
-	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	setOpsUpstreamError(c, resp.StatusCode, upstreamSummary, upstreamDetail)
 
 	// Apply error passthrough rules
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
@@ -537,7 +604,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  resp.Header.Get("x-request-id"),
 			Kind:               "http_error",
-			Message:            upstreamMsg,
+			Message:            upstreamSummary,
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
@@ -567,7 +634,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		UpstreamStatusCode: resp.StatusCode,
 		UpstreamRequestID:  resp.Header.Get("x-request-id"),
 		Kind:               kind,
-		Message:            upstreamMsg,
+		Message:            upstreamSummary,
 		Detail:             upstreamDetail,
 	})
 	if shouldDisable {
@@ -593,6 +660,6 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		errType = "api_error"
 	}
 
-	writeError(c, resp.StatusCode, errType, clientSafeUpstreamErrorMessage(resp.StatusCode))
-	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	writeError(c, resp.StatusCode, errType, openAICompatClientErrorMessage(resp.StatusCode, rawUpstreamMsg))
+	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamSummary)
 }

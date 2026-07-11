@@ -1045,23 +1045,19 @@ func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string
 func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.Response, c *gin.Context, message string) error {
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
-		message = "Upstream returned an invalid non-streaming response"
+		message = "Service returned an invalid non-streaming response"
 	}
 	setOpsUpstreamError(c, http.StatusBadGateway, message, "")
+	errType, clientMessage := openAIClientSafeUpstreamError(http.StatusBadGateway, "api_error")
 	// body-signal compact 心跳可能已把响应头提交为 200，此时只能以
 	// response.failed 终止事件回传错误，不能再写 JSON+状态码。
 	if openAICompactClientWantsStream(c) && StopOpenAICompactSSEKeepaliveCommitted(c) {
-		writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, "upstream_error", message)
+		writeOpenAICompactSSEFailureMessage(c, http.StatusBadGateway, errType, clientMessage)
 		return fmt.Errorf("non-streaming openai protocol error: %s", message)
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	c.JSON(http.StatusBadGateway, gin.H{
-		"error": gin.H{
-			"type":    "upstream_error",
-			"message": message,
-		},
-	})
+	writeOpenAIClientSafeUpstreamError(c, http.StatusBadGateway, "api_error")
 	return fmt.Errorf("non-streaming openai protocol error: %s", message)
 }
 
