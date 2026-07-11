@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestRequestBodyLimitTooLarge(t *testing.T) {
@@ -81,7 +82,7 @@ func TestGatewaySplitHandlersRequestBodyTooLarge(t *testing.T) {
 			router.ServeHTTP(recorder, req)
 
 			require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
-			require.Contains(t, recorder.Body.String(), "Request body too large, limit is 64B")
+			require.Equal(t, "Request body too large, limit is 64B", gjson.GetBytes(recorder.Body.Bytes(), "error.message").String())
 		})
 	}
 }
