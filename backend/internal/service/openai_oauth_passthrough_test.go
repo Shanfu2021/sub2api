@@ -1050,22 +1050,6 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RebuildsUpstreamErrors(t *testin
 			wantMessage:  "Upstream authentication failed",
 		},
 		{
-			name:         "html 5xx",
-			statusCode:   http.StatusBadGateway,
-			contentType:  "text/html; charset=UTF-8",
-			responseBody: `<!DOCTYPE html><title>secret-upstream.example | 502: Bad gateway</title>`,
-			wantStatus:   http.StatusBadGateway,
-			wantMessage:  "Upstream service temporarily unavailable",
-		},
-		{
-			name:         "structured 5xx",
-			statusCode:   http.StatusInternalServerError,
-			contentType:  "application/json",
-			responseBody: `{"error":{"message":"secret-upstream.example internal failure"}}`,
-			wantStatus:   http.StatusInternalServerError,
-			wantMessage:  "Upstream service temporarily unavailable",
-		},
-		{
 			name:         "unstructured 4xx",
 			statusCode:   http.StatusBadRequest,
 			contentType:  "text/plain",

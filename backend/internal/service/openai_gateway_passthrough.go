@@ -516,7 +516,7 @@ func validOpenAIPassthroughRetryAfter(raw string, now time.Time) bool {
 	return err == nil && parsed.After(now)
 }
 
-func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, upstreamHeaders http.Header) {
+func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, upstreamHeaders http.Header, upstreamMsg string, upstreamBody []byte) {
 	if c == nil {
 		return
 	}
@@ -533,6 +533,9 @@ func writeSanitizedOpenAIPassthroughError(c *gin.Context, upstreamStatus int, up
 		if upstreamStatus >= http.StatusInternalServerError {
 			message = "Upstream service temporarily unavailable"
 		}
+	}
+	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) && strings.TrimSpace(upstreamMsg) != "" {
+		message = strings.TrimSpace(upstreamMsg)
 	}
 	body, _ := json.Marshal(gin.H{
 		"error": gin.H{
@@ -645,7 +648,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 	})
-	writeSanitizedOpenAIPassthroughError(c, resp.StatusCode, resp.Header)
+	writeSanitizedOpenAIPassthroughError(c, resp.StatusCode, resp.Header, upstreamMsg, body)
 	return fmt.Errorf("upstream error: %d (client response sanitized)", resp.StatusCode)
 }
 

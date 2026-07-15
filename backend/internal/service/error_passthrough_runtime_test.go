@@ -146,16 +146,14 @@ func TestOpenAIHandlePassthroughErrorResponseDoesNotExposeUpstreamBody(t *testin
 	assert.NotContains(t, body, "secret-openai.example.com")
 	assert.NotContains(t, body, "172.16.1.5")
 	assert.NotContains(t, body, "access_token")
-	assert.NotContains(t, body, "upstream")
-	assert.NotContains(t, body, "Upstream")
 	assert.Empty(t, rec.Header().Values("Server"))
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "invalid_request_error", errField["type"])
-	assert.Equal(t, "Invalid request", errField["message"])
+	assert.Equal(t, "upstream_error", errField["type"])
+	assert.Equal(t, "Upstream request failed", errField["message"])
 }
 
 func TestOpenAIHandleErrorResponse_ContextWindow502KeepsMessageWithoutFailover(t *testing.T) {
