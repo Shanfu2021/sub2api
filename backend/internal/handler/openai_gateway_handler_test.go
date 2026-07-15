@@ -1486,7 +1486,7 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 	)
 	h := NewOpenAIGatewayHandler(
 		gatewaySvc,
-		service.NewConcurrencyService(nil),
+		service.NewConcurrencyService(&helperConcurrencyCacheStub{userSeq: []bool{true}}),
 		billingCacheSvc,
 		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
 		nil,
