@@ -134,7 +134,7 @@ func TestEmployeeCannotViewSubscriptions(t *testing.T) {
 func TestEmployeePaymentHandlerBlocksBeforeCreateOrder(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	h := NewPaymentHandler(nil, nil, nil)
+	h := NewPaymentHandler(nil, nil)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/payment/orders", bytes.NewReader([]byte(`{"amount":10,"payment_type":"alipay"}`)))

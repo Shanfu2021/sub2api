@@ -138,7 +138,7 @@ func TestOpenAIHandlePassthroughErrorResponseDoesNotExposeUpstreamBody(t *testin
 	}
 	account := &Account{ID: 22, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	err := svc.handleErrorResponsePassthrough(context.Background(), resp, c, account, []byte(`{"model":"gpt-5"}`))
+	err := svc.handleErrorResponsePassthrough(context.Background(), resp, c, account, []byte(`{"model":"gpt-5"}`), respBody)
 	require.Error(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
