@@ -625,6 +625,20 @@ func (_u *UsageLogUpdate) AddAgentIncome(v float64) *UsageLogUpdate {
 	return _u
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (_u *UsageLogUpdate) SetLongContextBillingApplied(v bool) *UsageLogUpdate {
+	_u.mutation.SetLongContextBillingApplied(v)
+	return _u
+}
+
+// SetNillableLongContextBillingApplied sets the "long_context_billing_applied" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableLongContextBillingApplied(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetLongContextBillingApplied(*v)
+	}
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdate) SetAccountRateMultiplier(v float64) *UsageLogUpdate {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -1324,6 +1338,9 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedAgentIncome(); ok {
 		_spec.AddField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.LongContextBillingApplied(); ok {
+		_spec.SetField(usagelog.FieldLongContextBillingApplied, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
@@ -2220,6 +2237,20 @@ func (_u *UsageLogUpdateOne) AddAgentIncome(v float64) *UsageLogUpdateOne {
 	return _u
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (_u *UsageLogUpdateOne) SetLongContextBillingApplied(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetLongContextBillingApplied(v)
+	return _u
+}
+
+// SetNillableLongContextBillingApplied sets the "long_context_billing_applied" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableLongContextBillingApplied(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetLongContextBillingApplied(*v)
+	}
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdateOne) SetAccountRateMultiplier(v float64) *UsageLogUpdateOne {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -2949,6 +2980,9 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.AddedAgentIncome(); ok {
 		_spec.AddField(usagelog.FieldAgentIncome, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.LongContextBillingApplied(); ok {
+		_spec.SetField(usagelog.FieldLongContextBillingApplied, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)

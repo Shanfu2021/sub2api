@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 15 // v15: include batch-image billing multipliers
+const apiKeyAuthSnapshotVersion = 16 // v16: include batch-image multipliers and group web search per-call pricing
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -276,6 +276,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			VideoPrice480P:                  group.VideoPrice480P,
 			VideoPrice720P:                  group.VideoPrice720P,
 			VideoPrice1080P:                 group.VideoPrice1080P,
+			WebSearchPricePerCall:           group.WebSearchPricePerCall,
 			ClaudeCodeOnly:                  group.ClaudeCodeOnly,
 			FallbackGroupID:                 group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: group.FallbackGroupIDOnInvalidRequest,
@@ -362,6 +363,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			VideoPrice480P:                  snapshot.Group.VideoPrice480P,
 			VideoPrice720P:                  snapshot.Group.VideoPrice720P,
 			VideoPrice1080P:                 snapshot.Group.VideoPrice1080P,
+			WebSearchPricePerCall:           snapshot.Group.WebSearchPricePerCall,
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,

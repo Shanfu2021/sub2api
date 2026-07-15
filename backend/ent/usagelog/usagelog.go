@@ -74,6 +74,8 @@ const (
 	FieldAgentCostRateMultiplier = "agent_cost_rate_multiplier"
 	// FieldAgentIncome holds the string denoting the agent_income field in the database.
 	FieldAgentIncome = "agent_income"
+	// FieldLongContextBillingApplied holds the string denoting the long_context_billing_applied field in the database.
+	FieldLongContextBillingApplied = "long_context_billing_applied"
 	// FieldAccountRateMultiplier holds the string denoting the account_rate_multiplier field in the database.
 	FieldAccountRateMultiplier = "account_rate_multiplier"
 	// FieldBillingType holds the string denoting the billing_type field in the database.
@@ -201,6 +203,7 @@ var Columns = []string{
 	FieldAgentUserRateMultiplier,
 	FieldAgentCostRateMultiplier,
 	FieldAgentIncome,
+	FieldLongContextBillingApplied,
 	FieldAccountRateMultiplier,
 	FieldBillingType,
 	FieldStream,
@@ -278,6 +281,8 @@ var (
 	DefaultAgentCostRateMultiplier float64
 	// DefaultAgentIncome holds the default value on creation for the "agent_income" field.
 	DefaultAgentIncome float64
+	// DefaultLongContextBillingApplied holds the default value on creation for the "long_context_billing_applied" field.
+	DefaultLongContextBillingApplied bool
 	// DefaultBillingType holds the default value on creation for the "billing_type" field.
 	DefaultBillingType int8
 	// DefaultStream holds the default value on creation for the "stream" field.
@@ -462,6 +467,11 @@ func ByAgentCostRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByAgentIncome orders the results by the agent_income field.
 func ByAgentIncome(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAgentIncome, opts...).ToFunc()
+}
+
+// ByLongContextBillingApplied orders the results by the long_context_billing_applied field.
+func ByLongContextBillingApplied(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLongContextBillingApplied, opts...).ToFunc()
 }
 
 // ByAccountRateMultiplier orders the results by the account_rate_multiplier field.
