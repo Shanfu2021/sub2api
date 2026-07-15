@@ -2320,8 +2320,7 @@ func openAIWSFailoverExhaustedCloseResponse(failoverErr *service.UpstreamFailove
 		return coderws.StatusInternalError, "service temporarily unavailable"
 	}
 	if failoverErr.Stage == service.GatewayFailureStageAccountAuth {
-		closeOpenAIClientWS(conn, coderws.StatusTryAgainLater, service.GrokCredentialUnavailableClientMessage)
-		return
+		return coderws.StatusTryAgainLater, service.GrokCredentialUnavailableClientMessage
 	}
 	switch failoverErr.StatusCode {
 	case http.StatusTooManyRequests:
